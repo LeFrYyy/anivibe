@@ -22,23 +22,25 @@ struct AnimeDetailsView: View {
     private var anime: Anime { model.anime }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
-                header
-                actions
-                switch model.phase {
-                case .loading:
-                    LoadingStateView(message: "Загружаем информацию…")
-                case .failed(let message):
-                    ErrorStateView(message: message) { Task { await model.retry(catalog: env.catalog) } }
-                case .loaded:
-                    loadedContent
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+                    header
+                    actions
+                    switch model.phase {
+                    case .loading:
+                        LoadingStateView(message: "Загружаем информацию…")
+                    case .failed(let message):
+                        ErrorStateView(message: message) { Task { await model.retry(catalog: env.catalog) } }
+                    case .loaded:
+                        loadedContent
+                    }
                 }
+                // Жёсткая страховка: контент страницы никогда не шире экрана,
+                // иначе ScrollView начинает скроллиться горизонтально.
+                .frame(width: proxy.size.width)
+                .padding(.bottom, Theme.Spacing.xxl)
             }
-            // Страховка: контент страницы никогда не шире экрана,
-            // иначе ScrollView начинает скроллиться горизонтально.
-            .containerRelativeFrame(.horizontal)
-            .padding(.bottom, Theme.Spacing.xxl)
         }
         .screenBackground()
         .navigationTitle(anime.title.preferred)

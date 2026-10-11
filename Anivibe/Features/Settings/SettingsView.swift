@@ -64,7 +64,7 @@ struct AboutView: View {
                     AnivibeMark().frame(width: 56, height: 56)
                     VStack(alignment: .leading) {
                         Text("Anivibe").font(.title2.bold())
-                        Text("Версия \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")")
+                        Text("Версия \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (сборка \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))")
                             .font(.footnote).foregroundStyle(Theme.textSecondary)
                     }
                 }

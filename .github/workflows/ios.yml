@@ -81,6 +81,7 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -99,7 +100,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Anivibe-unsigned-ipa
+          name: Anivibe-unsigned-ipa-r${{ github.run_number }}
           path: Anivibe.ipa
           retention-days: 14
 
