@@ -189,7 +189,9 @@ PGURL=postgresql://postgres@localhost:5432/postgres ./supabase/tests/rls_test.sh
 4. Установите на iPhone через **Sideloadly** или **AltStore/SideStore** (Windows подходит): они подпишут `.ipa` вашим бесплатным Apple ID. Понадобятся обычные iTunes/iCloud с сайта Apple (не из Microsoft Store), пароль приложения при двухфакторке и включённый Режим разработчика на iPhone.
 5. Бесплатная подпись живёт **7 дней** — затем переподписать (SideStore/Sideloadly умеют автообновление по Wi-Fi, если компьютер иногда включён). Постоянная установка без переподписи — только TrollStore на старых iOS (Anivibe требует iOS 17+, поэтому подходит лишь ровно iOS 17.0).
 
-**Честное предупреждение:** workflow написан без доступа к macOS и ни разу не выполнялся — первая сборка почти наверняка упадёт на мелких ошибках компиляции SwiftUI-слоя. Лог шага «Build unsigned device app» прикладывается артефактом `xcodebuild-log`; чините по сообщениям (обычно это недостающий `import` или аннотация `@MainActor`).
+**Ключи в CI (необязательно).** Чтобы сборка с GitHub включала Supabase/Kodik/манифест, добавьте их как секреты репозитория: **Settings → Secrets and variables → Actions → New repository secret** с именами `ANIVIBE_SUPABASE_URL`, `ANIVIBE_SUPABASE_ANON_KEY`, `ANIVIBE_KODIK_TOKEN`, `ANIVIBE_MANIFEST_URL`. Шаг «Write Secrets.xcconfig» запишет их в конфиг при сборке; без секретов собирается локальный режим. Зашитые в `.ipa` ключи видны всем, кто скачает артефакт, — Kodik-токен и anon-ключ Supabase являются клиентскими, но с ними лучше держать репозиторий приватным.
+
+**Статус workflow:** проверен на практике — `macos-15`, сборка и тесты проходят (оба job зелёные). Если при ваших изменениях сборка упадёт, лог шага «Build unsigned device app» прикладывается артефактом `xcodebuild-log`.
 
 ## 13.8 Чек-лист ручной проверки (не выполнялся — нужен Mac)
 

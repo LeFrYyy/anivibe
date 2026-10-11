@@ -35,6 +35,9 @@ struct AnimeDetailsView: View {
                     loadedContent
                 }
             }
+            // Страховка: контент страницы никогда не шире экрана,
+            // иначе ScrollView начинает скроллиться горизонтально.
+            .containerRelativeFrame(.horizontal)
             .padding(.bottom, Theme.Spacing.xxl)
         }
         .screenBackground()

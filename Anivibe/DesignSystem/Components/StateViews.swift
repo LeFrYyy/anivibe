@@ -120,7 +120,10 @@ struct FlowLayout: Layout {
             maxX = max(maxX, x - spacing)
             rowHeight = max(rowHeight, size.height)
         }
-        return CGSize(width: maxX, height: y + rowHeight)
+        // Никогда не сообщаем ширину больше предложенной: иначе при промежуточных
+        // замерах (proposal без ширины) одна строка чипов растягивает весь экран.
+        let finalWidth = proposal.width.map { min(maxX, $0) } ?? maxX
+        return CGSize(width: finalWidth, height: y + rowHeight)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
