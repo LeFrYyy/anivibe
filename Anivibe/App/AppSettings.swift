@@ -28,11 +28,13 @@ final class AppSettings {
     var appearance: AppearanceMode { didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) } }
     var autoplayNextEpisode: Bool { didSet { defaults.set(autoplayNextEpisode, forKey: Keys.autoplay) } }
     var testStreamsEnabled: Bool { didSet { defaults.set(testStreamsEnabled, forKey: Keys.testStreams) } }
+    var anilibriaEnabled: Bool { didSet { defaults.set(anilibriaEnabled, forKey: Keys.anilibria) } }
 
     private enum Keys {
         static let appearance = "settings.appearance"
         static let autoplay = "settings.autoplayNext"
         static let testStreams = "settings.testStreams"
+        static let anilibria = "settings.anilibria"
     }
 
     init(defaults: UserDefaults = .standard, testStreamsDefault: Bool) {
@@ -40,5 +42,6 @@ final class AppSettings {
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .dark
         autoplayNextEpisode = defaults.object(forKey: Keys.autoplay) as? Bool ?? true
         testStreamsEnabled = defaults.object(forKey: Keys.testStreams) as? Bool ?? testStreamsDefault
+        anilibriaEnabled = defaults.object(forKey: Keys.anilibria) as? Bool ?? true
     }
 }

@@ -19,6 +19,8 @@ struct SettingsView: View {
                 Toggle("Автоматически включать следующую серию", isOn: $settings.autoplayNextEpisode)
             }
             Section {
+                Toggle("Anilibria (русская озвучка)", isOn: Binding(get: { settings.anilibriaEnabled },
+                                                       set: { env.setAnilibriaEnabled($0); Task { await reloadProviders() } }))
                 Toggle("Тестовые потоки", isOn: Binding(get: { settings.testStreamsEnabled },
                                                        set: { env.setTestStreamsEnabled($0); Task { await reloadProviders() } }))
                 ForEach(providers) { p in
@@ -30,7 +32,7 @@ struct SettingsView: View {
             } header: {
                 Text("Источники видео")
             } footer: {
-                Text("Тестовые потоки — демонстрационные видео Apple и Blender Foundation для проверки плеера. Это не серии аниме. Пока они включены, прогресс просмотра тоже сохраняется, чтобы можно было проверить эту функцию.")
+                Text("Anilibria — публичный API одноимённой студии озвучки: реальные серии с русской озвучкой в родном плеере. Выбор тайтлов и доступность — на стороне сервиса; правовой статус контента студии оценивайте сами. Тестовые потоки — демонстрационные видео Apple и Blender Foundation для проверки плеера, это не серии аниме.")
             }
             Section("Каталог") {
                 LabeledContent("Источник метаданных", value: env.catalog.name)

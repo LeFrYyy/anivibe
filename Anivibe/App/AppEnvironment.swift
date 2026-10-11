@@ -44,6 +44,7 @@ final class AppEnvironment {
         if let manifestURL = config.manifestURL {
             providers.append(ManifestProvider(manifestURL: manifestURL, transport: transport))
         }
+        providers.append(AnilibriaProvider(transport: transport))
         providers.append(TestStreamProvider(transport: transport))
         let registry = ProviderRegistry(providers: providers)
 
@@ -77,6 +78,7 @@ final class AppEnvironment {
         guard !started else { return }
         started = true
         await registry.setEnabled(settings.testStreamsEnabled, for: TestStreamProvider.providerID)
+        await registry.setEnabled(settings.anilibriaEnabled, for: AnilibriaProvider.providerID)
         await library.load()
         await session.restore()
     }
@@ -84,6 +86,11 @@ final class AppEnvironment {
     func setTestStreamsEnabled(_ enabled: Bool) {
         settings.testStreamsEnabled = enabled
         Task { await registry.setEnabled(enabled, for: TestStreamProvider.providerID) }
+    }
+
+    func setAnilibriaEnabled(_ enabled: Bool) {
+        settings.anilibriaEnabled = enabled
+        Task { await registry.setEnabled(enabled, for: AnilibriaProvider.providerID) }
     }
 
     func handleScenePhase(_ phase: ScenePhase) {
