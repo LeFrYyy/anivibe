@@ -57,7 +57,9 @@ public enum TitleMatcher {
             #"(?i)\b(\d{1,2})(?:st|nd|rd|th)\s+season\b"#,
             #"(?i)\b(\d{1,2})\s*(?:-?й\s*)?сезон\b"#,
             #"(?i)\bсезон\s*(\d{1,2})\b"#,
-            #"第\s*(\d{1,2})\s*期"#
+            #"第\s*(\d{1,2})\s*期"#,
+            // Суффикс в конце названия: «Код Гиасс: Восставший Лелуш R1», «…R2».
+            #"(?i)\sR(\d{1,2})$"#
         ]
         let ns = title as NSString
         for p in patterns {

@@ -7,12 +7,15 @@ public struct ProviderTitle: Hashable, Codable, Sendable, Identifiable {
     public let titles: [String]
     /// Идентификатор AniList, если провайдер явно его указывает (самое надёжное сопоставление).
     public let anilistID: Int?
+    /// Год выхода у провайдера — используется как запасной критерий сопоставления.
+    public let year: Int?
 
-    public init(id: String, providerID: ProviderID, titles: [String], anilistID: Int? = nil) {
+    public init(id: String, providerID: ProviderID, titles: [String], anilistID: Int? = nil, year: Int? = nil) {
         self.id = id
         self.providerID = providerID
         self.titles = titles
         self.anilistID = anilistID
+        self.year = year
     }
 }
 

@@ -179,6 +179,45 @@ final class AnilibriaTests: XCTestCase {
         }
     }
 
+    /// Реальные результаты поиска «Code Geass» (сняты с живого API 11.10.2026).
+    static let geassSearchFixture = """
+    [
+      {"id": 406, "name": {"main": "Код Гиасс: Восставший Лелуш R1", "english": "Code Geass: Hangyaku no Lelouch R1"}, "year": 2006},
+      {"id": 407, "name": {"main": "Код Гиасс: Восстание Лелуша R2", "english": "Code Geass: Lelouch of the Rebellion R2"}, "year": 2008},
+      {"id": 8084, "name": {"main": "Код Гиасс: Отступник Акито", "english": "Code Geass: Boukoku no Akito"}, "year": 2012}
+    ]
+    """
+
+    private func makeGeassProvider() -> AnilibriaProvider {
+        AnilibriaProvider(transport: StubTransport { request in
+            let path = request.url?.path ?? ""
+            if path.contains("/app/search/releases") { return (200, Data(Self.geassSearchFixture.utf8), [:]) }
+            return (404, Data(), [:])
+        })
+    }
+
+    func testMatchCodeGeassSeason1() async throws {
+        // AniList: english «Code Geass: Lelouch of the Rebellion», romaji «Code Geass: Hangyaku no Lelouch».
+        var anime = makeAnime(id: 1575, title: "Code Geass: Lelouch of the Rebellion", romaji: "Code Geass: Hangyaku no Lelouch", episodes: 25)
+        anime.year = 2006
+        let match = try await makeGeassProvider().match(anime: anime)
+        XCTAssertEqual(match?.id, "406")
+    }
+
+    func testMatchCodeGeassSeason2() async throws {
+        var anime = makeAnime(id: 2904, title: "Code Geass: Lelouch of the Rebellion R2", romaji: "Code Geass: Hangyaku no Lelouch R2", episodes: 25)
+        anime.year = 2008
+        let match = try await makeGeassProvider().match(anime: anime)
+        XCTAssertEqual(match?.id, "407")
+    }
+
+    func testSeasonNumberRSuffix() {
+        XCTAssertEqual(TitleMatcher.seasonNumber(in: "Код Гиасс: Восставший Лелуш R1"), 1)
+        XCTAssertEqual(TitleMatcher.seasonNumber(in: "Code Geass: Lelouch of the Rebellion R2"), 2)
+        XCTAssertNil(TitleMatcher.seasonNumber(in: "Обычное название"))
+        XCTAssertNil(TitleMatcher.seasonNumber(in: "R2 посередине строки"))
+    }
+
     func testHTTPErrorMapsToVideoSourceError() async throws {
         let (provider, _) = makeProvider { _ in (429, Data(), ["Retry-After": "30"]) }
         do {

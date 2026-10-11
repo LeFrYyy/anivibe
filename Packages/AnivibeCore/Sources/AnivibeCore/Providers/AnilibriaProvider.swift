@@ -93,8 +93,33 @@ public final class AnilibriaProvider: VideoSourceProvider, @unchecked Sendable {
             var titles = [dto.name?.main, dto.name?.english, dto.name?.alternative].compactMap { $0?.nilIfBlank }
             var seen = Set<String>()
             titles = titles.filter { seen.insert($0.lowercased()).inserted }
-            return ProviderTitle(id: String(dto.id), providerID: id, titles: titles)
+            return ProviderTitle(id: String(dto.id), providerID: id, titles: titles, year: dto.year)
         }
+    }
+
+    /// Сопоставление с тайтлом каталога. Ищем по КАЖДОМУ известному названию
+    /// (русское, ромадзи, английское, синонимы) — у Anilibria поиск по полному
+    /// английскому названию часто ничего не находит. Порог ниже стандартного,
+    /// т.к. у Anilibria свои варианты названий («Code Geass: Hangyaku no Lelouch R1»).
+    public func match(anime: Anime) async throws -> ProviderTitle? {
+        var candidates: [ProviderTitle] = []
+        var seen = Set<String>()
+        for title in anime.allTitles where !title.isEmpty {
+            for candidate in try await search(title: title) where seen.insert(candidate.id).inserted {
+                candidates.append(candidate)
+            }
+            if let best = TitleMatcher.bestMatch(for: anime.allTitles, among: candidates,
+                                                 titlesOf: \.titles, threshold: 0.6) {
+                return best
+            }
+        }
+        // Запасной вариант: совпадение года (сезон в названии уже учтён в bestMatch выше,
+        // а здесь сознательно берём первого кандидата того же года — лучше так,
+        // чем честно признаться, что не нашли).
+        if let year = anime.year, let byYear = candidates.first(where: { $0.year == year }) {
+            return byYear
+        }
+        return nil
     }
 
     public func episodes(for title: ProviderTitle) async throws -> [ProviderEpisode] {
