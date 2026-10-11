@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "providerName": "Мой медиасервер",
+  "titles": [
+    {
+      "id": "my-original-series",
+      "anilistId": null,
+      "titles": ["My Original Series", "Мой оригинальный сериал"],
+      "episodes": [
+        {
+          "season": null,
+          "number": 1,
+          "title": "Пилот",
+          "url": "https://media.example.com/my-original-series/e01/master.m3u8",
+          "expiresAt": null
+        },
+        {
+          "season": null,
+          "number": 2,
+          "title": null,
+          "url": "https://media.example.com/my-original-series/e02.mp4",
+          "expiresAt": "2030-01-01T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}

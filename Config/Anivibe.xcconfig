@@ -1,0 +1,27 @@
+// Базовая конфигурация Anivibe. Этот файл хранится в репозитории — секретов здесь нет.
+// Свои значения задавайте в Config/Secrets.xcconfig (создаётся из Secrets.example.xcconfig,
+// игнорируется git). Значения попадают в Info.plist и читаются AppConfiguration.
+
+// Идентификатор приложения и команда подписи (переопределите в Secrets.xcconfig).
+PRODUCT_BUNDLE_IDENTIFIER = com.example.anivibe
+DEVELOPMENT_TEAM =
+
+// Supabase (необязательно). Пусто — локальный режим без входа.
+// Важно: в .xcconfig «//» начинает комментарий, поэтому URL пишется как https:/$()/host
+ANIVIBE_SUPABASE_URL =
+ANIVIBE_SUPABASE_ANON_KEY =
+
+// Собственный манифест видеопотоков (https), на которые у вас есть права. Пусто — выключен.
+ANIVIBE_MANIFEST_URL =
+
+// Демо-каталог с вымышленными тайтлами (только для разработки/офлайн-проверки интерфейса).
+ANIVIBE_DEMO_CATALOG = NO
+
+// Тестовые HLS-потоки Apple/Blender включены по умолчанию (пользователь может выключить).
+ANIVIBE_TEST_STREAMS = YES
+
+// Партнёрский токен Kodik API (kodik.biz). Пусто — раздел «Озвучки онлайн» скрыт.
+// Свой токен задавайте в Secrets.xcconfig, а не здесь.
+ANIVIBE_KODIK_TOKEN =
+
+#include? "Secrets.xcconfig"

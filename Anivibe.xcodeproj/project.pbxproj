@@ -1,0 +1,300 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A7C096D6D77D57D180F30326 /* AnivibeCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7AD13D258D6DC49CC4B965AA /* AnivibeCore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		9C0F8724EBA24241F1E28D89 /* Anivibe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Anivibe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ED3AAB09B44613668082574F /* Anivibe.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Anivibe.xcconfig; sourceTree = "<group>"; };
+		AA3E58A74AB3E7106DDF81D6 /* Secrets.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.example.xcconfig; sourceTree = "<group>"; };
+		BC16413E7410D1CF88DF25C8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		30E25CF73A9A8979E5662C9B /* Anivibe */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Anivibe;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		08F872DF85572A568FAE7B8B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A7C096D6D77D57D180F30326 /* AnivibeCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A0E028D5549A49D1B46C8307 = {
+			isa = PBXGroup;
+			children = (
+				30E25CF73A9A8979E5662C9B /* Anivibe */,
+				ACDE5AB9A8DAE02E8C992838 /* Config */,
+				F9B1EBDD15B663FC7C8E1BFA /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		ACDE5AB9A8DAE02E8C992838 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				ED3AAB09B44613668082574F /* Anivibe.xcconfig */,
+				AA3E58A74AB3E7106DDF81D6 /* Secrets.example.xcconfig */,
+				BC16413E7410D1CF88DF25C8 /* Info.plist */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		F9B1EBDD15B663FC7C8E1BFA /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9C0F8724EBA24241F1E28D89 /* Anivibe.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B0E579C4A275FF46A095D1DD /* Anivibe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 09B4C89734CE95EC3563BA3A /* Build configuration list for PBXNativeTarget "Anivibe" */;
+			buildPhases = (
+				AA00C9369522E9EE8BD02A89 /* Sources */,
+				08F872DF85572A568FAE7B8B /* Frameworks */,
+				AA36AAAA5FF0E7F430C81F01 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				30E25CF73A9A8979E5662C9B /* Anivibe */,
+			);
+			name = Anivibe;
+			packageProductDependencies = (
+				7AD13D258D6DC49CC4B965AA /* AnivibeCore */,
+			);
+			productName = Anivibe;
+			productReference = 9C0F8724EBA24241F1E28D89 /* Anivibe.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D599E250ACD51102704B2413 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					B0E579C4A275FF46A095D1DD = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 726E84B2DCFCED098B4DDE1B /* Build configuration list for PBXProject "Anivibe" */;
+			developmentRegion = ru;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				ru,
+				en,
+				Base,
+			);
+			mainGroup = A0E028D5549A49D1B46C8307;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				52A19F78EF9DC1145050CDF9 /* XCLocalSwiftPackageReference "Packages/AnivibeCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F9B1EBDD15B663FC7C8E1BFA /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B0E579C4A275FF46A095D1DD /* Anivibe */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AA36AAAA5FF0E7F430C81F01 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AA00C9369522E9EE8BD02A89 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		781997F5BD00444925FC179A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		004294F7ECB987564BF0D2F2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		41FDECA12472211A091DA7D6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = ED3AAB09B44613668082574F /* Anivibe.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Anivibe;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D67F93EAF0B7505E22DD9678 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = ED3AAB09B44613668082574F /* Anivibe.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Anivibe;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		726E84B2DCFCED098B4DDE1B /* Build configuration list for PBXProject "Anivibe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				781997F5BD00444925FC179A /* Debug */,
+				004294F7ECB987564BF0D2F2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		09B4C89734CE95EC3563BA3A /* Build configuration list for PBXNativeTarget "Anivibe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				41FDECA12472211A091DA7D6 /* Debug */,
+				D67F93EAF0B7505E22DD9678 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		52A19F78EF9DC1145050CDF9 /* XCLocalSwiftPackageReference "Packages/AnivibeCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/AnivibeCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7AD13D258D6DC49CC4B965AA /* AnivibeCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AnivibeCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = D599E250ACD51102704B2413 /* Project object */;
+}
