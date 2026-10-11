@@ -114,7 +114,7 @@ struct FlowLayout: Layout {
         let width = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, maxX: CGFloat = 0
         for sv in subviews {
-            let size = sv.sizeThatFits(.unspecified)
+            let size = Self.size(of: sv, maxWidth: width)
             if x + size.width > width, x > 0 { x = 0; y += rowHeight + spacing; rowHeight = 0 }
             x += size.width + spacing
             maxX = max(maxX, x - spacing)
@@ -129,11 +129,19 @@ struct FlowLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
         for sv in subviews {
-            let size = sv.sizeThatFits(.unspecified)
+            let size = Self.size(of: sv, maxWidth: bounds.width)
             if x + size.width > bounds.maxX, x > bounds.minX { x = bounds.minX; y += rowHeight + spacing; rowHeight = 0 }
             sv.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
+    }
+
+    /// Чип не может быть шире строки: очень длинное название студии/площадки
+    /// переносится внутри чипа, а не вылезает за край экрана.
+    private static func size(of subview: LayoutSubview, maxWidth: CGFloat) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        guard maxWidth.isFinite, ideal.width > maxWidth else { return ideal }
+        return subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
     }
 }

@@ -10,22 +10,27 @@ struct PosterImage: View {
     @State private var failed = false
 
     var body: some View {
-        ZStack {
-            placeholder
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .transition(.opacity)
-            } else if failed || url == nil {
-                Image(systemName: "photo")
-                    .font(.title2)
-                    .foregroundStyle(Theme.textSecondary.opacity(0.6))
+        // Размер задаёт только плейсхолдер (он ровно равен предложенному месту),
+        // а картинка лежит в overlay. Иначе `scaledToFill()` у широкого баннера
+        // (AniList отдаёт ~1900×400) сообщает родителю ширину ~950pt — и вся
+        // страница аниме становится шире экрана и уезжает в сторону.
+        placeholder
+            .overlay {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .transition(.opacity)
+                } else if failed || url == nil {
+                    Image(systemName: "photo")
+                        .font(.title2)
+                        .foregroundStyle(Theme.textSecondary.opacity(0.6))
+                }
             }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .task(id: url) { await load() }
-        .accessibilityHidden(true)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .task(id: url) { await load() }
+            .accessibilityHidden(true)
     }
 
     private var placeholder: some View {

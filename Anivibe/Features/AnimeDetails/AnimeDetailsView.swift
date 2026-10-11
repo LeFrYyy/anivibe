@@ -38,7 +38,7 @@ struct AnimeDetailsView: View {
                 }
                 // Жёсткая страховка: контент страницы никогда не шире экрана,
                 // иначе ScrollView начинает скроллиться горизонтально.
-                .frame(width: proxy.size.width)
+                .frame(width: proxy.size.width, alignment: .leading)
                 .padding(.bottom, Theme.Spacing.xxl)
             }
         }
@@ -56,8 +56,7 @@ struct AnimeDetailsView: View {
     private var header: some View {
         ZStack(alignment: .bottomLeading) {
             PosterImage(url: anime.bannerURL ?? anime.coverURL, placeholderColorHex: anime.coverColorHex, cornerRadius: 0)
-                .frame(height: 200)
-                .frame(maxWidth: .infinity)
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 200, maxHeight: 200)
                 .clipped()
                 .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .center, endPoint: .bottom))
             HStack(alignment: .bottom, spacing: Theme.Spacing.l) {
