@@ -89,6 +89,13 @@ public enum TitleMatcher {
         return titles.contains { normalize($0).contains(q) }
     }
 
+    /// Оба ID известны и различаются — это точно разные тайтлы, сколько бы ни
+    /// совпадали названия («Black Clover» ≠ «Black Clover 2nd Season»).
+    public static func idsConflict(_ a: Int?, _ b: Int?) -> Bool {
+        guard let a, let b else { return false }
+        return a != b
+    }
+
     /// Лучшее совпадение среди кандидатов. Порог по умолчанию консервативный,
     /// чтобы не подставить серию чужого тайтла. Сезон в названии должен совпадать.
     public static func bestMatch<C>(for titles: [String], among candidates: [C], titlesOf: (C) -> [String], threshold: Double = 0.8) -> C? {

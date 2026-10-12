@@ -65,4 +65,25 @@ final class LiveIntegrationTests: XCTestCase {
         let candidates = await registry.candidates(for: makeAnime(), episode: 1)
         XCTAssertTrue(candidates.first?.availability.isAvailable ?? false)
     }
+
+    /// Сквозная проверка: настоящий AniList → настоящая Anilibria (с зеркалами).
+    func testAnilibriaMatchesByMalIDLive() async throws {
+        let anilibria = AnilibriaProvider(transport: Self.transport)
+        // Code Geass R1 / R2 — должны попасть точно в свои релизы.
+        let r1 = try await catalog.details(id: 1575).anime
+        XCTAssertEqual(r1.malID, 1575)
+        let m1 = try await anilibria.match(anime: r1)
+        XCTAssertEqual(m1?.malID, 1575)
+        print("LIVE R1:", m1?.id ?? "nil", m1?.titles ?? [])
+        let r2 = try await catalog.details(id: 2904).anime
+        let m2 = try await anilibria.match(anime: r2)
+        XCTAssertEqual(m2?.malID, 2904)
+        print("LIVE R2:", m2?.id ?? "nil", m2?.titles ?? [])
+        // Black Clover 2nd Season: у Anilibria его нет — никаких подмен.
+        let bc = try await catalog.details(id: 195604).anime
+        let mbc = try await anilibria.match(anime: bc)
+        print("LIVE Black Clover S2: mal=\(bc.malID ?? -1) aired=\(bc.airedEpisodesText ?? "-") match=\(mbc?.id ?? "nil") \(mbc?.titles ?? [])")
+        if let mbc { XCTAssertEqual(mbc.malID, bc.malID, "подставлен чужой тайтл: \(mbc.titles)") }
+    }
 }
+

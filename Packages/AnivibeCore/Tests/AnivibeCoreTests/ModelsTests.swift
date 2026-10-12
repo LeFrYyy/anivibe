@@ -79,4 +79,28 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(String(repeating: "a", count: 300).count, 300)
         XCTAssertEqual(CatalogQuery(search: String(repeating: "a", count: 300)).validated().search.count, 100)
     }
+
+    // MARK: - «Вышло N из M»
+
+    func testAiredEpisodesText() {
+        var ongoingUnknownTotal = makeAnime(episodes: nil, status: .releasing)
+        ongoingUnknownTotal.nextAiringEpisode = 3
+        XCTAssertEqual(ongoingUnknownTotal.airedEpisodesText, "2/?")
+
+        var ongoingKnownTotal = makeAnime(episodes: 11, status: .releasing)
+        ongoingKnownTotal.nextAiringEpisode = 2
+        XCTAssertEqual(ongoingKnownTotal.airedEpisodesText, "1/11")
+
+        XCTAssertNil(makeAnime(episodes: 12, status: .finished).airedEpisodesText)
+        // Онгоинг без даты следующей серии — данных нет, ничего не выдумываем.
+        XCTAssertNil(makeAnime(episodes: 12, status: .releasing).airedEpisodesText)
+    }
+
+    func testAniListMediaDecodesMalID() throws {
+        let json = #"{"id": 195604, "idMal": 62177, "title": {"romaji": "Black Clover 2nd Season"}, "status": "RELEASING", "nextAiringEpisode": {"episode": 3}}"#
+        let dto = try JSONDecoder().decode(MediaDTO.self, from: Data(json.utf8))
+        XCTAssertEqual(dto.model.malID, 62177)
+        XCTAssertEqual(dto.model.airedEpisodesText, "2/?")
+    }
 }
+

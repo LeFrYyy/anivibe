@@ -13,23 +13,35 @@ import FoundationNetworking
 public final class AnilibriaProvider: VideoSourceProvider, @unchecked Sendable {
     public static let providerID: ProviderID = "anilibria"
     public static let defaultBaseURL = URL(string: "https://anilibria.top/api/v1")!
+    /// Зеркала того же API. Основной домен периодически отвечает Cloudflare 520
+    /// (проверено 11.10.2026: anilibria.top — 520, api.anilibria.app — 200).
+    public static let defaultBaseURLs: [URL] = [
+        defaultBaseURL,
+        URL(string: "https://api.anilibria.app/api/v1")!,
+        URL(string: "https://aniliberty.top/api/v1")!
+    ]
 
     public let id: ProviderID = AnilibriaProvider.providerID
     public let displayName = "Anilibria"
     public let capabilities: ProviderCapabilities = [.search, .episodeList, .availabilityCheck]
 
-    private let baseURL: URL
+    private let baseURLs: [URL]
     private let transport: HTTPTransport
     private let cacheTTL: TimeInterval
     private let now: @Sendable () -> Date
     private let state = AnilibriaState()
 
-    public init(baseURL: URL = AnilibriaProvider.defaultBaseURL, transport: HTTPTransport,
+    public init(baseURLs: [URL] = AnilibriaProvider.defaultBaseURLs, transport: HTTPTransport,
                 cacheTTL: TimeInterval = 600, now: @escaping @Sendable () -> Date = { Date() }) {
-        self.baseURL = baseURL
+        self.baseURLs = baseURLs.isEmpty ? [AnilibriaProvider.defaultBaseURL] : baseURLs
         self.transport = transport
         self.cacheTTL = cacheTTL
         self.now = now
+    }
+
+    public convenience init(baseURL: URL, transport: HTTPTransport, cacheTTL: TimeInterval = 600,
+                            now: @escaping @Sendable () -> Date = { Date() }) {
+        self.init(baseURLs: [baseURL], transport: transport, cacheTTL: cacheTTL, now: now)
     }
 
     // MARK: - DTO (формат anilibria.top/api/v1)
@@ -40,10 +52,17 @@ public final class AnilibriaProvider: VideoSourceProvider, @unchecked Sendable {
         let alternative: String?
     }
 
+    struct ExternalRefDTO: Decodable {
+        let id: Int?
+    }
+
     struct ReleaseSummaryDTO: Decodable {
         let id: Int
         let name: NameDTO?
         let year: Int?
+        /// {"id": 1575, "url": "https://myanimelist.net/anime/1575", ...}; id бывает null.
+        let mal: ExternalRefDTO?
+        let shikimori: ExternalRefDTO?
     }
 
     struct ReleaseDTO: Decodable {
@@ -80,11 +99,7 @@ public final class AnilibriaProvider: VideoSourceProvider, @unchecked Sendable {
     public func search(title: String) async throws -> [ProviderTitle] {
         let query = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
-        var components = URLComponents(url: baseURL.appendingPathComponent("app/search/releases"),
-                                       resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "query", value: query)]
-        guard let url = components?.url else { throw VideoSourceError.invalidResponse("не удалось собрать URL поиска") }
-        let data = try await get(url)
+        let data = try await get(path: "app/search/releases", query: [URLQueryItem(name: "query", value: query)])
         let summaries: [ReleaseSummaryDTO]
         do { summaries = try JSONDecoder().decode([ReleaseSummaryDTO].self, from: data) } catch {
             throw VideoSourceError.invalidResponse("Anilibria: неожиданный ответ поиска")
@@ -93,14 +108,18 @@ public final class AnilibriaProvider: VideoSourceProvider, @unchecked Sendable {
             var titles = [dto.name?.main, dto.name?.english, dto.name?.alternative].compactMap { $0?.nilIfBlank }
             var seen = Set<String>()
             titles = titles.filter { seen.insert($0.lowercased()).inserted }
-            return ProviderTitle(id: String(dto.id), providerID: id, titles: titles, year: dto.year)
+            return ProviderTitle(id: String(dto.id), providerID: id, titles: titles, year: dto.year,
+                                 malID: dto.mal?.id ?? dto.shikimori?.id)
         }
     }
 
-    /// Сопоставление с тайтлом каталога. Ищем по КАЖДОМУ известному названию
-    /// (русское, ромадзи, английское, синонимы) — у Anilibria поиск по полному
-    /// английскому названию часто ничего не находит. Порог ниже стандартного,
-    /// т.к. у Anilibria свои варианты названий («Code Geass: Hangyaku no Lelouch R1»).
+    /// Сопоставление с тайтлом каталога.
+    ///
+    /// 1. Точное совпадение по ID MyAnimeList (AniList отдаёт `idMal`, Anilibria — `mal.id`).
+    /// 2. Если ID нет — нечёткое сравнение названий (русское, ромадзи, английское,
+    ///    синонимы) с учётом номера сезона. Кандидаты с ДРУГИМ MAL ID отбрасываются.
+    /// 3. Иначе — `nil`. Никаких «первый тайтл того же года»: раньше так «Black Clover
+    ///    2nd Season» (2026) превращался в «Чёрный факел» (тоже 2026).
     public func match(anime: Anime) async throws -> ProviderTitle? {
         var candidates: [ProviderTitle] = []
         var seen = Set<String>()
@@ -108,18 +127,19 @@ public final class AnilibriaProvider: VideoSourceProvider, @unchecked Sendable {
             for candidate in try await search(title: title) where seen.insert(candidate.id).inserted {
                 candidates.append(candidate)
             }
-            if let best = TitleMatcher.bestMatch(for: anime.allTitles, among: candidates,
-                                                 titlesOf: \.titles, threshold: 0.6) {
-                return best
-            }
+            if let exact = Self.exactMatch(for: anime, among: candidates) { return exact }
         }
-        // Запасной вариант: совпадение года (сезон в названии уже учтён в bestMatch выше,
-        // а здесь сознательно берём первого кандидата того же года — лучше так,
-        // чем честно признаться, что не нашли).
-        if let year = anime.year, let byYear = candidates.first(where: { $0.year == year }) {
-            return byYear
-        }
-        return nil
+        return Self.fuzzyMatch(for: anime, among: candidates)
+    }
+
+    static func exactMatch(for anime: Anime, among candidates: [ProviderTitle]) -> ProviderTitle? {
+        guard let mal = anime.malID else { return nil }
+        return candidates.first { $0.malID == mal }
+    }
+
+    static func fuzzyMatch(for anime: Anime, among candidates: [ProviderTitle]) -> ProviderTitle? {
+        let compatible = candidates.filter { !TitleMatcher.idsConflict(anime.malID, $0.malID) }
+        return TitleMatcher.bestMatch(for: anime.allTitles, among: compatible, titlesOf: \.titles, threshold: 0.6)
     }
 
     public func episodes(for title: ProviderTitle) async throws -> [ProviderEpisode] {
@@ -168,8 +188,7 @@ public final class AnilibriaProvider: VideoSourceProvider, @unchecked Sendable {
     private func loadRelease(id releaseID: String) async throws -> ReleaseDTO {
         let current = now()
         if let cached = await state.release(id: releaseID, validAt: current) { return cached }
-        let url = baseURL.appendingPathComponent("anime/releases/\(releaseID)")
-        let data = try await get(url)
+        let data = try await get(path: "anime/releases/\(releaseID)")
         let release: ReleaseDTO
         do { release = try JSONDecoder().decode(ReleaseDTO.self, from: data) } catch {
             throw VideoSourceError.invalidResponse("Anilibria: неожиданный ответ релиза")
@@ -178,19 +197,47 @@ public final class AnilibriaProvider: VideoSourceProvider, @unchecked Sendable {
         return release
     }
 
-    private func get(_ url: URL) async throws -> Data {
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await transport.send(request)
-        if let error = APIError.from(status: response.statusCode, data: data, headers: response) {
-            throw VideoSourceError.from(error)
+    /// GET с перебором зеркал: при сетевой ошибке или 5xx (в т.ч. Cloudflare 520)
+    /// пробуем следующий домен и запоминаем рабочий. 4xx — ответ по существу, не перебираем.
+    private func get(path: String, query: [URLQueryItem] = []) async throws -> Data {
+        let preferred = await state.preferredMirror
+        let order = ([preferred] + Array(baseURLs.indices).filter { $0 != preferred }).filter { baseURLs.indices.contains($0) }
+        var lastError: Error = VideoSourceError.network("Anilibria недоступна")
+        for index in order {
+            var components = URLComponents(url: baseURLs[index].appendingPathComponent(path), resolvingAgainstBaseURL: false)
+            if !query.isEmpty { components?.queryItems = query }
+            guard let url = components?.url else { throw VideoSourceError.invalidResponse("не удалось собрать URL запроса") }
+            var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+            request.httpMethod = "GET"
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let data: Data
+            let response: HTTPURLResponse
+            do {
+                (data, response) = try await transport.send(request)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                if case APIError.cancelled? = error as? APIError { throw error }
+                lastError = error
+                continue
+            }
+            if let error = APIError.from(status: response.statusCode, data: data, headers: response) {
+                if case .server = error { lastError = VideoSourceError.from(error); continue }
+                throw VideoSourceError.from(error)
+            }
+            await state.setPreferredMirror(index)
+            return data
         }
-        return data
+        if lastError is APIError || lastError is VideoSourceError { throw VideoSourceError.from(lastError) }
+        throw lastError
     }
 }
 
 private actor AnilibriaState {
+    private(set) var preferredMirror = 0
+
+    func setPreferredMirror(_ index: Int) { preferredMirror = index }
+
     private var releases: [String: (release: AnilibriaProvider.ReleaseDTO, until: Date)] = [:]
 
     func release(id: String, validAt date: Date) -> AnilibriaProvider.ReleaseDTO? {

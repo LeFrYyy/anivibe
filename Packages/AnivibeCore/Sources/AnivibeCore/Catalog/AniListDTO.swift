@@ -47,6 +47,7 @@ struct MediaDTO: Decodable {
     struct Recs: Decodable { let nodes: [RecNode?]? }
 
     let id: Int
+    let idMal: Int?
     let title: Title?
     let synonyms: [String?]?
     let description: String?
@@ -86,7 +87,8 @@ struct MediaDTO: Decodable {
             averageScore: averageScore,
             episodeCount: episodes,
             episodeDurationMinutes: duration,
-            nextAiringEpisode: nextAiringEpisode?.episode
+            nextAiringEpisode: nextAiringEpisode?.episode,
+            malID: idMal
         )
     }
 

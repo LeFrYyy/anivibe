@@ -118,11 +118,35 @@ struct KodikMaterialDTO: Decodable {
     let quality: String?
     let translation: TranslationDTO?
     let seasons: [String: SeasonDTO]?
+    /// ID Shikimori (= ID MyAnimeList). Kodik отдаёт строкой, терпим и число.
+    let shikimoriID: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, type, link, title, year, quality, translation, seasons
         case titleOrig = "title_orig"
         case otherTitle = "other_title"
+        case shikimoriID = "shikimori_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        type = try c.decodeIfPresent(String.self, forKey: .type)
+        link = try c.decode(String.self, forKey: .link)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        titleOrig = try c.decodeIfPresent(String.self, forKey: .titleOrig)
+        otherTitle = try c.decodeIfPresent(String.self, forKey: .otherTitle)
+        year = try? c.decodeIfPresent(Int.self, forKey: .year)
+        quality = try c.decodeIfPresent(String.self, forKey: .quality)
+        translation = try c.decodeIfPresent(TranslationDTO.self, forKey: .translation)
+        seasons = try c.decodeIfPresent([String: SeasonDTO].self, forKey: .seasons)
+        if let n = try? c.decodeIfPresent(Int.self, forKey: .shikimoriID) {
+            shikimoriID = n
+        } else if let str = try? c.decodeIfPresent(String.self, forKey: .shikimoriID) {
+            shikimoriID = Int(str)
+        } else {
+            shikimoriID = nil
+        }
     }
 
     struct TranslationDTO: Decodable {

@@ -39,7 +39,7 @@ final class KodikOnlineViewModel {
     func load(anime: Anime, client: KodikClient) async {
         phase = .loading
         do {
-            if let match = try await client.search(titles: anime.allTitles, year: anime.year) {
+            if let match = try await client.search(titles: anime.allTitles, year: anime.year, shikimoriID: anime.malID) {
                 self.match = match
                 selectedVoiceID = match.voices.first?.id
                 selectedSeason = match.voices.first?.seasons.first ?? 1

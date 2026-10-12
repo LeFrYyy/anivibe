@@ -119,12 +119,16 @@ public struct Anime: Identifiable, Hashable, Codable, Sendable {
     public var episodeDurationMinutes: Int?
     /// Номер следующей серии для онгоингов (если известен).
     public var nextAiringEpisode: Int?
+    /// ID на MyAnimeList (= ID на Shikimori). По нему видеоисточники сопоставляются
+    /// точно, без угадывания по названию.
+    public var malID: Int?
 
     public init(id: Int, title: AnimeTitle, synonyms: [String] = [], synopsis: String? = nil,
                 coverURL: URL? = nil, bannerURL: URL? = nil, coverColorHex: String? = nil,
                 year: Int? = nil, season: AnimeSeason? = nil, genres: [String] = [],
                 status: AiringStatus = .unknown, format: AnimeFormat? = nil, averageScore: Int? = nil,
-                episodeCount: Int? = nil, episodeDurationMinutes: Int? = nil, nextAiringEpisode: Int? = nil) {
+                episodeCount: Int? = nil, episodeDurationMinutes: Int? = nil, nextAiringEpisode: Int? = nil,
+                malID: Int? = nil) {
         self.id = id
         self.title = title
         self.synonyms = synonyms
@@ -141,6 +145,7 @@ public struct Anime: Identifiable, Hashable, Codable, Sendable {
         self.episodeCount = episodeCount
         self.episodeDurationMinutes = episodeDurationMinutes
         self.nextAiringEpisode = nextAiringEpisode
+        self.malID = malID
     }
 
     /// Все названия, включая синонимы (для поиска и сопоставления с источниками).
@@ -154,6 +159,16 @@ public struct Anime: Identifiable, Hashable, Codable, Sendable {
         if let next = nextAiringEpisode, status == .releasing { return max(0, next - 1) }
         if status == .notYetReleased { return 0 }
         return episodeCount
+    }
+
+    /// Сколько серий вышло из скольких — только для выходящих тайтлов:
+    /// «2/11», а если общее число ещё не объявлено — «2/?». Для завершённых — `nil`
+    /// (там достаточно «N эп.»).
+    public var airedEpisodesText: String? {
+        guard status == .releasing || status == .hiatus, let next = nextAiringEpisode else { return nil }
+        let aired = max(0, next - 1)
+        let total = episodeCount.map(String.init) ?? "?"
+        return "\(aired)/\(total)"
     }
 
     public var snapshot: AnimeSnapshot {

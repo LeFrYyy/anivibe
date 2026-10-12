@@ -133,15 +133,45 @@ final class KodikTests: XCTestCase {
         XCTAssertEqual(transport.requests.count, 2)
     }
 
-    func testSearchPrefersYearWhenTitlesDoNotMatch() async throws {
+    func testSearchDoesNotGuessByYear() async throws {
+        // Раньше при несовпадении названий брался «тайтл того же года» или вообще первый
+        // результат — так подставлялись чужие аниме. Теперь честное «не найдено».
         let (client, _) = makeClient { _ in (200, Data(Self.searchFixture.utf8), [:]) }
         let match = try await client.search(titles: ["ZZZZZ ничего общего"], year: 2020)
-        XCTAssertEqual(match?.materialID, "serial-200")
-        let voice = try XCTUnwrap(match?.voices.first)
-        XCTAssertEqual(voice.translation.kind, .subtitles)
-        XCTAssertFalse(voice.translation.isVoice)
-        // Без сезонов и серий — считается одиночным видео, играется playerURL материала.
-        XCTAssertTrue(voice.isSingleVideo)
+        XCTAssertNil(match)
+    }
+
+    static let shikimoriFixture = """
+    {"total": 2, "results": [
+      {"id": "serial-777", "type": "anime-serial", "link": "//kodik.info/serial/777/x/720p",
+       "title": "Чёрный клевер 2", "title_orig": "Black Clover 2nd Season", "year": 2026, "shikimori_id": "62177",
+       "translation": {"id": 610, "title": "AniLibria.TV", "type": "voice"}},
+      {"id": "serial-777", "type": "anime-serial", "link": "//kodik.info/serial/777/y/720p",
+       "title": "Чёрный клевер 2", "title_orig": "Black Clover 2nd Season", "year": 2026, "shikimori_id": 62177,
+       "translation": {"id": 609, "title": "AniDUB", "type": "voice"}}
+    ]}
+    """
+
+    func testSearchByShikimoriIDFirst() async throws {
+        let (client, transport) = makeClient { _ in (200, Data(Self.shikimoriFixture.utf8), [:]) }
+        let match = try await client.search(titles: ["Black Clover Season 2"], year: 2026, shikimoriID: 62177)
+        XCTAssertEqual(match?.materialID, "serial-777")
+        XCTAssertEqual(match?.voices.count, 2)
+        XCTAssertEqual(transport.requests.count, 1, "по точному ID поиск по названиям не нужен")
+        let items = URLComponents(url: try XCTUnwrap(transport.requests.first?.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(items.first { $0.name == "shikimori_id" }?.value, "62177")
+        XCTAssertNil(items.first { $0.name == "title" })
+    }
+
+    func testTitleSearchRejectsDifferentShikimoriID() async throws {
+        // По ID ничего, по названию нашёлся тайтл с ТАКИМ ЖЕ именем, но другим ID — не он.
+        let (client, _) = makeClient { request in
+            let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            if items.contains(where: { $0.name == "shikimori_id" }) { return (200, Data(#"{"total":0,"results":[]}"#.utf8), [:]) }
+            return (200, Data(Self.shikimoriFixture.utf8), [:])
+        }
+        let match = try await client.search(titles: ["Black Clover 2nd Season"], year: 2026, shikimoriID: 34572)
+        XCTAssertNil(match)
     }
 
     func testErrorFieldMapsToUnauthorized() async throws {

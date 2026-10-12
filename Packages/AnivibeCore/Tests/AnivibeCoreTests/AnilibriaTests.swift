@@ -227,4 +227,75 @@ final class AnilibriaTests: XCTestCase {
             guard case .rateLimited = error else { return XCTFail("Не та ошибка: \(error)") }
         }
     }
+
+    // MARK: - Точное сопоставление по MAL ID (живые данные 11.10.2026)
+
+    /// Реальный ответ поиска «Black Clover 2nd Season»: второго сезона у Anilibria нет,
+    /// зато есть спешл 2016 и «Чёрный факел» 2026 — его раньше и подставляло.
+    static let blackCloverSearch = """
+    [
+      {"id": 5152, "year": 2016, "name": {"main": "Чёрный Клевер (Спэшл)", "english": "Black Clover Special", "alternative": "Черный клевер спешл"},
+       "mal": {"id": null}, "shikimori": {"id": null}},
+      {"id": 505, "year": 2014, "name": {"main": "Черная пуля", "english": "Black Bullet", "alternative": null},
+       "mal": {"id": 20787}, "shikimori": {"id": 20787}},
+      {"id": 10248, "year": 2026, "name": {"main": "Чёрный факел", "english": "Black Torch", "alternative": null},
+       "mal": {"id": 60000}, "shikimori": {"id": 60000}}
+    ]
+    """
+
+    static let codeGeassSearch = """
+    [
+      {"id": 407, "year": 2008, "name": {"main": "Код Гиасс: Восставший Лелуш R2", "english": "Code Geass: Hangyaku no Lelouch R2", "alternative": null},
+       "mal": {"id": 2904, "url": "https://myanimelist.net/anime/2904"}, "shikimori": {"id": 2904}},
+      {"id": 406, "year": 2006, "name": {"main": "Код Гиасс: Восставший Лелуш", "english": "Code Geass: Hangyaku no Lelouch R1", "alternative": null},
+       "mal": {"id": 1575, "url": "https://myanimelist.net/anime/1575"}, "shikimori": {"id": 1575}}
+    ]
+    """
+
+    func testSearchDecodesMalID() async throws {
+        let (provider, _) = makeProvider { _ in (200, Data(Self.codeGeassSearch.utf8), [:]) }
+        let titles = try await provider.search(title: "code geass")
+        XCTAssertEqual(titles.map(\.malID), [2904, 1575])
+    }
+
+    func testBlackCloverSeason2IsNotReplacedBySameYearTitle() async throws {
+        let (provider, _) = makeProvider { _ in (200, Data(Self.blackCloverSearch.utf8), [:]) }
+        var anime = makeAnime(id: 195604, title: "Black Clover Season 2", romaji: "Black Clover 2nd Season", episodes: nil, status: .releasing)
+        anime.year = 2026
+        anime.malID = 62177
+        let match = try await provider.match(anime: anime)
+        XCTAssertNil(match, "у Anilibria нет 2-го сезона — нельзя подставлять «Чёрный факел»")
+    }
+
+    func testExactMalIDWinsOverTitles() async throws {
+        let (provider, transport) = makeProvider { _ in (200, Data(Self.codeGeassSearch.utf8), [:]) }
+        // Название нарочно непохожее — решает MAL ID.
+        var anime = makeAnime(id: 1575, title: "Совсем другое название", romaji: "Zzz", episodes: 25)
+        anime.malID = 1575
+        let match = try await provider.match(anime: anime)
+        XCTAssertEqual(match?.id, "406")
+        XCTAssertEqual(transport.requests.count, 1, "точное совпадение найдено с первого поиска")
+    }
+
+    func testConflictingMalIDIsRejectedEvenWithSameTitle() async throws {
+        let (provider, _) = makeProvider { _ in (200, Data(Self.codeGeassSearch.utf8), [:]) }
+        var anime = makeAnime(id: 1, title: "Code Geass: Hangyaku no Lelouch R2", romaji: "Code Geass: Hangyaku no Lelouch R2", episodes: 25)
+        anime.malID = 99999 // совсем другой тайтл с похожим именем
+        let match = try await provider.match(anime: anime)
+        XCTAssertNil(match)
+    }
+
+    func testFallsBackToMirrorOnCloudflare520() async throws {
+        let (provider, transport) = makeProvider { request in
+            if request.url?.host == "anilibria.top" { return (520, Data("error code: 520".utf8), [:]) }
+            return (200, Data(Self.searchFixture.utf8), [:])
+        }
+        let first = try await provider.search(title: "jujutsu")
+        XCTAssertEqual(first.first?.id, "8789")
+        XCTAssertEqual(transport.requests.map { $0.url?.host }, ["anilibria.top", "api.anilibria.app"])
+        // Рабочее зеркало запоминается — второй запрос сразу туда.
+        _ = try await provider.search(title: "jujutsu")
+        XCTAssertEqual(transport.requests.last?.url?.host, "api.anilibria.app")
+        XCTAssertEqual(transport.requests.count, 3)
+    }
 }

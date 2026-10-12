@@ -23,23 +23,29 @@ public struct KodikClient: Sendable {
         self.transport = transport
     }
 
-    /// Ищет тайтл по списку названий (русское/romaji/english/синонимы) и возвращает
-    /// лучшее совпадение со всеми вариантами озвучки. `nil` — у Kodik такого нет.
-    public func search(titles: [String], year: Int? = nil) async throws -> KodikMatch? {
+    /// Ищет тайтл и возвращает совпадение со всеми вариантами озвучки. `nil` — у Kodik такого нет.
+    ///
+    /// Если известен `shikimoriID` (= `idMal` из AniList), сначала ищем точно по нему —
+    /// это исключает подмену сезона или похожего по названию тайтла. Иначе — по названиям,
+    /// отбрасывая материалы с другим Shikimori ID.
+    public func search(titles: [String], year: Int? = nil, shikimoriID: Int? = nil) async throws -> KodikMatch? {
+        if let shikimoriID {
+            let exact = try await requestMaterials([URLQueryItem(name: "shikimori_id", value: String(shikimoriID))])
+                .filter { $0.shikimoriID == nil || $0.shikimoriID == shikimoriID }
+            if let match = Self.exactGroup(among: exact) { return match }
+        }
         for title in titles where !title.isEmpty {
-            let groups = try await requestMaterials(title: title)
-            if let match = Self.bestGroup(for: titles, year: year, among: groups) { return match }
+            let groups = try await requestMaterials([URLQueryItem(name: "title", value: title)])
+            if let match = Self.bestGroup(for: titles, year: year, shikimoriID: shikimoriID, among: groups) { return match }
         }
         return nil
     }
 
     // MARK: - Запрос
 
-    private func requestMaterials(title: String) async throws -> [KodikMaterialDTO] {
+    private func requestMaterials(_ criteria: [URLQueryItem]) async throws -> [KodikMaterialDTO] {
         var components = URLComponents(url: baseURL.appendingPathComponent("search"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [
-            URLQueryItem(name: "token", value: token),
-            URLQueryItem(name: "title", value: title),
+        components?.queryItems = [URLQueryItem(name: "token", value: token)] + criteria + [
             URLQueryItem(name: "limit", value: "100"),
             // Просим ссылки на сезоны и серии, чтобы строить список эпизодов.
             URLQueryItem(name: "with_episodes", value: "true"),
@@ -78,7 +84,23 @@ public struct KodikClient: Sendable {
 
     /// Группирует результаты по материалу (Kodik повторяет материал для каждой озвучки)
     /// и выбирает наиболее похожий на запрошенный тайтл.
-    static func bestGroup(for titles: [String], year: Int?, among results: [KodikMaterialDTO]) -> KodikMatch? {
+    /// Результаты поиска по shikimori_id — это один и тот же тайтл; берём самый
+    /// «богатый» материал (с наибольшим числом озвучек).
+    static func exactGroup(among results: [KodikMaterialDTO]) -> KodikMatch? {
+        guard !results.isEmpty else { return nil }
+        let byMaterial = Dictionary(grouping: results, by: \.id)
+        let ordered = byMaterial.sorted { a, b in
+            a.value.count != b.value.count ? a.value.count > b.value.count : a.key < b.key
+        }
+        for (id, materials) in ordered {
+            if let match = makeMatch(from: materials, id: id) { return match }
+        }
+        return nil
+    }
+
+    static func bestGroup(for titles: [String], year: Int?, shikimoriID: Int? = nil,
+                          among results: [KodikMaterialDTO]) -> KodikMatch? {
+        let results = results.filter { !TitleMatcher.idsConflict(shikimoriID, $0.shikimoriID) }
         let byMaterial = Dictionary(grouping: results, by: \.id)
         struct Candidate {
             let id: String
@@ -101,17 +123,13 @@ public struct KodikClient: Sendable {
         }
         guard !candidates.isEmpty else { return nil }
 
-        // 1) Нечёткое совпадение названия (с учётом номера сезона в названии).
+        // Нечёткое совпадение названия (с учётом номера сезона в названии).
+        // Запасных вариантов «тот же год» / «первый результат» больше нет: они
+        // подставляли чужие тайтлы. Лучше честное «не найдено».
         if let best = TitleMatcher.bestMatch(for: titles, among: candidates, titlesOf: \.titles, threshold: 0.6) {
             return makeMatch(from: best.materials, id: best.id)
         }
-        // 2) Совпадение года.
-        if let year, let byYear = candidates.first(where: { $0.year == year }) {
-            return makeMatch(from: byYear.materials, id: byYear.id)
-        }
-        // 3) Первый результат Kodik (самый релевантный по их ранжированию).
-        let first = candidates[0]
-        return makeMatch(from: first.materials, id: first.id)
+        return nil
     }
 
     private static func makeMatch(from materials: [KodikMaterialDTO], id: String) -> KodikMatch? {

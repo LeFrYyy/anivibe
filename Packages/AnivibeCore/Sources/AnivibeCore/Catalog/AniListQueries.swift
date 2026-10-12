@@ -5,6 +5,7 @@ enum AniListQueries {
     static let mediaCard = """
     fragment card on Media {
       id
+      idMal
       title { romaji english native }
       synonyms
       coverImage { large extraLarge color }

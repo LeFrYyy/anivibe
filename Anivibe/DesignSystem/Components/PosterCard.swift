@@ -62,12 +62,18 @@ extension Anime {
         "★ " + String(format: "%.1f", Double(score) / 10)
     }
 
-    /// «2019 · ТВ · 26 эп.» — только известные значения.
+    /// «2019 · ТВ · 26 эп.» (для онгоинга — «2026 · ТВ · 2/? эп.») — только известные значения.
     var metaLine: String {
         var parts: [String] = []
         if let year { parts.append(String(year)) }
         if let format { parts.append(format.localizedName) }
-        if let episodeCount { parts.append("\(episodeCount) эп.") } else if status == .releasing { parts.append("онгоинг") }
+        if let aired = airedEpisodesText {
+            parts.append("\(aired) эп.")          // онгоинг: «2/11 эп.» или «2/? эп.»
+        } else if let episodeCount {
+            parts.append("\(episodeCount) эп.")
+        } else if status == .releasing {
+            parts.append("онгоинг")
+        }
         return parts.joined(separator: " · ")
     }
 }

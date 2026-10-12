@@ -199,7 +199,10 @@ struct AnimeDetailsView: View {
                  tint: anime.status == .releasing ? Theme.secondaryAccent : Theme.textSecondary)
             if let format = anime.format { Chip(text: format.localizedName, systemImage: "tv") }
             if let score = anime.averageScore { Chip(text: Anime.scoreText(score) + " AniList", tint: Theme.accent) }
-            if let count = anime.episodeCount {
+            if let aired = anime.airedEpisodesText {
+                Chip(text: "Вышло \(aired) эп." + (anime.episodeDurationMinutes.map { " по \($0) мин" } ?? ""),
+                     systemImage: "list.number", tint: Theme.secondaryAccent)
+            } else if let count = anime.episodeCount {
                 Chip(text: "\(count) эп." + (anime.episodeDurationMinutes.map { " по \($0) мин" } ?? ""), systemImage: "list.number")
             }
             ForEach(model.details?.studios ?? [], id: \.self) { Chip(text: $0, systemImage: "building.2") }
@@ -233,7 +236,7 @@ struct AnimeDetailsView: View {
 
     @ViewBuilder private var episodesSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            SectionHeader(title: "Серии")
+            SectionHeader(title: anime.airedEpisodesText.map { "Серии · \($0)" } ?? "Серии")
             if let note = model.episodeList?.note {
                 Label(note, systemImage: "info.circle")
                     .font(.footnote).foregroundStyle(Theme.textSecondary)
