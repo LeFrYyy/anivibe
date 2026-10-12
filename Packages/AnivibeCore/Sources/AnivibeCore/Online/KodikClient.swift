@@ -110,8 +110,8 @@ public struct KodikClient: Sendable {
         let ordered = byGroup.sorted { a, b in
             a.value.count != b.value.count ? a.value.count > b.value.count : a.key < b.key
         }
-        for (id, materials) in ordered {
-            if let match = makeMatch(from: materials, id: id) { return match }
+        for (_, materials) in ordered {
+            if let match = makeMatch(from: materials) { return match }
         }
         return nil
     }
@@ -143,17 +143,18 @@ public struct KodikClient: Sendable {
 
         // Нечёткое совпадение названия (с учётом номера сезона в названии).
         if let best = TitleMatcher.bestMatch(for: titles, among: candidates, titlesOf: \.titles, threshold: 0.6) {
-            return makeMatch(from: best.materials, id: best.id)
+            return makeMatch(from: best.materials)
         }
         return nil
     }
 
-    private static func makeMatch(from materials: [KodikMaterialDTO], id: String) -> KodikMatch? {
+    private static func makeMatch(from materials: [KodikMaterialDTO], id: String? = nil) -> KodikMatch? {
         let voices = materials.compactMap(makeVoice(from:))
         guard !voices.isEmpty else { return nil }
         let first = materials[0]
         let title = first.title ?? first.titleOrig ?? voices[0].title
-        return KodikMatch(materialID: id, matchedTitle: title, year: first.year, voices: voices)
+        let matchID = first.id
+        return KodikMatch(materialID: matchID, matchedTitle: title, year: first.year, voices: voices)
     }
 
     private static func makeVoice(from dto: KodikMaterialDTO) -> KodikVoiceOption? {
