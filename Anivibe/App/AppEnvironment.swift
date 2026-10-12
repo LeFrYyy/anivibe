@@ -14,6 +14,8 @@ final class AppEnvironment {
     let cache: MetadataCache
     /// Клиент Kodik (веб-плеер с озвучками). `nil`, если токен не задан в конфигурации.
     let kodik: KodikClient?
+    /// Пользовательские папки с аниме на главной.
+    let collections = CollectionsStore()
     @ObservationIgnored private var started = false
 
     init(configuration: AppConfiguration, catalog: CatalogService, registry: ProviderRegistry, library: LibraryStore,
@@ -126,4 +128,51 @@ enum KodikPreferences {
     static let voiceKey = "kodik.preferredVoice"
     static let qualityKey = "kodik.preferredQuality"
     static let speedKey = "kodik.playbackSpeed"
+}
+
+
+/// Хранилище папок: состояние + сохранение в JSON (Application Support/collections.json).
+@Observable
+@MainActor
+final class CollectionsStore {
+    private(set) var state: AnimeCollections
+    @ObservationIgnored private let fileURL: URL?
+
+    var collections: [AnimeCollection] { state.collections }
+
+    init() {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Anivibe", isDirectory: true)
+        if let dir { try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
+        fileURL = dir?.appendingPathComponent("collections.json")
+        if let fileURL, let data = try? Data(contentsOf: fileURL),
+           let decoded = try? JSONDecoder().decode(AnimeCollections.self, from: data) {
+            state = decoded
+        } else {
+            state = AnimeCollections()
+        }
+    }
+
+    func collection(_ id: UUID) -> AnimeCollection? { state.collection(id) }
+
+    @discardableResult
+    func create(name: String, with first: AnimeSnapshot? = nil) -> UUID {
+        let id = state.create(name: name, with: first)
+        save()
+        return id
+    }
+
+    func rename(_ id: UUID, to name: String) { state.rename(id, to: name); save() }
+    func delete(_ id: UUID) { state.delete(id); save() }
+    func add(_ anime: AnimeSnapshot, to id: UUID) { state.add(anime, to: id); save() }
+    func remove(_ animeID: Int, from id: UUID) { state.remove(animeID, from: id); save() }
+    func toggle(_ anime: AnimeSnapshot, in id: UUID) { state.toggle(anime, in: id); save() }
+    func move(in id: UUID, from source: IndexSet, to destination: Int) {
+        state.moveItems(in: id, from: source, to: destination); save()
+    }
+
+    private func save() {
+        guard let fileURL, let data = try? JSONEncoder().encode(state) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+    }
 }

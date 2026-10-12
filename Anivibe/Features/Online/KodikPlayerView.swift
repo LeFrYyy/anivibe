@@ -131,6 +131,11 @@ struct KodikPlayerScreen: View {
 
     private var topBar: some View {
         HStack(alignment: .center, spacing: Theme.Spacing.s) {
+            // Настройки видео — в левом верхнем углу.
+            if phase == .ready {
+                qualityMenu
+                speedMenu
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(request.title)
                     .font(.subheadline.weight(.semibold))
@@ -144,11 +149,6 @@ struct KodikPlayerScreen: View {
                 }
             }
             Spacer(minLength: Theme.Spacing.s)
-
-            if phase == .ready {
-                qualityMenu
-                speedMenu
-            }
 
             Button {
                 dismiss()

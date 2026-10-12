@@ -6,14 +6,19 @@ struct HomeView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(LibraryStore.self) private var library
     @State private var model = HomeViewModel()
+    @State private var path = NavigationPath()
+    @State private var openedFolder: UUID?
+    @State private var showNewFolder = false
+    @State private var newFolderName = ""
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Theme.Spacing.xl) {
                     if env.catalog.isDemo {
                         DemoBanner()
                     }
+                    foldersSection
                     continueSection
                     recentEpisodesSection
                     feedSections
@@ -24,6 +29,28 @@ struct HomeView: View {
             }
             .screenBackground()
             .navigationTitle("Anivibe")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        newFolderName = ""
+                        showNewFolder = true
+                    } label: {
+                        Image(systemName: "folder.badge.plus")
+                            .font(.body.weight(.semibold))
+                    }
+                    .accessibilityLabel("Создать папку")
+                }
+            }
+            .alert("Новая папка", isPresented: $showNewFolder) {
+                TextField("Название", text: $newFolderName)
+                Button("Создать") {
+                    let id = env.collections.create(name: newFolderName)
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.82)) { openedFolder = id }
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("Собирайте аниме в папки — как приложения на экране «Домой».")
+            }
             .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
             .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
             .refreshable {
@@ -34,6 +61,57 @@ struct HomeView: View {
             .task { await model.loadRecentEpisodes(catalog: env.catalog) }
             .task(id: library.continueWatching.first?.anime.id) {
                 await model.loadRecommendations(catalog: env.catalog, basedOn: library.continueWatching.first)
+            }
+        }
+        .overlay {
+            if let id = openedFolder {
+                FolderOverlay(collectionID: id, close: closeFolder) { anime in
+                    closeFolder()
+                    path.append(anime)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.88)))
+                .zIndex(1)
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.82), value: openedFolder)
+    }
+
+    private func closeFolder() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { openedFolder = nil }
+    }
+
+    // MARK: Папки
+
+    @ViewBuilder private var foldersSection: some View {
+        let folders = env.collections.collections
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            SectionHeader(title: "Мои папки")
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: Theme.Spacing.l) {
+                    ForEach(folders) { folder in
+                        Button {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.82)) { openedFolder = folder.id }
+                        } label: {
+                            FolderTile(collection: folder)
+                        }
+                        .buttonStyle(FolderPressStyle())
+                        .contextMenu {
+                            Button { openedFolder = folder.id } label: { Label("Открыть", systemImage: "folder") }
+                            Button(role: .destructive) { env.collections.delete(folder.id) } label: {
+                                Label("Удалить папку", systemImage: "trash")
+                            }
+                        }
+                    }
+                    Button {
+                        newFolderName = ""
+                        showNewFolder = true
+                    } label: {
+                        NewFolderTile(isFirst: folders.isEmpty)
+                    }
+                    .buttonStyle(FolderPressStyle())
+                }
+                .padding(.horizontal, Theme.Spacing.l)
+                .padding(.vertical, 4)
             }
         }
     }
@@ -52,6 +130,7 @@ struct HomeView: View {
                                 .frame(width: 130)
                             }
                             .buttonStyle(.plain)
+                            .folderMenu(item.anime)
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.l)
@@ -83,6 +162,7 @@ struct HomeView: View {
                                     .frame(width: 120)
                             }
                             .buttonStyle(.plain)
+                            .folderMenu(item.anime.snapshot)
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.l)
@@ -126,6 +206,7 @@ struct HomeView: View {
                                 PosterCard(title: entry.anime.title, coverURL: entry.anime.coverURL).frame(width: 120)
                             }
                             .buttonStyle(.plain)
+                            .folderMenu(entry.anime)
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.l)
@@ -171,6 +252,7 @@ struct PosterRow: View {
                                 PosterCard(anime: anime).frame(width: 120)
                             }
                             .buttonStyle(.plain)
+                            .folderMenu(anime.snapshot)
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.l)
@@ -232,5 +314,467 @@ struct RecentEpisodesView: View {
         .listStyle(.plain)
         .navigationTitle("Недавно вышедшие")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Папки (как папки приложений в iOS)
+
+/// Плитка папки: «стеклянный» скруглённый квадрат с мини-обложками 3×3.
+struct FolderTile: View {
+    let collection: AnimeCollection
+    var size: CGFloat = 104
+
+    var body: some View {
+        VStack(spacing: Theme.Spacing.s) {
+            ZStack {
+                FolderBackground(cornerRadius: size * 0.25)
+                let cell = (size - 14 * 2 - 6 * 2) / 3
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(cell), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(0..<9, id: \.self) { index in
+                        if index < collection.items.count {
+                            PosterImage(url: collection.items[index].coverURL, cornerRadius: cell * 0.24)
+                                .frame(width: cell, height: cell)
+                                .clipShape(RoundedRectangle(cornerRadius: cell * 0.24, style: .continuous))
+                                .shadow(color: .black.opacity(0.25), radius: 1.5, y: 1)
+                        } else {
+                            RoundedRectangle(cornerRadius: cell * 0.24, style: .continuous)
+                                .fill(.white.opacity(0.08))
+                                .frame(width: cell, height: cell)
+                        }
+                    }
+                }
+                .padding(14)
+            }
+            .frame(width: size, height: size)
+
+            VStack(spacing: 1) {
+                Text(collection.name)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                Text(Self.countLabel(collection.items.count))
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .frame(width: size + 8)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Папка «\(collection.name)», \(Self.countLabel(collection.items.count))")
+    }
+
+    static func countLabel(_ n: Int) -> String {
+        let mod10 = n % 10, mod100 = n % 100
+        let word: String
+        if mod10 == 1 && mod100 != 11 { word = "тайтл" }
+        else if (2...4).contains(mod10) && !(12...14).contains(mod100) { word = "тайтла" }
+        else { word = "тайтлов" }
+        return n == 0 ? "Пусто" : "\(n) \(word)"
+    }
+}
+
+/// Фон папки: матовое стекло с лёгким фирменным переливом и бликом по краю.
+struct FolderBackground: View {
+    var cornerRadius: CGFloat
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        shape
+            .fill(.ultraThinMaterial)
+            .overlay(
+                shape.fill(LinearGradient(colors: [Theme.accent.opacity(0.35), Theme.secondaryAccent.opacity(0.18)],
+                                          startPoint: .topLeading, endPoint: .bottomTrailing))
+            )
+            .overlay(
+                shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.05)],
+                                                  startPoint: .top, endPoint: .bottom), lineWidth: 1)
+            )
+            .shadow(color: Theme.accent.opacity(0.25), radius: 10, y: 6)
+    }
+}
+
+/// Плитка «Новая папка» в конце ряда.
+struct NewFolderTile: View {
+    var isFirst: Bool
+    var size: CGFloat = 104
+
+    var body: some View {
+        VStack(spacing: Theme.Spacing.s) {
+            RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+                .strokeBorder(Theme.accent.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+                .background(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous).fill(Theme.accent.opacity(0.06)))
+                .overlay {
+                    Image(systemName: "plus")
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+                .frame(width: size, height: size)
+            VStack(spacing: 1) {
+                Text("Новая папка")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(isFirst ? "Соберите свою" : " ")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .frame(width: size + 8)
+        }
+    }
+}
+
+/// Пружинистое нажатие, как у иконок на «Домой».
+struct FolderPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+/// Открытая папка: размытый фон, крупное название, сетка обложек, «+» и режим правки.
+struct FolderOverlay: View {
+    @Environment(AppEnvironment.self) private var env
+    let collectionID: UUID
+    let close: () -> Void
+    let open: (AnimeSnapshot) -> Void
+
+    @State private var name = ""
+    @State private var editing = false
+    @State private var showSearch = false
+    @State private var confirmDelete = false
+    @FocusState private var nameFocused: Bool
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: Theme.Spacing.m), count: 3)
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(Color.black.opacity(0.25))
+                .ignoresSafeArea()
+                .onTapGesture { finish() }
+
+            if let collection = env.collections.collection(collectionID) {
+                VStack(spacing: Theme.Spacing.l) {
+                    TextField("Название папки", text: $name)
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white)
+                        .focused($nameFocused)
+                        .submitLabel(.done)
+                        .onSubmit { env.collections.rename(collectionID, to: name) }
+                        .padding(.horizontal, Theme.Spacing.xl)
+
+                    panel(collection)
+
+                    HStack(spacing: Theme.Spacing.m) {
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { editing.toggle() }
+                        } label: {
+                            Label(editing ? "Готово" : "Изменить", systemImage: editing ? "checkmark" : "pencil")
+                        }
+                        .buttonStyle(GlassCapsuleStyle())
+                        Button { showSearch = true } label: {
+                            Label("Добавить", systemImage: "plus")
+                        }
+                        .buttonStyle(GlassCapsuleStyle(prominent: true))
+                        Button(role: .destructive) { confirmDelete = true } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(GlassCapsuleStyle())
+                        .accessibilityLabel("Удалить папку")
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.l)
+            }
+        }
+        .environment(\.colorScheme, .dark)
+        .onAppear { name = env.collections.collection(collectionID)?.name ?? "" }
+        .sheet(isPresented: $showSearch) {
+            AddToFolderSheet(collectionID: collectionID)
+        }
+        .confirmationDialog("Удалить папку «\(name)»?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Удалить папку", role: .destructive) {
+                close()
+                env.collections.delete(collectionID)
+            }
+        } message: {
+            Text("Сами аниме останутся в каталоге и библиотеке.")
+        }
+    }
+
+    private func finish() {
+        if nameFocused { nameFocused = false }
+        env.collections.rename(collectionID, to: name)
+        close()
+    }
+
+    private func panel(_ collection: AnimeCollection) -> some View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: Theme.Spacing.l) {
+                ForEach(Array(collection.items.enumerated()), id: \.element.id) { index, anime in
+                    FolderItemView(anime: anime, index: index, editing: editing) {
+                        if editing { return }
+                        env.collections.rename(collectionID, to: name)
+                        open(anime)
+                    } remove: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            env.collections.remove(anime.id, from: collectionID)
+                        }
+                    }
+                }
+                Button { showSearch = true } label: {
+                    VStack(spacing: 6) {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(.white.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+                            .aspectRatio(Theme.posterAspect, contentMode: .fit)
+                            .overlay {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 28, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.85))
+                            }
+                        Text("Добавить")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                }
+                .buttonStyle(FolderPressStyle())
+                .accessibilityLabel("Добавить аниме через поиск")
+            }
+            .padding(Theme.Spacing.l)
+        }
+        .frame(maxHeight: 460)
+        .fixedSize(horizontal: false, vertical: collection.items.count < 4)
+        .background(FolderBackground(cornerRadius: 34))
+    }
+}
+
+/// Обложка внутри открытой папки; в режиме правки «дрожит» и показывает кнопку удаления.
+struct FolderItemView: View {
+    let anime: AnimeSnapshot
+    let index: Int
+    let editing: Bool
+    let tap: () -> Void
+    let remove: () -> Void
+
+    @State private var wiggle = false
+
+    private var wiggleAngle: Double {
+        guard editing else { return 0 }
+        let direction: Double = index.isMultiple(of: 2) ? 1 : -1
+        return (wiggle ? 1.6 : -1.6) * direction
+    }
+
+    var body: some View {
+        Button(action: tap) {
+            VStack(spacing: 6) {
+                PosterImage(url: anime.coverURL, cornerRadius: 14)
+                    .aspectRatio(Theme.posterAspect, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+                Text(anime.title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .buttonStyle(FolderPressStyle())
+        .overlay(alignment: .topLeading) {
+            if editing {
+                Button(action: remove) {
+                    Image(systemName: "minus")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(.black)
+                        .frame(width: 24, height: 24)
+                        .background(Circle().fill(.white))
+                        .shadow(radius: 2)
+                }
+                .offset(x: -8, y: -8)
+                .transition(.scale.combined(with: .opacity))
+                .accessibilityLabel("Убрать «\(anime.title)» из папки")
+            }
+        }
+        .rotationEffect(.degrees(wiggleAngle))
+        .onChange(of: editing) { _, isEditing in
+            if isEditing {
+                withAnimation(.easeInOut(duration: 0.14).repeatForever(autoreverses: true)) { wiggle = true }
+            } else {
+                withAnimation(.easeOut(duration: 0.1)) { wiggle = false }
+            }
+        }
+        .contextMenu {
+            Button(role: .destructive, action: remove) { Label("Убрать из папки", systemImage: "folder.badge.minus") }
+        }
+    }
+}
+
+/// Капсульные «стеклянные» кнопки под открытой папкой.
+struct GlassCapsuleStyle: ButtonStyle {
+    var prominent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .frame(height: 44)
+            .background {
+                if prominent {
+                    Capsule().fill(LinearGradient(colors: [Theme.accent, Theme.secondaryAccent],
+                                                  startPoint: .leading, endPoint: .trailing))
+                } else {
+                    Capsule().fill(.ultraThinMaterial)
+                        .overlay(Capsule().strokeBorder(.white.opacity(0.2)))
+                }
+            }
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+/// Поиск по каталогу для добавления аниме в папку. Без запроса — популярное.
+struct AddToFolderSheet: View {
+    @Environment(AppEnvironment.self) private var env
+    @Environment(\.dismiss) private var dismiss
+    let collectionID: UUID
+
+    @State private var query = ""
+    @State private var results: [Anime] = []
+    @State private var isLoading = false
+    @State private var errorText: String?
+
+    private var folderName: String { env.collections.collection(collectionID)?.name ?? "папку" }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let errorText {
+                    Text(errorText)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                ForEach(results) { anime in
+                    row(anime)
+                }
+            }
+            .listStyle(.plain)
+            .overlay {
+                if isLoading && results.isEmpty { ProgressView() }
+            }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Найти аниме")
+            .autocorrectionDisabled()
+            .task(id: query) { await search() }
+            .navigationTitle("В «\(folderName)»")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Готово") { dismiss() }
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
+    }
+
+    private func row(_ anime: Anime) -> some View {
+        let added = env.collections.collection(collectionID)?.contains(anime.id) ?? false
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                env.collections.toggle(anime.snapshot, in: collectionID)
+            }
+        } label: {
+            HStack(spacing: Theme.Spacing.m) {
+                PosterImage(url: anime.coverURL, placeholderColorHex: anime.coverColorHex, cornerRadius: 6)
+                    .frame(width: 44, height: 44 / Theme.posterAspect)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(anime.title.preferred)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(2)
+                    if let year = anime.year {
+                        Text(String(year))
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                Spacer()
+                Image(systemName: added ? "checkmark.circle.fill" : "plus.circle")
+                    .font(.title2)
+                    .foregroundStyle(added ? Theme.success : Theme.accent)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(added ? "Убрать «\(anime.title.preferred)» из папки" : "Добавить «\(anime.title.preferred)» в папку")
+    }
+
+    private func search() async {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            // Небольшая пауза: не дёргаем каталог на каждую букву.
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+        }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let page = try await env.catalog.search(CatalogQuery(search: text, perPage: 30))
+            guard !Task.isCancelled else { return }
+            results = page.items
+            errorText = page.items.isEmpty ? "Ничего не нашлось" : nil
+        } catch {
+            if !Task.isCancelled { errorText = "Не удалось выполнить поиск. Потяните, чтобы повторить." }
+        }
+    }
+}
+
+/// Долгое нажатие на любую обложку → «В папку» (добавить/убрать, создать новую).
+struct FolderMenuModifier: ViewModifier {
+    @Environment(AppEnvironment.self) private var env
+    let anime: AnimeSnapshot
+
+    @State private var askName = false
+    @State private var newName = ""
+
+    func body(content: Content) -> some View {
+        content
+            .contextMenu {
+                Menu {
+                    ForEach(env.collections.collections) { folder in
+                        Button {
+                            env.collections.toggle(anime, in: folder.id)
+                        } label: {
+                            if folder.contains(anime.id) {
+                                Label(folder.name, systemImage: "checkmark")
+                            } else {
+                                Label(folder.name, systemImage: "folder")
+                            }
+                        }
+                    }
+                    if !env.collections.collections.isEmpty { Divider() }
+                    Button {
+                        newName = ""
+                        askName = true
+                    } label: {
+                        Label("Новая папка…", systemImage: "folder.badge.plus")
+                    }
+                } label: {
+                    Label("В папку", systemImage: "folder")
+                }
+            }
+            .alert("Новая папка", isPresented: $askName) {
+                TextField("Название", text: $newName)
+                Button("Создать") { _ = env.collections.create(name: newName, with: anime) }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("«\(anime.title)» сразу окажется в ней.")
+            }
+    }
+}
+
+extension View {
+    /// Добавляет в контекстное меню обложки пункт «В папку».
+    func folderMenu(_ anime: AnimeSnapshot) -> some View {
+        modifier(FolderMenuModifier(anime: anime))
     }
 }

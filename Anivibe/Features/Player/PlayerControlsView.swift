@@ -37,6 +37,7 @@ struct PlayerControlsView: View {
                     Image(systemName: "xmark").font(.title3.weight(.semibold)).frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("Закрыть плеер")
+                if model.phase == .ready { videoMenu }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.anime.title.preferred).font(.subheadline.weight(.semibold)).lineLimit(1)
                     Text(model.currentEpisode?.displayTitle ?? "Серия \(model.episodeNumber)")
@@ -110,7 +111,6 @@ struct PlayerControlsView: View {
             }
             HStack(spacing: Theme.Spacing.l) {
                 tracksMenu
-                videoMenu
                 Button(action: showSources) { Label("Источник", systemImage: "server.rack") }
                 Spacer()
                 Button(action: showEpisodes) { Label("Серии", systemImage: "list.bullet") }
@@ -154,9 +154,33 @@ struct PlayerControlsView: View {
                 }
             }
         } label: {
-            Label("Видео", systemImage: "gearshape")
+            HStack(spacing: 6) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.subheadline.weight(.bold))
+                Text(videoSummary)
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background {
+                Capsule().fill(.ultraThinMaterial)
+                    .overlay(Capsule().fill(LinearGradient(colors: [Theme.accent.opacity(0.55), Theme.secondaryAccent.opacity(0.35)],
+                                                           startPoint: .leading, endPoint: .trailing)))
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 1))
+            }
+            .shadow(color: Theme.accent.opacity(0.4), radius: 8, y: 2)
         }
-        .accessibilityLabel("Озвучка, качество и скорость")
+        .menuOrder(.fixed)
+        .accessibilityLabel("Настройки видео: озвучка, качество и скорость")
+    }
+
+    /// Короткая сводка на кнопке: «720p · 1.25×».
+    private var videoSummary: String {
+        let speed = KodikPlayerScreen.speedLabel(model.playbackSpeed)
+        if let quality = model.currentQualityHeight { return "\(quality)p · \(speed)" }
+        return speed
     }
 
     private var tracksMenu: some View {
