@@ -83,7 +83,7 @@ struct OnlineSourcesSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
             SectionHeader(title: "Смотреть с русской озвучкой")
-            Text("Видео, озвучки и плеер предоставлены Kodik. Просмотр идёт во встроенном веб-плеере сервиса: выбор серии, озвучки и качества — внутри него; реклама в плеере — со стороны Kodik.")
+            Text("Видео и озвучки предоставлены Kodik. Видео открывается в плеере приложения: можно выбрать качество и скорость воспроизведения.")
                 .font(.footnote)
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, Theme.Spacing.l)
@@ -91,7 +91,7 @@ struct OnlineSourcesSection: View {
             content
         }
         .fullScreenCover(item: $webPlayback) { request in
-            KodikPlayerScreen(request: request)
+            KodikPlayerScreen(request: request, client: client)
         }
         .task {
             if model.phase == .idle {

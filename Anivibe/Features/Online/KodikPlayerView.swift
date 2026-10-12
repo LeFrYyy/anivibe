@@ -1,5 +1,7 @@
 import SwiftUI
 import WebKit
+import AVKit
+import AnivibeCore
 
 /// Веб-плеер для embed-ссылок Kodik (iframe).
 ///
@@ -59,55 +61,245 @@ struct WebPlayerView: UIViewRepresentable {
 struct WebPlaybackRequest: Identifiable {
     let id = UUID()
     let url: URL
-    let title: String
-    let subtitle: String?
-}
-
-/// Полноэкранный веб-плеер Kodik.
+    let title: Stri/// Полноэкранный плеер Kodik.
+///
+/// По умолчанию — нативный AVPlayer: прямые HLS-потоки Kodik с выбором качества
+/// и скорости воспроизведения, PiP и без рекламы веб-плеера. Если получить потоки
+/// не удалось, можно открыть встроенный веб-плеер Kodik.
 struct KodikPlayerScreen: View {
     let request: WebPlaybackRequest
+    let client: KodikClient
+
+    enum Phase: Equatable {
+        case loading
+        case ready
+        case failed(String)
+        case web
+    }
+
+    static let speeds: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("kodik.preferredQuality") private var preferredQuality: Int = 1080
+    @AppStorage("kodik.playbackSpeed") private var storedSpeed: Double = 1.0
+
+    @State private var phase: Phase = .loading
+    @State private var streams: [KodikStream] = []
+    @State private var currentQuality: Int?
+    @State private var player = AVPlayer()
+
+    private var speed: Float { Float(storedSpeed) }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Color.black.ignoresSafeArea()
-            WebPlayerView(url: request.url)
-                .ignoresSafeArea()
-
-            // Верхняя панель поверх плеера.
-            HStack(alignment: .center, spacing: Theme.Spacing.m) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(request.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    if let subtitle = request.subtitle {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                            .lineLimit(1)
+        VStack(spacing: 0) {
+            topBar
+            ZStack {
+                Color.black
+                switch phase {
+                case .loading:
+                    VStack(spacing: Theme.Spacing.m) {
+                        ProgressView().tint(.white)
+                        Text("Получаем видеопоток…")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.8))
                     }
+                case .ready:
+                    NativeVideoPlayer(player: player, speeds: Self.speeds)
+                case .failed(let message):
+                    failedView(message)
+                case .web:
+                    WebPlayerView(url: request.url)
                 }
-                Spacer()
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
-                        .background(.black.opacity(0.55), in: Circle())
-                }
-                .accessibilityLabel("Закрыть плеер")
             }
-            .padding(.horizontal, Theme.Spacing.l)
-            .padding(.top, Theme.Spacing.m)
-            .background(
-                LinearGradient(colors: [.black.opacity(0.6), .clear], startPoint: .top, endPoint: .bottom)
-                    .allowsHitTesting(false)
-            )
+            .ignoresSafeArea(edges: .bottom)
         }
+        .background(Color.black.ignoresSafeArea())
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
+        .task { await load() }
+        .onDisappear {
+            player.pause()
+            player.replaceCurrentItem(with: nil)
+        }
+    }
+
+    // MARK: - Верхняя панель
+
+    private var topBar: some View {
+        HStack(alignment: .center, spacing: Theme.Spacing.s) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(request.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                if let subtitle = request.subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: Theme.Spacing.s)
+
+            if phase == .ready {
+                qualityMenu
+                speedMenu
+            }
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(.white.opacity(0.15), in: Circle())
+            }
+            .accessibilityLabel("Закрыть плеер")
+        }
+        .padding(.horizontal, Theme.Spacing.l)
+        .padding(.vertical, Theme.Spacing.s)
+        .background(Color.black)
+    }
+
+    private var qualityMenu: some View {
+        Menu {
+            ForEach(streams) { stream in
+                Button {
+                    switchQuality(to: stream)
+                } label: {
+                    if stream.quality == currentQuality {
+                        Label(stream.label, systemImage: "checkmark")
+                    } else {
+                        Text(stream.label)
+                    }
+                }
+            }
+        } label: {
+            pill(icon: "sparkles.tv", text: currentQuality.map { "\($0)p" } ?? "Авто")
+        }
+        .accessibilityLabel("Качество видео")
+    }
+
+    private var speedMenu: some View {
+        Menu {
+            ForEach(Self.speeds, id: \.self) { value in
+                Button {
+                    setSpeed(value)
+                } label: {
+                    if value == speed {
+                        Label(Self.speedLabel(value), systemImage: "checkmark")
+                    } else {
+                        Text(Self.speedLabel(value))
+                    }
+                }
+            }
+        } label: {
+            pill(icon: "gauge.with.dots.needle.67percent", text: Self.speedLabel(speed))
+        }
+        .accessibilityLabel("Скорость воспроизведения")
+    }
+
+    private func pill(icon: String, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+            Text(text).monospacedDigit()
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10)
+        .frame(height: 32)
+        .background(.white.opacity(0.15), in: Capsule())
+    }
+
+    private func failedView(_ message: String) -> some View {
+        VStack(spacing: Theme.Spacing.m) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+                .foregroundStyle(.white.opacity(0.8))
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.85))
+                .multilineTextAlignment(.center)
+            HStack(spacing: Theme.Spacing.m) {
+                Button("Повторить") { Task { await load() } }
+                    .buttonStyle(.bordered)
+                    .tint(.white)
+                Button("Веб-плеер Kodik") { phase = .web }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(Theme.Spacing.xl)
+    }
+
+    static func speedLabel(_ value: Float) -> String {
+        let text = value == value.rounded() ? String(format: "%.0f", value) : String(format: "%g", value)
+        return text + "×"
+    }
+
+    // MARK: - Воспроизведение
+
+    private func load() async {
+        phase = .loading
+        do {
+            let found = try await client.streams(for: request.url)
+            guard !found.isEmpty else { throw APIError.notFound }
+            streams = found
+            // Лучшее качество, не выше выбранного ранее; иначе — самое низкое доступное.
+            let stream = found.first { $0.quality <= preferredQuality } ?? found.last!
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try? AVAudioSession.sharedInstance().setActive(true)
+            play(stream, at: nil, autoplay: true)
+            phase = .ready
+        } catch is CancellationError {
+            return
+        } catch {
+            phase = .failed("Не удалось получить видеопоток Kodik. Попробуйте ещё раз или откройте веб-плеер.")
+        }
+    }
+
+    private func play(_ stream: KodikStream, at time: CMTime?, autoplay: Bool) {
+        let item = AVPlayerItem(url: stream.url)
+        item.preferredForwardBufferDuration = 10
+        player.replaceCurrentItem(with: item)
+        currentQuality = stream.quality
+        if let time, time.isValid, time.seconds > 0 {
+            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+        player.defaultRate = speed
+        if autoplay { player.playImmediately(atRate: speed) }
+    }
+
+    private func switchQuality(to stream: KodikStream) {
+        guard stream.quality != currentQuality else { return }
+        preferredQuality = stream.quality
+        let wasPlaying = player.rate > 0
+        play(stream, at: player.currentTime(), autoplay: wasPlaying)
+    }
+
+    private func setSpeed(_ value: Float) {
+        storedSpeed = Double(value)
+        player.defaultRate = value
+        if player.rate > 0 { player.rate = value }
+    }
+}
+
+/// Системный плеер (AVPlayerViewController): перемотка, PiP, полноэкранный режим.
+struct NativeVideoPlayer: UIViewControllerRepresentable {
+    let player: AVPlayer
+    let speeds: [Float]
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
+        controller.player = player
+        controller.allowsPictureInPicturePlayback = true
+        controller.canStartPictureInPictureAutomaticallyFromInline = true
+        controller.videoGravity = .resizeAspect
+        controller.speeds = speeds.map { AVPlaybackSpeed(rate: $0, localizedName: KodikPlayerScreen.speedLabel($0)) }
+        return controller
+    }
+
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        if controller.player !== player { controller.player = player }
     }
 }

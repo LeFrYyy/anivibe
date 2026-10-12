@@ -9,7 +9,7 @@ import FoundationNetworking
 /// * API требует токен партнёра (получается при регистрации на kodik.biz). Без токена клиент не создаётся.
 /// * Kodik отдаёт ссылки на свой ВЕБ-плеер (iframe), а не прямые потоки. Поэтому это
 ///   НЕ `VideoSourceProvider`: воспроизведение идёт в WKWebView, а не в нашем AVPlayer.
-/// * Извлечение прямых ссылок из плеера намеренно не реализовано — это нарушает условия Kodik.
+/// * Прямые HLS-потоки (для нативного плеера с выбором качества и скорости) — см. `KodikStreamResolver`.
 public struct KodikClient: Sendable {
     public static let defaultBaseURL = URL(string: "https://kodik-api.com")!
     /// Общедоступный рабочий токен Kodik API по умолчанию
@@ -17,7 +17,7 @@ public struct KodikClient: Sendable {
 
     private let token: String
     private let baseURL: URL
-    private let transport: HTTPTransport
+    let transport: HTTPTransport
 
     public init(token: String = KodikClient.defaultToken, baseURL: URL = KodikClient.defaultBaseURL, transport: HTTPTransport) {
         self.token = token.isEmpty ? KodikClient.defaultToken : token
@@ -85,20 +85,49 @@ public struct KodikClient: Sendable {
 
     // MARK: - Сопоставление
 
+    /// Объединяет записи Kodik, относящиеся к одному тайтлу.
+    ///
+    /// У Kodik каждая озвучка — отдельная запись (свой `id`), и у части записей нет
+    /// `shikimori_id`. Поэтому связываем записи, если совпадает `id`, `shikimori_id`
+    /// или (при отсутствии конфликта Shikimori ID) нормализованное название.
     static func groupMaterials(_ results: [KodikMaterialDTO]) -> [String: [KodikMaterialDTO]] {
-        var groups: [String: [KodikMaterialDTO]] = [:]
-        for m in results {
-            let key: String
-            if let s = m.shikimoriID {
-                key = "shiki_\(s)"
-            } else if let orig = m.titleOrig, !orig.isEmpty {
-                key = "orig_\(TitleMatcher.normalize(orig))"
-            } else if let title = m.title, !title.isEmpty {
-                key = "title_\(TitleMatcher.normalize(title))"
-            } else {
-                key = m.id
+        guard !results.isEmpty else { return [:] }
+        var parent = Array(results.indices)
+        func find(_ i: Int) -> Int {
+            var i = i
+            while parent[i] != i { parent[i] = parent[parent[i]]; i = parent[i] }
+            return i
+        }
+        func union(_ a: Int, _ b: Int) {
+            let ra = find(a), rb = find(b)
+            if ra != rb { parent[max(ra, rb)] = min(ra, rb) }
+        }
+        func names(_ m: KodikMaterialDTO) -> Set<String> {
+            Set([m.title, m.titleOrig].compactMap { $0 }.map(TitleMatcher.normalize).filter { !$0.isEmpty })
+        }
+        let nameSets = results.map(names)
+        for i in results.indices {
+            for j in results.indices where j > i {
+                let a = results[i], b = results[j]
+                if a.id == b.id {
+                    union(i, j)
+                } else if let sa = a.shikimoriID, let sb = b.shikimoriID {
+                    if sa == sb { union(i, j) }
+                } else if !nameSets[i].isDisjoint(with: nameSets[j]) {
+                    union(i, j)
+                }
             }
-            groups[key, default: []].append(m)
+        }
+        var groups: [String: [KodikMaterialDTO]] = [:]
+        for i in results.indices {
+            let root = results[find(i)]
+            let key: String
+            if let s = root.shikimoriID ?? results.indices.filter({ find($0) == find(i) }).compactMap({ results[$0].shikimoriID }).first {
+                key = "shiki_\(s)"
+            } else {
+                key = "group_\(root.id)"
+            }
+            groups[key, default: []].append(results[i])
         }
         return groups
     }
@@ -149,7 +178,15 @@ public struct KodikClient: Sendable {
     }
 
     private static func makeMatch(from materials: [KodikMaterialDTO], id: String? = nil) -> KodikMatch? {
-        let voices = materials.compactMap(makeVoice(from:))
+        var voices: [KodikVoiceOption] = []
+        for voice in materials.compactMap(makeVoice(from:)) {
+            // Одна и та же озвучка может прийти несколькими записями — оставляем самую полную.
+            if let index = voices.firstIndex(where: { $0.translation.id == voice.translation.id && $0.translation.title == voice.translation.title }) {
+                if voice.episodes.count > voices[index].episodes.count { voices[index] = voice }
+            } else {
+                voices.append(voice)
+            }
+        }
         guard !voices.isEmpty else { return nil }
         let first = materials[0]
         let title = first.title ?? first.titleOrig ?? voices[0].title

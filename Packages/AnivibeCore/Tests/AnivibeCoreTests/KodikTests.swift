@@ -201,4 +201,52 @@ final class KodikTests: XCTestCase {
         XCTAssertNil(KodikClient.makePlayerURL(from: "   "))
         XCTAssertNil(KodikClient.makePlayerURL(from: "not a url with spaces"))
     }
+
+    // MARK: - Прямые потоки
+
+    func testParsePlayerPageAndEndpoint() throws {
+        let html = """
+        <script>var urlParams = '{"d":"kodikplayer.com","d_sign":"abc:1","pd":"kodikplayer.com","pd_sign":"def:1","ref":"","ref_sign":"ghi:1","advert_debug":true}';
+        vInfo.type = 'seria'; vInfo.hash = 'e2ee'; vInfo.id = '9902';</script>
+        <script src="/assets/js/app.player_single.123abc.js"></script>
+        """
+        let info = try XCTUnwrap(KodikStreamResolver.parsePlayerPage(html))
+        XCTAssertEqual(info.type, "seria")
+        XCTAssertEqual(info.hash, "e2ee")
+        XCTAssertEqual(info.id, "9902")
+        XCTAssertEqual(info.params["d_sign"], "abc:1")
+        XCTAssertEqual(info.params["ref"], "")
+        XCTAssertEqual(KodikStreamResolver.playerScriptPath(in: html), "/assets/js/app.player_single.123abc.js")
+        XCTAssertEqual(KodikStreamResolver.endpoint(inPlayerScript: #"$.ajax({type:"POST",url:atob("L2Z0b3I="),cache:!1})"#), "/ftor")
+    }
+
+    func testDecodeLinksUsesRealQuality() throws {
+        let src = "iPZ0kPU6Tg9eUBYck29aj2ZrHO4cG29bT3UdjA9pANQeG0pVVsf5WFxpU2b1GhQ5k2QgCuxiZhZ1EBQ5lMegZvDpDhNaHMpimtxGAvJiEM12B1ZsiC9MBFtiZOa0EtZDl05CEBNWmst3EtZKjM5FAu1HitD4BvxNl1xPDBRVZOafEE1EjM13ThCeUuU0WBJtVBGgGrM2HrNtGEY1WLJsUhQ1VLI5GhlsVhY1UrCeVhttWBkfVLtqHBkeUrMhUhC1VrlqWOVsVuG6UrIgVrMeUBQfWA8hVrIcjFI0WupakhxbGE5xHuDhlK5bU3C4"
+        let json = #"{"links":{"360":[{"src":"\#(src)","type":"application/x-mpegURL"}],"720":[{"src":"//cdn.example.com/x/480.mp4:hls:manifest.m3u8"}],"1080":[{"src":"//cdn.example.com/x/1080.mp4:hls:manifest.m3u8"}]}}"#
+        let streams = try KodikStreamResolver.parseLinks(Data(json.utf8))
+        XCTAssertEqual(streams.map(\.quality), [1080, 480, 360])
+        XCTAssertEqual(streams.last?.url.scheme, "https")
+        XCTAssertTrue(streams.last?.url.absoluteString.hasSuffix("360.mp4:hls:manifest.m3u8") ?? false)
+    }
+
+    func testStreamsFullFlow() async throws {
+        let (client, transport) = makeClient { request in
+            let path = request.url?.path ?? ""
+            if path.hasPrefix("/seria") {
+                let html = #"<script>var urlParams = '{"d":"kodikplayer.com","d_sign":"s"}'; vInfo.type = 'seria'; vInfo.hash = 'h1'; vInfo.id = '42';</script>"#
+                return (200, Data(html.utf8), [:])
+            }
+            if path == "/ftor" {
+                return (200, Data(#"{"links":{"720":[{"src":"//cdn.example.com/a/720.mp4:hls:manifest.m3u8"}]}}"#.utf8), [:])
+            }
+            return (404, Data(), [:])
+        }
+        let streams = try await client.streams(for: URL(string: "https://kodikplayer.com/seria/42/h1/720p")!)
+        XCTAssertEqual(streams.map(\.quality), [720])
+        let post = try XCTUnwrap(transport.requests.first { $0.httpMethod == "POST" })
+        let body = String(decoding: post.httpBody ?? Data(), as: UTF8.self)
+        XCTAssertTrue(body.contains("hash=h1"))
+        XCTAssertTrue(body.contains("id=42"))
+        XCTAssertTrue(body.contains("type=seria"))
+    }
 }
