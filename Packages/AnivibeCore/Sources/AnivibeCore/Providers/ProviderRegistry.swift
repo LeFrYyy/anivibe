@@ -8,6 +8,15 @@ public struct SourceCandidate: Identifiable, Hashable, Sendable {
     public let isTestContent: Bool
     public let episode: ProviderEpisode?
     public let availability: Availability
+
+    public init(providerID: ProviderID, providerName: String, isTestContent: Bool, episode: ProviderEpisode?,
+                availability: Availability) {
+        self.providerID = providerID
+        self.providerName = providerName
+        self.isTestContent = isTestContent
+        self.episode = episode
+        self.availability = availability
+    }
 }
 
 public struct ProviderInfo: Identifiable, Hashable, Sendable {

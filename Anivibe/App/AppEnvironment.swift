@@ -44,9 +44,21 @@ final class AppEnvironment {
         if let manifestURL = config.manifestURL {
             providers.append(ManifestProvider(manifestURL: manifestURL, transport: transport))
         }
+        // Kodik — основной источник (десятки озвучек, качество и скорость в плеере).
+        // Anilibria остаётся запасным: только если у Kodik нет тайтла/серии.
+        let kodikToken = config.kodikToken ?? KodikClient.defaultToken
+        let kodik = KodikClient(token: kodikToken, transport: transport)
+        providers.insert(KodikProvider(
+            client: kodik,
+            preferredVoice: { UserDefaults.standard.string(forKey: KodikPreferences.voiceKey) },
+            preferredQuality: {
+                let q = UserDefaults.standard.integer(forKey: KodikPreferences.qualityKey)
+                return q > 0 ? q : nil
+            }), at: 0)
         providers.append(AnilibriaProvider(transport: transport))
         providers.append(TestStreamProvider(transport: transport))
-        let registry = ProviderRegistry(providers: providers)
+        // Kodik отвечает объёмными JSON (все серии всех озвучек) — даём больше времени.
+        let registry = ProviderRegistry(providers: providers, timeout: 25)
 
         let persistence: LibraryPersistence
         if let file = try? FileLibraryPersistence.defaultLocation() {
@@ -67,9 +79,6 @@ final class AppEnvironment {
         let session = SessionStore(auth: auth, sync: sync, library: library)
         let settings = AppSettings(testStreamsDefault: config.testStreamsEnabledByDefault)
 
-        // Kodik — веб-плеер с озвучками; подключается по токену из конфигурации или по встроенному токену.
-        let kodikToken = config.kodikToken ?? KodikClient.defaultToken
-        let kodik = KodikClient(token: kodikToken, transport: transport)
 
         return AppEnvironment(configuration: config, catalog: catalog, registry: registry, library: library,
                               session: session, settings: settings, cache: cache, kodik: kodik)
@@ -110,4 +119,11 @@ final class AppEnvironment {
 extension Notification.Name {
     /// Плеер сохраняет позицию, когда приложение уходит в фон.
     static let anivibeWillResignActive = Notification.Name("anivibe.willResignActive")
+}
+
+/// Общие настройки Kodik (используются и плеером приложения, и разделом озвучек).
+enum KodikPreferences {
+    static let voiceKey = "kodik.preferredVoice"
+    static let qualityKey = "kodik.preferredQuality"
+    static let speedKey = "kodik.playbackSpeed"
 }

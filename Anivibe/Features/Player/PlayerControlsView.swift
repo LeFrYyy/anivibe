@@ -110,6 +110,7 @@ struct PlayerControlsView: View {
             }
             HStack(spacing: Theme.Spacing.l) {
                 tracksMenu
+                videoMenu
                 Button(action: showSources) { Label("Источник", systemImage: "server.rack") }
                 Spacer()
                 Button(action: showEpisodes) { Label("Серии", systemImage: "list.bullet") }
@@ -121,6 +122,41 @@ struct PlayerControlsView: View {
             .font(.footnote.weight(.medium))
             .labelStyle(.titleAndIcon)
         }
+    }
+
+    /// Озвучка (Kodik), качество и скорость воспроизведения.
+    private var videoMenu: some View {
+        Menu {
+            if !model.voices.isEmpty {
+                Menu("Озвучка: \(model.selectedVoice ?? "—")") {
+                    ForEach(model.voices, id: \.self) { voice in
+                        Button { model.selectVoice(voice) } label: {
+                            if voice == model.selectedVoice { Label(voice, systemImage: "checkmark") } else { Text(voice) }
+                        }
+                    }
+                }
+            }
+            if !model.qualities.isEmpty {
+                Menu(model.qualityMenuTitle) {
+                    ForEach(model.qualities) { quality in
+                        Button { model.selectQuality(quality) } label: {
+                            if quality.height == model.currentQualityHeight { Label(quality.label, systemImage: "checkmark") } else { Text(quality.label) }
+                        }
+                    }
+                }
+            }
+            Menu("Скорость: \(KodikPlayerScreen.speedLabel(model.playbackSpeed))") {
+                ForEach(PlayerViewModel.speeds, id: \.self) { speed in
+                    Button { model.setSpeed(speed) } label: {
+                        let label = KodikPlayerScreen.speedLabel(speed)
+                        if speed == model.playbackSpeed { Label(label, systemImage: "checkmark") } else { Text(label) }
+                    }
+                }
+            }
+        } label: {
+            Label("Видео", systemImage: "gearshape")
+        }
+        .accessibilityLabel("Озвучка, качество и скорость")
     }
 
     private var tracksMenu: some View {

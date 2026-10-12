@@ -249,4 +249,27 @@ final class KodikTests: XCTestCase {
         XCTAssertTrue(body.contains("id=42"))
         XCTAssertTrue(body.contains("type=seria"))
     }
+
+    // MARK: - KodikProvider
+
+    func testProviderMergesVoicesPerEpisodeAndPrefersChosenVoice() async throws {
+        let (client, _) = makeClient { _ in (200, Data(Self.searchFixture.utf8), [:]) }
+        let provider = KodikProvider(client: client, preferredVoice: { "Anilibria" })
+        let match = try await client.search(titles: ["Shingeki no Kyojin"], year: 2013)
+        let episodes = KodikProvider.makeEpisodes(match: try XCTUnwrap(match), titleID: "t", preferredVoice: "Anilibria")
+        XCTAssertEqual(episodes.map(\.number), [1, 2, 3])
+        // Один сезон → сквозная нумерация, чтобы сиквелы («сезон 2» у Kodik) тоже совпадали.
+        XCTAssertTrue(episodes.allSatisfy { $0.season == nil })
+        let first = try XCTUnwrap(KodikProvider.Payload.decode(episodes[0].payload))
+        XCTAssertEqual(Set(first.voices.map(\.title)), ["AniDUB", "Anilibria"])
+        XCTAssertEqual(first.selected, "Anilibria")
+        // Третья серия есть только у AniDUB.
+        let third = try XCTUnwrap(KodikProvider.Payload.decode(episodes[2].payload))
+        XCTAssertEqual(third.selected, "AniDUB")
+        XCTAssertNotNil(EpisodeMatcher.match(season: 1, number: 2, in: episodes))
+
+        let switched = KodikProvider.episode(episodes[0], withVoice: "AniDUB")
+        XCTAssertEqual(KodikProvider.Payload.decode(switched.payload)?.selected, "AniDUB")
+        XCTAssertEqual(provider.id, KodikProvider.providerID)
+    }
 }

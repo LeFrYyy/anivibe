@@ -81,6 +81,7 @@ final class PlayerViewModel {
     func start() {
         guard !didStart else { return }
         didStart = true
+        player.defaultRate = playbackSpeed
         configureAudioSession()
         observePlayer()
         observeApp()
@@ -303,6 +304,59 @@ final class PlayerViewModel {
             item.select(nil, in: group)
         }
         selectedSubtitleID = option.id
+    }
+
+    // MARK: - Качество, скорость, озвучка (Kodik)
+
+    static let speeds: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+
+    private(set) var playbackSpeed: Float = PlayerViewModel.storedSpeed()
+
+    var qualities: [PlaybackQuality] { source?.qualities ?? [] }
+    var currentQualityHeight: Int? {
+        guard let source else { return nil }
+        return source.qualities.first { $0.url == source.url }?.height
+    }
+    var qualityMenuTitle: String {
+        "Качество: " + (currentQualityHeight.map { "\($0)p" } ?? "Авто")
+    }
+    var voices: [String] { source?.voices ?? [] }
+    var selectedVoice: String? { source?.selectedVoice }
+
+    nonisolated private static func storedSpeed() -> Float {
+        let value = UserDefaults.standard.double(forKey: KodikPreferences.speedKey)
+        return value > 0 ? Float(value) : 1.0
+    }
+
+    func selectQuality(_ quality: PlaybackQuality) {
+        guard let current = source, quality.url != current.url else { return }
+        UserDefaults.standard.set(quality.height, forKey: KodikPreferences.qualityKey)
+        saveProgress(force: true)
+        startPosition = currentTime
+        let updated = current.with(url: quality.url)
+        source = updated
+        load(updated)
+    }
+
+    func setSpeed(_ speed: Float) {
+        playbackSpeed = speed
+        UserDefaults.standard.set(Double(speed), forKey: KodikPreferences.speedKey)
+        player.defaultRate = speed
+        if player.rate > 0 { player.rate = speed }
+    }
+
+    func selectVoice(_ voice: String) {
+        guard voice != selectedVoice, let candidate = activeCandidate, let episode = candidate.episode,
+              candidate.providerID == KodikProvider.providerID else { return }
+        UserDefaults.standard.set(voice, forKey: KodikPreferences.voiceKey)
+        let updated = SourceCandidate(providerID: candidate.providerID, providerName: candidate.providerName,
+                                      isTestContent: candidate.isTestContent,
+                                      episode: KodikProvider.episode(episode, withVoice: voice),
+                                      availability: candidate.availability)
+        if let index = candidates.firstIndex(where: { $0.providerID == candidate.providerID }) {
+            candidates[index] = updated
+        }
+        select(candidate: updated)
     }
 
     private static func trackName(_ option: AVMediaSelectionOption) -> String {

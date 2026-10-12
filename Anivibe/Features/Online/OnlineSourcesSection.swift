@@ -44,6 +44,8 @@ final class KodikOnlineViewModel {
 
     func selectVoice(_ voice: KodikVoiceOption) {
         selectedVoiceID = voice.id
+        // Запоминаем — кнопка «Смотреть» и плеер приложения возьмут эту же озвучку.
+        UserDefaults.standard.set(voice.translation.title, forKey: KodikPreferences.voiceKey)
         let seasons = Set(voice.episodes.map(\.season)).sorted()
         if !seasons.isEmpty && !seasons.contains(selectedSeason) {
             selectedSeason = seasons.first(where: { $0 >= 1 }) ?? seasons.first ?? 1

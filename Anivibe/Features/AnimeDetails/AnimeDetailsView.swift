@@ -175,12 +175,12 @@ struct AnimeDetailsView: View {
                 .padding(.horizontal, Theme.Spacing.l)
             }
         }
-        // Озвучки Kodik — выше списка серий, чтобы раздел было видно сразу.
+        seasons
+        episodesSection
+        // Все озвучки Kodik списком (основной просмотр — кнопкой «Смотреть»).
         if let kodik = env.kodik {
             OnlineSourcesSection(anime: anime, client: kodik)
         }
-        seasons
-        episodesSection
         officialLinks
         if let recs = model.details?.recommendations, !recs.isEmpty {
             PosterRow(title: "Похожие", items: recs)
