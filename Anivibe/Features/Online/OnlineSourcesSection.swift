@@ -63,7 +63,11 @@ final class KodikOnlineViewModel {
             } else {
                 phase = .notFound
             }
+        } catch is CancellationError {
+            // Экран ушёл с экрана во время запроса — повторим при следующем появлении.
+            phase = .idle
         } catch let error as APIError {
+            if error == .cancelled { phase = .idle; return }
             phase = .failed(error.userMessage)
         } catch {
             phase = .failed(String(describing: error))
