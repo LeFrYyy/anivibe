@@ -61,7 +61,11 @@ struct WebPlayerView: UIViewRepresentable {
 struct WebPlaybackRequest: Identifiable {
     let id = UUID()
     let url: URL
-    let title: Stri/// Полноэкранный плеер Kodik.
+    let title: String
+    let subtitle: String?
+}
+
+/// Полноэкранный плеер Kodik.
 ///
 /// По умолчанию — нативный AVPlayer: прямые HLS-потоки Kodik с выбором качества
 /// и скорости воспроизведения, PiP и без рекламы веб-плеера. Если получить потоки

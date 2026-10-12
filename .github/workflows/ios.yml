@@ -74,7 +74,11 @@ jobs:
           echo "Secrets.xcconfig: $(wc -l < Config/Secrets.xcconfig) строк(и)"
 
       - name: Build unsigned device app
+        shell: bash
         run: |
+          # pipefail: без него ошибка компиляции «терялась» за `| tee`, и шаг был зелёным
+          # с пустым Anivibe.app. Теперь шаг падает и выводит сами ошибки.
+          set -o pipefail
           xcodebuild build \
             -project Anivibe.xcodeproj \
             -scheme Anivibe \
@@ -85,7 +89,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            | tee xcodebuild.log
+            | tee xcodebuild.log \
+            || { echo "::group::Ошибки компиляции"; grep -E "error:|BUILD FAILED" xcodebuild.log | sort -u | head -60; echo "::endgroup::"; exit 1; }
 
       - name: Package .ipa
         run: |
