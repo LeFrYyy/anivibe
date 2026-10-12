@@ -20,8 +20,8 @@ ANIVIBE_DEMO_CATALOG = NO
 // Тестовые HLS-потоки Apple/Blender включены по умолчанию (пользователь может выключить).
 ANIVIBE_TEST_STREAMS = YES
 
-// Партнёрский токен Kodik API (kodik.biz). Пусто — раздел «Озвучки онлайн» скрыт.
-// Свой токен задавайте в Secrets.xcconfig, а не здесь.
-ANIVIBE_KODIK_TOKEN =
+// Партнёрский токен Kodik API (kodik.biz). Задан рабочий токен по умолчанию.
+// Свой токен можно переопределить в Secrets.xcconfig.
+ANIVIBE_KODIK_TOKEN = 56a768d08f43091901c44b54fe970049
 
 #include? "Secrets.xcconfig"

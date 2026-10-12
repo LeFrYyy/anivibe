@@ -67,8 +67,9 @@ final class AppEnvironment {
         let session = SessionStore(auth: auth, sync: sync, library: library)
         let settings = AppSettings(testStreamsDefault: config.testStreamsEnabledByDefault)
 
-        // Kodik — веб-плеер с озвучками; подключается только при наличии партнёрского токена.
-        let kodik = config.kodikToken.map { KodikClient(token: $0, transport: transport) }
+        // Kodik — веб-плеер с озвучками; подключается по токену из конфигурации или по встроенному токену.
+        let kodikToken = config.kodikToken ?? KodikClient.defaultToken
+        let kodik = KodikClient(token: kodikToken, transport: transport)
 
         return AppEnvironment(configuration: config, catalog: catalog, registry: registry, library: library,
                               session: session, settings: settings, cache: cache, kodik: kodik)

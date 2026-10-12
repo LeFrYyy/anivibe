@@ -23,6 +23,7 @@ struct SettingsView: View {
                                                        set: { env.setAnilibriaEnabled($0); Task { await reloadProviders() } }))
                 Toggle("Тестовые потоки", isOn: Binding(get: { settings.testStreamsEnabled },
                                                        set: { env.setTestStreamsEnabled($0); Task { await reloadProviders() } }))
+                LabeledContent("Kodik (озвучки онлайн)", value: env.kodik != nil ? "подключён" : "выключен")
                 ForEach(providers) { p in
                     LabeledContent(p.name, value: p.isEnabled ? "включён" : "выключен")
                 }

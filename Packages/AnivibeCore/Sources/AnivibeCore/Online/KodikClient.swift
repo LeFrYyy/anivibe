@@ -12,13 +12,15 @@ import FoundationNetworking
 /// * Извлечение прямых ссылок из плеера намеренно не реализовано — это нарушает условия Kodik.
 public struct KodikClient: Sendable {
     public static let defaultBaseURL = URL(string: "https://kodik-api.com")!
+    /// Общедоступный рабочий токен Kodik API по умолчанию
+    public static let defaultToken = "56a768d08f43091901c44b54fe970049"
 
     private let token: String
     private let baseURL: URL
     private let transport: HTTPTransport
 
-    public init(token: String, baseURL: URL = KodikClient.defaultBaseURL, transport: HTTPTransport) {
-        self.token = token
+    public init(token: String = KodikClient.defaultToken, baseURL: URL = KodikClient.defaultBaseURL, transport: HTTPTransport) {
+        self.token = token.isEmpty ? KodikClient.defaultToken : token
         self.baseURL = baseURL
         self.transport = transport
     }
@@ -46,6 +48,7 @@ public struct KodikClient: Sendable {
     private func requestMaterials(_ criteria: [URLQueryItem]) async throws -> [KodikMaterialDTO] {
         var components = URLComponents(url: baseURL.appendingPathComponent("search"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "token", value: token)] + criteria + [
+            URLQueryItem(name: "types", value: "anime,anime-serial"),
             URLQueryItem(name: "limit", value: "100"),
             // Просим ссылки на сезоны и серии, чтобы строить список эпизодов.
             URLQueryItem(name: "with_episodes", value: "true"),
