@@ -91,10 +91,15 @@ jobs:
         run: |
           APP="build/Build/Products/Release-iphoneos/Anivibe.app"
           test -d "$APP" || { echo "Не найдено $APP — смотрите xcodebuild.log"; exit 1; }
+          test -f "$APP/Info.plist" || { echo "В $APP нет Info.plist — сборка неполная"; ls -la "$APP"; exit 1; }
           rm -rf Payload Anivibe.ipa
           mkdir Payload
-          cp -R "$APP" Payload/
-          zip -qr Anivibe.ipa Payload
+          ditto "$APP" "Payload/Anivibe.app"
+          # ditto — штатный упаковщик Apple: корректный zip, который читают Sideloadly/AltStore.
+          ditto -c -k --norsrc --keepParent Payload Anivibe.ipa
+          echo "Содержимое .ipa (проверка):"
+          unzip -l Anivibe.ipa | grep -E "Payload/Anivibe.app/(Info.plist|Anivibe)$"
+          unzip -l Anivibe.ipa | grep -q "Payload/Anivibe.app/Info.plist" || { echo "В .ipa нет Info.plist"; exit 1; }
           ls -lh Anivibe.ipa
 
       - name: Upload artifact
@@ -103,6 +108,7 @@ jobs:
           name: Anivibe-unsigned-ipa-r${{ github.run_number }}
           path: Anivibe.ipa
           retention-days: 14
+          compression-level: 0
 
       - name: Upload build log (при ошибке)
         if: failure()
