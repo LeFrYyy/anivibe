@@ -85,14 +85,29 @@ public struct KodikClient: Sendable {
 
     // MARK: - Сопоставление
 
-    /// Группирует результаты по материалу (Kodik повторяет материал для каждой озвучки)
-    /// и выбирает наиболее похожий на запрошенный тайтл.
-    /// Результаты поиска по shikimori_id — это один и тот же тайтл; берём самый
-    /// «богатый» материал (с наибольшим числом озвучек).
+    static func groupMaterials(_ results: [KodikMaterialDTO]) -> [String: [KodikMaterialDTO]] {
+        var groups: [String: [KodikMaterialDTO]] = [:]
+        for m in results {
+            let key: String
+            if let s = m.shikimoriID {
+                key = "shiki_\(s)"
+            } else if let orig = m.titleOrig, !orig.isEmpty {
+                key = "orig_\(TitleMatcher.normalize(orig))"
+            } else if let title = m.title, !title.isEmpty {
+                key = "title_\(TitleMatcher.normalize(title))"
+            } else {
+                key = m.id
+            }
+            groups[key, default: []].append(m)
+        }
+        return groups
+    }
+
+    /// Группирует результаты по материалу/тайтлу и возвращает совпадение со всеми доступными озвучками.
     static func exactGroup(among results: [KodikMaterialDTO]) -> KodikMatch? {
         guard !results.isEmpty else { return nil }
-        let byMaterial = Dictionary(grouping: results, by: \.id)
-        let ordered = byMaterial.sorted { a, b in
+        let byGroup = groupMaterials(results)
+        let ordered = byGroup.sorted { a, b in
             a.value.count != b.value.count ? a.value.count > b.value.count : a.key < b.key
         }
         for (id, materials) in ordered {
@@ -104,14 +119,14 @@ public struct KodikClient: Sendable {
     static func bestGroup(for titles: [String], year: Int?, shikimoriID: Int? = nil,
                           among results: [KodikMaterialDTO]) -> KodikMatch? {
         let results = results.filter { !TitleMatcher.idsConflict(shikimoriID, $0.shikimoriID) }
-        let byMaterial = Dictionary(grouping: results, by: \.id)
+        let byGroup = groupMaterials(results)
         struct Candidate {
             let id: String
             let titles: [String]
             let year: Int?
             let materials: [KodikMaterialDTO]
         }
-        let candidates: [Candidate] = byMaterial.map { id, materials in
+        let candidates: [Candidate] = byGroup.map { id, materials in
             var names: [String] = []
             for m in materials {
                 for t in [m.title, m.titleOrig, m.otherTitle] {
@@ -127,8 +142,6 @@ public struct KodikClient: Sendable {
         guard !candidates.isEmpty else { return nil }
 
         // Нечёткое совпадение названия (с учётом номера сезона в названии).
-        // Запасных вариантов «тот же год» / «первый результат» больше нет: они
-        // подставляли чужие тайтлы. Лучше честное «не найдено».
         if let best = TitleMatcher.bestMatch(for: titles, among: candidates, titlesOf: \.titles, threshold: 0.6) {
             return makeMatch(from: best.materials, id: best.id)
         }

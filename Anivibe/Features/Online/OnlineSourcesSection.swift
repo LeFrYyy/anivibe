@@ -27,13 +27,27 @@ final class KodikOnlineViewModel {
 
     var availableSeasons: [Int] {
         guard let voice = selectedVoice else { return [] }
-        return Set(voice.episodes.map(\.season)).sorted()
+        let fromEpisodes = Set(voice.episodes.map(\.season)).sorted()
+        return fromEpisodes.isEmpty ? voice.seasons : fromEpisodes
     }
 
     var visibleEpisodes: [KodikEpisode] {
         guard let voice = selectedVoice else { return [] }
         let inSeason = voice.episodes(season: selectedSeason)
-        return inSeason.isEmpty ? voice.episodes : inSeason
+        if !inSeason.isEmpty { return inSeason }
+        if let firstSeason = availableSeasons.first {
+            let firstInSeason = voice.episodes(season: firstSeason)
+            if !firstInSeason.isEmpty { return firstInSeason }
+        }
+        return voice.episodes
+    }
+
+    func selectVoice(_ voice: KodikVoiceOption) {
+        selectedVoiceID = voice.id
+        let seasons = Set(voice.episodes.map(\.season)).sorted()
+        if !seasons.isEmpty && !seasons.contains(selectedSeason) {
+            selectedSeason = seasons.first(where: { $0 >= 1 }) ?? seasons.first ?? 1
+        }
     }
 
     func load(anime: Anime, client: KodikClient) async {
@@ -41,8 +55,10 @@ final class KodikOnlineViewModel {
         do {
             if let match = try await client.search(titles: anime.allTitles, year: anime.year, shikimoriID: anime.malID) {
                 self.match = match
-                selectedVoiceID = match.voices.first?.id
-                selectedSeason = match.voices.first?.seasons.first ?? 1
+                let firstVoice = match.voices.first
+                selectedVoiceID = firstVoice?.id
+                let seasons = firstVoice.map { Set($0.episodes.map(\.season)).sorted() } ?? []
+                selectedSeason = seasons.first(where: { $0 >= 1 }) ?? seasons.first ?? 1
                 phase = .loaded
             } else {
                 phase = .notFound
@@ -76,6 +92,11 @@ struct OnlineSourcesSection: View {
         }
         .fullScreenCover(item: $webPlayback) { request in
             KodikPlayerScreen(request: request)
+        }
+        .task {
+            if model.phase == .idle {
+                await model.load(anime: anime, client: client)
+            }
         }
     }
 
@@ -158,8 +179,7 @@ struct OnlineSourcesSection: View {
         Menu {
             ForEach(model.voices) { voice in
                 Button {
-                    model.selectedVoiceID = voice.id
-                    model.selectedSeason = voice.seasons.first ?? 1
+                    model.selectVoice(voice)
                 } label: {
                     let kind = voice.translation.isVoice ? "Озвучка" : (voice.translation.kind == .subtitles ? "Субтитры" : "Перевод")
                     if model.selectedVoice?.id == voice.id {

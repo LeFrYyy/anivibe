@@ -44,7 +44,7 @@ struct WebPlayerView: UIViewRepresentable {
             guard let url = navigationAction.request.url else { return .allow }
             if navigationAction.navigationType == .linkActivated || navigationAction.targetFrame == nil {
                 // Навигация самого плеера (kodik-и др. его домены) разрешена.
-                if let host = url.host(), host.contains("kodik") || host.contains("aniqit") {
+                if let host = url.host(), host.contains("kodik") || host.contains("aniqit") || host.contains("kodikplayer") || host.contains("kodikres") {
                     return .allow
                 }
                 await UIApplication.shared.open(url)

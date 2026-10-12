@@ -1,0 +1,23 @@
+# Минимальная конфигурация для Supabase CLI (локальная разработка: `supabase start`).
+# Полный список параметров создаёт `supabase init`; здесь — только то, что важно для Anivibe.
+project_id = "anivibe"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+
+[db]
+port = 54322
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+# Минимальная длина пароля совпадает с проверкой в приложении.
+minimum_password_length = 8
+
+[auth.email]
+enable_signup = true
+# Для локальной разработки письма видны в Inbucket/Mailpit (http://127.0.0.1:54324).
+enable_confirmations = false
