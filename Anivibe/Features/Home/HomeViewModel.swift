@@ -9,6 +9,7 @@ final class HomeViewModel {
     private(set) var state: State = .idle
     private(set) var recommendations: [Anime] = []
     private(set) var recommendationsBasis: String?
+    private(set) var recentEpisodes: [AiredEpisode] = []
     @ObservationIgnored private var lastRecommendationSource: Int?
 
     func load(catalog: CatalogService, force: Bool = false) async {
@@ -22,6 +23,11 @@ final class HomeViewModel {
         } catch {
             state = .failed("Не удалось загрузить главную.")
         }
+    }
+
+    /// «Недавно вышедшие» грузятся отдельно: их ошибка не ломает главную.
+    func loadRecentEpisodes(catalog: CatalogService) async {
+        if let list = try? await catalog.recentEpisodes() { recentEpisodes = list }
     }
 
     /// Рекомендации строятся от последнего просмотренного тайтла (данные AniList).

@@ -64,6 +64,24 @@ public final class AniListCatalogService: CatalogService, @unchecked Sendable {
                         recentlyAdded: list(dto.recent), seasonLabel: "\(current.season.localizedName) \(current.year)")
     }
 
+    /// Серии, вышедшие за последние 3 дня (расписание AniList), без малоизвестных тайтлов и 18+.
+    public func recentEpisodes() async throws -> [AiredEpisode] {
+        // Округляем «сейчас» до 10 минут, чтобы кэш ответа работал.
+        let nowStamp = Int(now().timeIntervalSince1970) / 600 * 600
+        let vars: [String: JSONValue] = ["from": .int(nowStamp - 3 * 24 * 3600), "to": .int(nowStamp + 1), "perPage": .int(50)]
+        let dto: RecentEpisodesResponseDTO = try await perform(query: AniListQueries.recentEpisodes, variables: vars,
+                                                               cacheTTLKey: "recent-episodes")
+        var seen = Set<Int>()
+        return (dto.Page?.airingSchedules ?? []).compactMap { $0 }.compactMap { item -> AiredEpisode? in
+            guard let media = item.media, media.isAdult != true, let episode = item.episode, let at = item.airingAt,
+                  (item.popularity ?? 0) >= 500 else { return nil }
+            let anime = media.model
+            // Один тайтл — одна карточка (самая свежая серия).
+            guard seen.insert(anime.id).inserted else { return nil }
+            return AiredEpisode(anime: anime, episode: episode, airedAt: Date(timeIntervalSince1970: TimeInterval(at)))
+        }
+    }
+
     public func genres() async throws -> [String] {
         let dto: GenresResponseDTO = try await perform(query: AniListQueries.genres, variables: [:], cacheTTLKey: "genres")
         // «Hentai» исключаем: каталог работает с isAdult: false.

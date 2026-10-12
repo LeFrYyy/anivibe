@@ -145,3 +145,26 @@ struct GraphQLRequestBody: Encodable {
     let query: String
     let variables: [String: JSONValue]
 }
+
+struct RecentEpisodesResponseDTO: Decodable {
+    struct PageDTO: Decodable { let airingSchedules: [AiringDTO?]? }
+    let Page: PageDTO?
+}
+
+struct AiringDTO: Decodable {
+    let episode: Int?
+    let airingAt: Int?
+    let media: MediaDTO?
+    let popularity: Int?
+
+    private enum CodingKeys: String, CodingKey { case episode, airingAt, media }
+    private struct Extra: Decodable { let popularity: Int? }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        episode = try c.decodeIfPresent(Int.self, forKey: .episode)
+        airingAt = try c.decodeIfPresent(Int.self, forKey: .airingAt)
+        media = try c.decodeIfPresent(MediaDTO.self, forKey: .media)
+        popularity = (try? c.decodeIfPresent(Extra.self, forKey: .media))?.popularity
+    }
+}

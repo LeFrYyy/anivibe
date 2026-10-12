@@ -114,16 +114,7 @@ public struct KodikProvider: VideoSourceProvider {
     /// Объединяет серии всех озвучек. Если у тайтла один сезон, нумерация сквозная (season = nil):
     /// AniList хранит каждый сезон отдельным тайтлом, а Kodik может подписать сиквел как «сезон 2».
     static func makeEpisodes(match: KodikMatch, titleID: String, preferredVoice: String?) -> [ProviderEpisode] {
-        func rank(_ title: String) -> Int {
-            let t = title.lowercased()
-            return popularStudios.firstIndex { t.contains($0) } ?? popularStudios.count
-        }
-        let voices = match.voices.sorted { a, b in
-            if a.translation.isVoice != b.translation.isVoice { return a.translation.isVoice }
-            let ra = rank(a.translation.title), rb = rank(b.translation.title)
-            if ra != rb { return ra < rb }
-            return a.episodes.count > b.episodes.count
-        }
+        let voices = rankedVoices(match.voices)
         var all = voices.flatMap(\.episodes)
         let regular = all.filter { $0.season > 0 }
         if !regular.isEmpty { all = regular }
@@ -156,6 +147,21 @@ public struct KodikProvider: VideoSourceProvider {
             let selected = entry.voices.contains { $0.title == preferredVoice } ? preferredVoice : entry.voices[0].title
             return ProviderEpisode(providerID: providerID, titleID: titleID, season: key.season, number: key.number,
                                    title: entry.title, payload: Payload(selected: selected, voices: entry.voices).encoded())
+        }
+    }
+
+    /// Озвучки в порядке «по умолчанию»: сначала озвучки (не субтитры), затем популярные студии,
+    /// затем самые полные. Этот же порядок использует плеер, когда пользователь ещё ничего не выбрал.
+    public static func rankedVoices(_ voices: [KodikVoiceOption]) -> [KodikVoiceOption] {
+        func rank(_ title: String) -> Int {
+            let t = title.lowercased()
+            return popularStudios.firstIndex { t.contains($0) } ?? popularStudios.count
+        }
+        return voices.sorted { a, b in
+            if a.translation.isVoice != b.translation.isVoice { return a.translation.isVoice }
+            let ra = rank(a.translation.title), rb = rank(b.translation.title)
+            if ra != rb { return ra < rb }
+            return a.episodes.count > b.episodes.count
         }
     }
 

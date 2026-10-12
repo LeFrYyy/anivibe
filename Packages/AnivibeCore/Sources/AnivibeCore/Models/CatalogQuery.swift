@@ -107,3 +107,16 @@ public struct HomeFeed: Hashable, Sendable {
         self.seasonLabel = seasonLabel
     }
 }
+
+/// Недавно вышедшая серия (по расписанию AniList).
+public struct AiredEpisode: Hashable, Sendable, Identifiable {
+    public var id: String { "\(anime.id)-\(episode)" }
+    public let anime: Anime
+    public let episode: Int
+    public let airedAt: Date
+    public init(anime: Anime, episode: Int, airedAt: Date) {
+        self.anime = anime
+        self.episode = episode
+        self.airedAt = airedAt
+    }
+}

@@ -18,7 +18,8 @@ final class KodikOnlineViewModel {
     var selectedVoiceID: KodikVoiceOption.ID?
     var selectedSeason: Int = 1
 
-    var voices: [KodikVoiceOption] { match?.voices ?? [] }
+    /// В том же порядке, что использует плеер по умолчанию.
+    var voices: [KodikVoiceOption] { KodikProvider.rankedVoices(match?.voices ?? []) }
 
     var selectedVoice: KodikVoiceOption? {
         if let selectedVoiceID, let voice = voices.first(where: { $0.id == selectedVoiceID }) { return voice }
@@ -57,7 +58,10 @@ final class KodikOnlineViewModel {
         do {
             if let match = try await client.search(titles: anime.allTitles, year: anime.year, shikimoriID: anime.malID) {
                 self.match = match
-                let firstVoice = match.voices.first
+                // Сначала — озвучка, выбранная пользователем раньше; иначе та, что включит плеер по умолчанию.
+                let ranked = KodikProvider.rankedVoices(match.voices)
+                let saved = UserDefaults.standard.string(forKey: KodikPreferences.voiceKey)
+                let firstVoice = ranked.first { $0.translation.title == saved } ?? ranked.first
                 selectedVoiceID = firstVoice?.id
                 let seasons = firstVoice.map { Set($0.episodes.map(\.season)).sorted() } ?? []
                 selectedSeason = seasons.first(where: { $0 >= 1 }) ?? seasons.first ?? 1
@@ -82,8 +86,8 @@ final class KodikOnlineViewModel {
 struct OnlineSourcesSection: View {
     let anime: Anime
     let client: KodikClient
-
-    @State private var model = KodikOnlineViewModel()
+    /// Общая модель со страницей аниме (её же использует выбор озвучки над кнопкой «Смотреть»).
+    let model: KodikOnlineViewModel
     @State private var webPlayback: WebPlaybackRequest?
 
     var body: some View {
@@ -264,5 +268,89 @@ struct OnlineSourcesSection: View {
         }
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
         .padding(.horizontal, Theme.Spacing.l)
+    }
+}
+
+/// Выбор озвучки прямо над кнопкой «Смотреть» — плеер включит выбранную.
+struct KodikVoicePicker: View {
+    let anime: Anime
+    let client: KodikClient
+    let model: KodikOnlineViewModel
+
+    var body: some View {
+        Group {
+            switch model.phase {
+            case .idle, .loading:
+                HStack(spacing: Theme.Spacing.s) {
+                    ProgressView().controlSize(.small)
+                    Text("Ищем озвучки…")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                }
+                .padding(.vertical, Theme.Spacing.s)
+            case .notFound:
+                Label("У Kodik нет озвучек этого тайтла", systemImage: "mic.slash")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            case .failed:
+                Button {
+                    Task { await model.load(anime: anime, client: client) }
+                } label: {
+                    Label("Не удалось загрузить озвучки — повторить", systemImage: "arrow.clockwise")
+                        .font(.footnote)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            case .loaded:
+                menu
+            }
+        }
+        .task {
+            if model.phase == .idle { await model.load(anime: anime, client: client) }
+        }
+    }
+
+    private var menu: some View {
+        Menu {
+            ForEach(model.voices) { voice in
+                Button {
+                    model.selectVoice(voice)
+                } label: {
+                    let suffix = voice.translation.isVoice ? "" : " (субтитры)"
+                    let count = voice.isSingleVideo ? "" : " · \(voice.episodes.count) сер."
+                    if model.selectedVoice?.id == voice.id {
+                        Label(voice.translation.title + suffix + count, systemImage: "checkmark")
+                    } else {
+                        Text(voice.translation.title + suffix + count)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: Theme.Spacing.s) {
+                Image(systemName: "mic.fill")
+                    .foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Озвучка")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                    Text(model.selectedVoice?.translation.title ?? "Выберите озвучку")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text("\(model.voices.count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .padding(.horizontal, Theme.Spacing.m)
+            .padding(.vertical, Theme.Spacing.s)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+        }
+        .accessibilityLabel("Выбор озвучки")
     }
 }

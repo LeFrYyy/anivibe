@@ -9,4 +9,10 @@ public protocol CatalogService: Sendable {
     func details(id: Int) async throws -> AnimeDetails
     func homeFeed() async throws -> HomeFeed
     func genres() async throws -> [String]
+    /// Недавно вышедшие серии, от новых к старым.
+    func recentEpisodes() async throws -> [AiredEpisode]
+}
+
+public extension CatalogService {
+    func recentEpisodes() async throws -> [AiredEpisode] { [] }
 }

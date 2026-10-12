@@ -57,4 +57,16 @@ enum AniListQueries {
     """ + "\n" + mediaCard
 
     static let genres = "query { GenreCollection }"
+
+    static let recentEpisodes = """
+    query ($from: Int, $to: Int, $perPage: Int) {
+      Page(page: 1, perPage: $perPage) {
+        airingSchedules(airingAt_greater: $from, airingAt_lesser: $to, sort: [TIME_DESC]) {
+          episode
+          airingAt
+          media { ...card popularity }
+        }
+      }
+    }
+    """ + "\n" + mediaCard
 }

@@ -15,6 +15,7 @@ struct HomeView: View {
                         DemoBanner()
                     }
                     continueSection
+                    recentEpisodesSection
                     feedSections
                     favoritesSection
                     catalogShortcut
@@ -25,8 +26,12 @@ struct HomeView: View {
             .navigationTitle("Anivibe")
             .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
             .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
-            .refreshable { await model.load(catalog: env.catalog, force: true) }
+            .refreshable {
+                await model.load(catalog: env.catalog, force: true)
+                await model.loadRecentEpisodes(catalog: env.catalog)
+            }
             .task { await model.load(catalog: env.catalog) }
+            .task { await model.loadRecentEpisodes(catalog: env.catalog) }
             .task(id: library.continueWatching.first?.anime.id) {
                 await model.loadRecommendations(catalog: env.catalog, basedOn: library.continueWatching.first)
             }
@@ -45,6 +50,37 @@ struct HomeView: View {
                                            subtitle: item.resume.isNextEpisode ? "Далее: серия \(item.resume.episode)" : "Серия \(item.resume.episode) · \(Int(item.resume.fraction * 100))%",
                                            progress: item.resume.isNextEpisode ? nil : item.resume.fraction)
                                 .frame(width: 130)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.l)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var recentEpisodesSection: some View {
+        if !model.recentEpisodes.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+                HStack {
+                    SectionHeader(title: "Недавно вышедшие")
+                    Spacer()
+                    NavigationLink {
+                        RecentEpisodesView(items: model.recentEpisodes)
+                    } label: {
+                        Text("Все").font(.subheadline.weight(.medium))
+                    }
+                    .padding(.trailing, Theme.Spacing.l)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: Theme.Spacing.m) {
+                        ForEach(model.recentEpisodes.prefix(20)) { item in
+                            NavigationLink(value: item.anime) {
+                                PosterCard(title: item.anime.title.preferred, coverURL: item.anime.coverURL,
+                                           colorHex: item.anime.coverColorHex,
+                                           subtitle: "Серия \(item.episode) · \(RecentEpisodesView.relative(item.airedAt))")
+                                    .frame(width: 120)
                             }
                             .buttonStyle(.plain)
                         }
@@ -153,5 +189,48 @@ struct DemoBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.panel))
             .padding(.horizontal, Theme.Spacing.l)
+    }
+}
+
+/// Полный список недавно вышедших серий.
+struct RecentEpisodesView: View {
+    let items: [AiredEpisode]
+
+    private static let formatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "ru_RU")
+        f.unitsStyle = .short
+        return f
+    }()
+
+    static func relative(_ date: Date) -> String {
+        formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    var body: some View {
+        List(items) { item in
+            NavigationLink(value: item.anime) {
+                HStack(spacing: Theme.Spacing.m) {
+                    PosterImage(url: item.anime.coverURL, placeholderColorHex: item.anime.coverColorHex)
+                        .frame(width: 50, height: 50 / Theme.posterAspect)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.anime.title.preferred)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(2)
+                        Text("Серия \(item.episode)")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.accent)
+                        Text(Self.relative(item.airedAt))
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .listStyle(.plain)
+        .navigationTitle("Недавно вышедшие")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

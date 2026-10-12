@@ -8,6 +8,7 @@ struct AnimeDetailsView: View {
     @State private var model: AnimeDetailsViewModel
     @State private var playback: PlaybackRequest?
     @State private var descriptionExpanded = false
+    @State private var kodikModel = KodikOnlineViewModel()
 
     init(anime: Anime) {
         _model = State(initialValue: AnimeDetailsViewModel(anime: anime))
@@ -91,6 +92,10 @@ struct AnimeDetailsView: View {
 
     private var actions: some View {
         VStack(spacing: Theme.Spacing.m) {
+            // Озвучка выбирается до просмотра; ждём полные данные тайтла (нужен ID Shikimori).
+            if case .loaded = model.phase, let kodik = env.kodik {
+                KodikVoicePicker(anime: anime, client: kodik, model: kodikModel)
+            }
             Button {
                 startPlayback(episode: resume?.episode ?? 1, position: resume?.position ?? 0)
             } label: {
@@ -179,7 +184,7 @@ struct AnimeDetailsView: View {
         episodesSection
         // Все озвучки Kodik списком (основной просмотр — кнопкой «Смотреть»).
         if let kodik = env.kodik {
-            OnlineSourcesSection(anime: anime, client: kodik)
+            OnlineSourcesSection(anime: anime, client: kodik, model: kodikModel)
         }
         officialLinks
         if let recs = model.details?.recommendations, !recs.isEmpty {
