@@ -1,7 +1,7 @@
 import XCTest
 @testable import AnivibeCore
 final class EmailCodeAndOAuthTests: XCTestCase {
-    let config = AppConfiguration.Supabase(url: URL(string: "https://example.supabase.co")!, anonKey: "publishable-test")
+    let config = AppConfiguration.Supabase(url: URL(string: "https://example.supabase.co")!, anonKey: "sb_publishable_test")
     func testCodeIsVerifiedByServerAndSessionStored() async throws {
         let t = StubTransport { _ in (200, Data(AuthTests.sessionJSON().utf8), [:]) }
         let store = InMemoryTokenStore()
@@ -11,6 +11,8 @@ final class EmailCodeAndOAuthTests: XCTestCase {
         XCTAssertEqual(t.requests.first?.bodyJSON["type"] as? String, "signup")
         XCTAssertEqual(t.requests.first?.bodyJSON["email"] as? String, "a@b.co")
         XCTAssertNotNil(store.load())
+        XCTAssertEqual(t.requests.first?.value(forHTTPHeaderField: "apikey"), config.anonKey)
+        XCTAssertNil(t.requests.first?.value(forHTTPHeaderField: "Authorization"))
         do { _ = try await auth.verifySignupCode(email: "a@b.co", code: "abc"); XCTFail() }
         catch { XCTAssertEqual(error as? AuthError, .invalidCode) }
         XCTAssertEqual(t.requests.count, 1)
@@ -30,6 +32,10 @@ final class EmailCodeAndOAuthTests: XCTestCase {
         XCTAssertEqual(t.requests.last?.url?.query, "grant_type=pkce")
         XCTAssertEqual(t.requests.last?.bodyJSON["auth_code"] as? String, "authorization-code")
         XCTAssertNil(t.requests.last?.bodyJSON["client_secret"])
+        for request in t.requests {
+            XCTAssertEqual(request.value(forHTTPHeaderField: "apikey"), config.anonKey)
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        }
         await auth.signOut()
         let session = await auth.currentSession; XCTAssertNil(session)
     }

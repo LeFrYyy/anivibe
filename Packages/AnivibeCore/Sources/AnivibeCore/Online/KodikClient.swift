@@ -11,6 +11,7 @@ import FoundationNetworking
 ///   НЕ `VideoSourceProvider`: воспроизведение идёт в WKWebView, а не в нашем AVPlayer.
 /// * Прямые HLS-потоки (для нативного плеера с выбором качества и скорости) — см. `KodikStreamResolver`.
 public struct KodikClient: Sendable {
+
     public static let defaultBaseURL = URL(string: "https://kodik-api.com")!
 
     private let token: String
