@@ -38,7 +38,6 @@ struct PlayerControlsView: View {
                     Image(systemName: "xmark").font(.title3.weight(.semibold)).frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("Закрыть плеер")
-                if model.phase == .ready { videoMenu }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.anime.title.preferred).font(.subheadline.weight(.semibold)).lineLimit(1)
                     Text(model.currentEpisode?.displayTitle ?? "Серия \(model.episodeNumber)")
@@ -57,6 +56,7 @@ struct PlayerControlsView: View {
                 }
                 .accessibilityLabel("Повернуть экран")
             }
+            if model.phase == .ready { HStack { videoMenu; Spacer() } }
             if let source = model.source {
                 HStack(spacing: 6) {
                     Image(systemName: source.isTestContent ? "testtube.2" : "antenna.radiowaves.left.and.right")
@@ -149,11 +149,10 @@ struct PlayerControlsView: View {
         .accessibilityLabel("Настройки видео: озвучка, качество и скорость")
     }
 
-    /// Короткая сводка на кнопке: «720p · 1.25×».
+    /// Явная кнопка качества; скорость и озвучка доступны в том же окне.
     private var videoSummary: String {
-        let speed = KodikPlayerScreen.speedLabel(model.playbackSpeed)
-        if let quality = model.currentQualityHeight { return "\(quality)p · \(speed)" }
-        return speed
+        if let quality = model.currentQualityHeight { return "Качество: \(quality)p" }
+        return "Качество: авто"
     }
 
     private var tracksMenu: some View {

@@ -55,6 +55,15 @@ final class SocialStore {
             if currentUserID == account { errorMessage = message(error) }; return false
         }
     }
+    func setAvatar(_ jpeg: Data?) async {
+        guard !isSaving, let service, let account = currentUserID else { return }
+        isSaving = true; errorMessage = nil
+        defer { isSaving = false }
+        do {
+            try await service.setAvatar(jpeg: jpeg, expectedUserID: account)
+            if currentUserID == account { await load(service: service, userID: account) }
+        } catch { if currentUserID == account { errorMessage = message(error) } }
+    }
     func search(_ username: String) async {
         guard let service, let account = currentUserID else { return }
         let operation = UUID(); searchID = operation

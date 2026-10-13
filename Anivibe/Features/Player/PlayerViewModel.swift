@@ -355,7 +355,7 @@ final class PlayerViewModel {
     }
 
     func selectQuality(_ quality: PlaybackQuality) {
-        guard let current = source, quality.url != current.url else { return }
+        guard phase == .ready, let current = source, current.qualities.contains(where: { $0.url == quality.url && $0.height == quality.height }), quality.url != current.url else { return }
         UserDefaults.standard.set(quality.height, forKey: KodikPreferences.qualityKey)
         saveProgress(force: true)
         resumeAfterLoad = isPlaying || isBuffering

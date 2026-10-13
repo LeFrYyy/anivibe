@@ -14,18 +14,23 @@ struct VideoSettingsSheet: View {
                         Button("Повторить загрузку") { model.retry() }
                     }
                 }
+                if !model.qualities.isEmpty {
+                    Section("Качество") {
+                        ForEach(model.qualities.sorted { $0.height > $1.height }) { quality in
+                            choice(quality.label, selected: quality.height == model.currentQualityHeight) { model.selectQuality(quality) }
+                                .disabled(model.phase != .ready)
+                        }
+                    }
+                }
+                else {
+                    Section("Качество") {
+                        Text("Источник не предоставил отдельные варианты разрешения. Для адаптивного HLS качество выбирается автоматически.").font(.footnote)
+                    }
+                }
                 if !model.voices.isEmpty {
                     Section("Озвучка") {
                         ForEach(model.voices, id: \.self) { voice in
                             choice(voice, selected: voice == model.selectedVoice) { model.selectVoice(voice) }
-                        }
-                    }
-                }
-                if !model.qualities.isEmpty {
-                    Section("Качество") {
-                        ForEach(model.qualities) { quality in
-                            choice(quality.label, selected: quality.height == model.currentQualityHeight) { model.selectQuality(quality) }
-                                .disabled(model.phase != .ready)
                         }
                     }
                 }

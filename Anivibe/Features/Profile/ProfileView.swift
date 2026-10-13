@@ -51,7 +51,7 @@ struct ProfileView: View {
     private func accountSection(_ user: AuthUser) -> some View {
         Section("Аккаунт") {
             if let profile = social.profile {
-                Text(profile.displayName).font(.title3.bold())
+                HStack { ProfileAvatarView(userID: profile.userID, revision: profile.updatedAt, size: 64); Text(profile.displayName).font(.title3.bold()) }
                 if let username = profile.username { Text("@" + username).foregroundStyle(Theme.textSecondary) }
                 else { Text("Выберите username в настройках профиля").font(.footnote) }
                 if !profile.bio.isEmpty { Text(verbatim: profile.bio) }

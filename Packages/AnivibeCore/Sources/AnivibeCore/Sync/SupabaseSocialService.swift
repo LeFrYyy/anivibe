@@ -13,11 +13,13 @@ public struct UserProfile: Codable, Hashable, Sendable, Identifiable {
     public let username: String?
     public let displayName: String
     public let bio: String
+    public let avatarPath: String?
     public let visibility: ProfileVisibility
     public let createdAt: String
     public let updatedAt: String
     enum CodingKeys: String, CodingKey {
         case userID = "user_id", username, displayName = "display_name", bio, visibility
+        case avatarPath = "avatar_path"
         case createdAt = "created_at", updatedAt = "updated_at"
     }
 }
@@ -132,6 +134,46 @@ public actor SupabaseSocialService {
         if let expectedUserID, session.user.id != expectedUserID { throw AuthError.notSignedIn }
         _ = try await request(path: "rpc/anivibe_friend_action", method: "POST", body: try JSONEncoder().encode(["p_target": targetID, "p_action": action.rawValue]), session: session)
     }
+    public func comments(animeID: Int, offset: Int = 0, popular: Bool = false, expectedUserID: String? = nil) async throws -> [TitleComment] {
+        let session = try await auth.validSession()
+        if let expectedUserID, session.user.id != expectedUserID { throw AuthError.notSignedIn }
+        let body = try JSONSerialization.data(withJSONObject: ["p_anime": animeID, "p_offset": offset, "p_popular": popular])
+        return try JSONDecoder().decode([TitleComment].self, from: await request(path: "rpc/anivibe_comments", method: "POST", body: body, session: session))
+    }
+    public func commentAction(animeID: Int, action: String, commentID: String? = nil, text: String = "", value: Int = 0, expectedUserID: String) async throws {
+        let session = try await auth.validSession()
+        guard session.user.id == expectedUserID else { throw AuthError.notSignedIn }
+        var payload: [String: Any] = ["p_anime": animeID, "p_action": action, "p_text": text, "p_value": value]
+        payload["p_comment"] = commentID.map { $0 as Any } ?? NSNull()
+        _ = try await request(path: "rpc/anivibe_comment_action", method: "POST", body: JSONSerialization.data(withJSONObject: payload), session: session)
+    }
+    public func avatarURL(userID: String, expectedUserID: String? = nil) async throws -> URL? {
+        guard UUID(uuidString: userID) != nil else { throw SocialError.denied }
+        let session = try await auth.validSession()
+        if let expectedUserID, session.user.id != expectedUserID { throw AuthError.notSignedIn }
+        let data = try await avatarRequest(method: "POST", body: JSONEncoder().encode(["user_id": userID]), session: session)
+        let result = try JSONDecoder().decode(AvatarLink.self, from: data)
+        return result.url
+    }
+    public func setAvatar(jpeg: Data?, expectedUserID: String) async throws {
+        let session = try await auth.validSession()
+        guard session.user.id == expectedUserID else { throw AuthError.notSignedIn }
+        guard jpeg == nil || jpeg!.count <= 1_048_576 else { throw SocialError.validation("Аватар слишком большой (максимум 1 МБ).") }
+        _ = try await avatarRequest(method: jpeg == nil ? "DELETE" : "PUT", body: jpeg, session: session)
+    }
+    private func avatarRequest(method: String, body: Data?, session: AuthSession) async throws -> Data {
+        var req = URLRequest(url: config.url.appendingPathComponent("functions/v1/avatar"))
+        req.httpMethod = method; req.httpBody = body
+        req.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue(method == "PUT" ? "image/jpeg" : "application/json", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await transport.send(req)
+        if response.statusCode == 401 { throw AuthError.sessionExpired }
+        if response.statusCode == 429 { throw SocialError.rateLimited }
+        if response.statusCode == 400 || response.statusCode == 413 { throw SocialError.validation("Не удалось проверить изображение. Выберите другое фото размером до 1 МБ.") }
+        guard (200..<300).contains(response.statusCode) else { throw SocialError.validation("Аватары недоступны. Проверьте миграцию avatars_comments и развёртывание функции avatar.") }
+        return data
+    }
     private func request(path: String, method: String, body: Data? = nil, session: AuthSession, query: [URLQueryItem] = []) async throws -> Data {
         var components = URLComponents(url: config.url.appendingPathComponent("rest/v1/\(path)"), resolvingAgainstBaseURL: false)!
         components.queryItems = query.isEmpty ? nil : query
@@ -146,6 +188,7 @@ public actor SupabaseSocialService {
             if ["42P01", "PGRST202", "PGRST205"].contains(code) { throw SocialError.backendMissing }
             if code == "23514" { throw SocialError.validation("Данные профиля не соответствуют ограничениям сервера.") }
             if response.statusCode == 401 { throw AuthError.sessionExpired }
+            if message == "comment_invalid" { throw SocialError.validation("Комментарий: 1–2000 символов; повторные сообщения запрещены.") }
             if response.statusCode == 429 || message == "request_rate_limited" { throw SocialError.rateLimited }
             if message == "profile_incomplete" { throw SocialError.validation("Сначала выберите username в своём профиле.") }
             if message == "friends_limit_reached" { throw SocialError.friendLimit }

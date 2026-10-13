@@ -130,12 +130,9 @@ struct KodikPlayerScreen: View {
     // MARK: - Верхняя панель
 
     private var topBar: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
         HStack(alignment: .center, spacing: Theme.Spacing.s) {
             // Настройки видео — в левом верхнем углу.
-            if phase == .ready {
-                qualityMenu
-                speedMenu
-            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(request.title)
                     .font(.subheadline.weight(.semibold))
@@ -161,6 +158,8 @@ struct KodikPlayerScreen: View {
             }
             .accessibilityLabel("Закрыть плеер")
         }
+        if phase == .ready { HStack { qualityMenu; speedMenu; Spacer() } }
+        }
         .padding(.horizontal, Theme.Spacing.l)
         .padding(.vertical, Theme.Spacing.s)
         .background(Color.black)
@@ -180,7 +179,7 @@ struct KodikPlayerScreen: View {
                 }
             }
         } label: {
-            pill(icon: "sparkles.tv", text: currentQuality.map { "\($0)p" } ?? "Авто")
+            pill(icon: "sparkles.tv", text: currentQuality.map { "Качество: \($0)p" } ?? "Качество: авто")
         }
         .accessibilityLabel("Качество видео")
     }
@@ -267,17 +266,24 @@ struct KodikPlayerScreen: View {
         item.preferredForwardBufferDuration = 10
         player.replaceCurrentItem(with: item)
         currentQuality = stream.quality
-        if let time, time.isValid, time.seconds > 0 {
-            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        let needsSeek = time.map { $0.isValid && $0.seconds > 0 } ?? false
+        if let time, needsSeek {
+            player.pause()
+            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { completed in
+                Task { @MainActor in
+                    guard completed, player.currentItem === item else { return }
+                    if autoplay { player.playImmediately(atRate: speed) }
+                }
+            }
         }
         player.defaultRate = speed
-        if autoplay { player.playImmediately(atRate: speed) }
+        if autoplay && !needsSeek { player.playImmediately(atRate: speed) }
     }
 
     private func switchQuality(to stream: KodikStream) {
         guard stream.quality != currentQuality else { return }
         preferredQuality = stream.quality
-        let wasPlaying = player.rate > 0
+        let wasPlaying = player.timeControlStatus != .paused
         play(stream, at: player.currentTime(), autoplay: wasPlaying)
     }
 

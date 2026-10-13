@@ -239,6 +239,7 @@ struct AnimeDetailsView: View {
             Button("Озвучки и серии источника") { showSources = true }
                 .buttonStyle(.bordered).padding(.horizontal, Theme.Spacing.l)
         }
+        CommentsSection(animeID: anime.id)
         officialLinks
         if let recs = model.details?.recommendations, !recs.isEmpty {
             PosterRow(title: "Похожие", items: recs)

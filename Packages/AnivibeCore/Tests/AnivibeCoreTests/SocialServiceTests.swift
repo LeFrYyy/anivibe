@@ -99,4 +99,56 @@ final class SocialServiceTests: XCTestCase {
         XCTAssertEqual(t.requests.first?.url?.path, "/rest/v1/rpc/anivibe_search_profiles")
         XCTAssertEqual(t.requests.first?.bodyJSON["p_username"] as? String, "alice")
     }
+    func testOldProfileWithoutAvatarStillDecodes() throws {
+        let profile = try JSONDecoder().decode(UserProfile.self, from: Data(Self.row.utf8))
+        XCTAssertNil(profile.avatarPath)
+    }
+    func testCommentsPaginationRequest() async throws {
+        let t = StubTransport { _ in (200, Data("[]".utf8), [:]) }
+        _ = try await service(t).comments(animeID: 123, offset: 20, popular: true)
+        let req = try XCTUnwrap(t.requests.first)
+        XCTAssertEqual(req.url?.path, "/rest/v1/rpc/anivibe_comments")
+        XCTAssertEqual(req.bodyJSON["p_anime"] as? Int, 123)
+        XCTAssertEqual(req.bodyJSON["p_offset"] as? Int, 20)
+        XCTAssertEqual(req.bodyJSON["p_popular"] as? Bool, true)
+    }
+    func testCommentActionHasNoActorOrCounters() async throws {
+        let t = StubTransport { _ in (204, Data(), [:]) }
+        try await service(t).commentAction(animeID: 123, action: "create", text: "Тест", expectedUserID: Self.actorID)
+        let req = try XCTUnwrap(t.requests.first)
+        XCTAssertEqual(Set(req.bodyJSON.keys), Set(["p_anime","p_action","p_comment","p_text","p_value"]))
+        XCTAssertTrue(req.bodyJSON["p_comment"] is NSNull)
+        XCTAssertNil(req.bodyJSON["author_id"])
+    }
+    func testCommentAccountChangeDoesNotSend() async {
+        let t = StubTransport { _ in (204, Data(), [:]) }
+        do { try await service(t).commentAction(animeID: 123, action: "create", text: "Тест", expectedUserID: Self.targetID); XCTFail() }
+        catch { XCTAssertEqual(error as? AuthError, .notSignedIn) }
+        XCTAssertTrue(t.requests.isEmpty)
+    }
+    func testAvatarUploadUsesUserJWTAndBinaryBody() async throws {
+        let t = StubTransport { _ in (200, Data("{}".utf8), [:]) }
+        let bytes = Data([255,216,255,217])
+        try await service(t).setAvatar(jpeg: bytes, expectedUserID: Self.actorID)
+        let req = try XCTUnwrap(t.requests.first)
+        XCTAssertEqual(req.url?.path, "/functions/v1/avatar")
+        XCTAssertEqual(req.httpMethod, "PUT")
+        XCTAssertEqual(req.httpBody, bytes)
+        XCTAssertEqual(req.value(forHTTPHeaderField: "Authorization"), "Bearer user-jwt")
+    }
+    func testAvatarDeleteAndNullLink() async throws {
+        let t = StubTransport { _ in (200, Data(#"{"url":null}"#.utf8), [:]) }
+        try await service(t).setAvatar(jpeg: nil, expectedUserID: Self.actorID)
+        let url = try await service(t).avatarURL(userID: Self.targetID)
+        XCTAssertNil(url)
+        XCTAssertEqual(t.requests.first?.httpMethod, "DELETE")
+        XCTAssertEqual(t.requests.last?.bodyJSON["user_id"] as? String, Self.targetID)
+    }
+    func testAvatarAccountAndSizeGuards() async {
+        let t = StubTransport { _ in (200, Data(), [:]) }
+        do { try await service(t).setAvatar(jpeg: Data(), expectedUserID: Self.targetID); XCTFail() } catch {}
+        do { try await service(t).setAvatar(jpeg: Data(repeating: 0,count: 1048577), expectedUserID: Self.actorID); XCTFail() } catch {}
+        XCTAssertTrue(t.requests.isEmpty)
+    }
+
 }
