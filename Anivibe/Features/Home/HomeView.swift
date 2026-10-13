@@ -48,6 +48,13 @@ struct HomeView: View {
                     }
                     .accessibilityLabel("Создать папку")
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: openCatalog) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.body.weight(.semibold))
+                    }
+                    .accessibilityLabel("Поиск в каталоге")
+                }
             }
             .alert("Новая папка", isPresented: $showNewFolder) {
                 TextField("Название", text: $newFolderName)
@@ -749,7 +756,7 @@ struct AddToFolderSheet: View {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.isEmpty {
             // Небольшая пауза: не дёргаем каталог на каждую букву.
-            try? await Task.sleep(nanoseconds: 350_000_000)
+            try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
         }
         isLoading = true
