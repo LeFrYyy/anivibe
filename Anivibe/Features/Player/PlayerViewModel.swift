@@ -112,6 +112,12 @@ final class PlayerViewModel {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
+    var kodikWebURL: URL? {
+        guard let episode = activeCandidate?.episode else { return nil }
+        return KodikProvider.playerURL(for: episode)
+    }
+    func pauseForWebPlayer() { saveProgress(force: true); player.pause() }
+
     // MARK: - Sources
 
     func findSources() {
@@ -128,7 +134,7 @@ final class PlayerViewModel {
                 found = [SourceCandidate(providerID: provider.id, providerName: provider.displayName,
                     isTestContent: provider.providesTestContent, episode: exact, availability: availability)]
             } else {
-                found = await registry.candidates(for: anime, episode: episode, excluding: [KodikProvider.providerID])
+                found = await registry.candidates(for: anime, season: self.currentEpisode?.season ?? 1, episode: episode)
             }
             guard !Task.isCancelled, episode == self.episodeNumber else { return }
             self.candidates = found
@@ -161,6 +167,10 @@ final class PlayerViewModel {
     }
 
     private func play(candidate: SourceCandidate) async {
+        guard !Task.isCancelled, !isTornDown else { return }
+        player.pause()
+        source = nil
+        hasActuallyPlayed = false
         activeCandidate = candidate
         phase = .preparing
         guard let episode = candidate.episode, let provider = await registry.provider(candidate.providerID) else {
@@ -470,8 +480,9 @@ final class PlayerViewModel {
         guard force || isPlaying else { return }
         lastSaveDate = now
         let snapshot = anime.snapshot
-        let (episode, position, total) = (currentEpisode?.progressNumber ?? episodeNumber, currentTime, duration)
-        let key = currentEpisode?.sourceKey
+        let kodikEpisode = activeCandidate?.providerID == KodikProvider.providerID ? activeCandidate?.episode : nil
+        let (episode, position, total) = (kodikEpisode?.number ?? currentEpisode?.progressNumber ?? episodeNumber, currentTime, duration)
+        let key = kodikEpisode?.id ?? currentEpisode?.sourceKey
         Task { await library.recordProgress(anime: snapshot, episode: episode, position: position, duration: total, sourceKey: key, accountID: progressAccountID) }
     }
 

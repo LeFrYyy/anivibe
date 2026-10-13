@@ -22,6 +22,10 @@ struct HomeView: View {
                     if env.catalog.isDemo {
                         DemoBanner()
                     }
+                    if let error = env.collections.errorMessage {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .font(.subheadline).foregroundStyle(Theme.danger).padding(.horizontal, 16)
+                    }
                     foldersSection
                     continueSection
                     recentEpisodesSection
@@ -60,6 +64,10 @@ struct HomeView: View {
             .refreshable {
                 await model.load(catalog: env.catalog, force: true)
                 await model.loadRecentEpisodes(catalog: env.catalog)
+            }
+            .onChange(of: env.collections.activeAccountID) { _, _ in
+                openedFolder = nil; path = NavigationPath(); editingFolders = false; draggedFolder = nil
+                showNewFolder = false; deleteFolderID = nil
             }
             .task { await model.load(catalog: env.catalog) }
             .task { await model.loadRecentEpisodes(catalog: env.catalog) }

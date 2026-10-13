@@ -8,7 +8,8 @@ import FoundationNetworking
 /// Важно честно:
 /// * API требует токен партнёра (получается при регистрации на kodik.biz). Без токена клиент не создаётся.
 /// * Kodik отдаёт ссылки на свой ВЕБ-плеер (iframe), а не прямые потоки. Поэтому это
-///   НЕ `VideoSourceProvider`: воспроизведение идёт в WKWebView, а не в нашем AVPlayer.
+///   Клиент поиска сам НЕ VideoSourceProvider; KodikProvider получает нативные потоки,
+///   а встроенный WKWebView используется как явный резервный путь.
 /// * Прямые HLS-потоки (для нативного плеера с выбором качества и скорости) — см. `KodikStreamResolver`.
 public struct KodikClient: Sendable {
 

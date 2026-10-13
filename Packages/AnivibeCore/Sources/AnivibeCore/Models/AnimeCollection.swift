@@ -96,3 +96,57 @@ public struct AnimeCollections: Hashable, Codable, Sendable {
         return "\(base) \(n)"
     }
 }
+
+/// Sync unit is one whole folder (name + ordered items). Concurrent edits of the
+/// same folder use timestamp/mutation-ID LWW; different folders merge independently.
+public struct CollectionSyncRecord: Codable, Hashable, Sendable, Identifiable {
+    public var id: UUID { folder.id }
+    public var folder: AnimeCollection
+    public var rank: Int
+    public var updatedAt: Date
+    public var mutationID: UUID
+    public var isDeleted: Bool
+    public init(folder: AnimeCollection, rank: Int, updatedAt: Date = Date(), mutationID: UUID = UUID(), isDeleted: Bool = false) {
+        self.folder = folder; self.rank = rank; self.updatedAt = Date(timeIntervalSince1970: floor(updatedAt.timeIntervalSince1970 * 1000) / 1000); self.mutationID = mutationID; self.isDeleted = isDeleted
+    }
+    public func isNewer(than other: Self) -> Bool {
+        updatedAt != other.updatedAt ? updatedAt > other.updatedAt : mutationID.uuidString > other.mutationID.uuidString
+    }
+}
+public struct CollectionsSyncState: Codable, Hashable, Sendable {
+    public var records: [CollectionSyncRecord]
+    public var acknowledgedMutations: [String: UUID]?
+    public init(records: [CollectionSyncRecord] = []) { self.records = records; self.acknowledgedMutations = nil }
+    public var recordsToUpload: [CollectionSyncRecord] {
+        records.filter { acknowledgedMutations?[$0.id.uuidString] != $0.mutationID }
+    }
+    public var visible: AnimeCollections {
+        AnimeCollections(collections: records.filter { !$0.isDeleted }.sorted {
+            $0.rank != $1.rank ? $0.rank < $1.rank : $0.id.uuidString < $1.id.uuidString
+        }.map(\.folder))
+    }
+    public mutating func capture(_ state: AnimeCollections, at date: Date = Date()) {
+        let time = Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 * 1000) / 1000)
+        let live = Set(state.collections.map(\.id))
+        for i in records.indices where !records[i].isDeleted && !live.contains(records[i].id) {
+            records[i].isDeleted = true; records[i].updatedAt = max(time, records[i].updatedAt.addingTimeInterval(0.002)); records[i].mutationID = UUID()
+        }
+        for (rank, folder) in state.collections.enumerated() {
+            if let i = records.firstIndex(where: { $0.id == folder.id }) {
+                if records[i].folder != folder || records[i].rank != rank || records[i].isDeleted {
+                    records[i] = CollectionSyncRecord(folder: folder, rank: rank, updatedAt: max(time, records[i].updatedAt.addingTimeInterval(0.002)))
+                }
+            } else { records.append(CollectionSyncRecord(folder: folder, rank: rank, updatedAt: date)) }
+        }
+    }
+    public mutating func merge(_ remote: [CollectionSyncRecord]) {
+        var acknowledged = acknowledgedMutations ?? [:]
+        for record in remote {
+            acknowledged[record.id.uuidString] = record.mutationID
+            if let i = records.firstIndex(where: { $0.id == record.id }) {
+                if record.mutationID == records[i].mutationID || record.isNewer(than: records[i]) { records[i] = record }
+            } else { records.append(record) }
+        }
+        acknowledgedMutations = acknowledged
+    }
+}

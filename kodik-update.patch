@@ -1,0 +1,573 @@
+--- a/.github/workflows/ios.yml
++++ b/.github/workflows/ios.yml
+@@ -28,6 +28,8 @@
+           swift --version
+       - name: Static project checks
+         run: python3 scripts/check_project.py
++      - name: Static Kodik routing regressions
++        run: python3 scripts/test_kodik_routing.py
+       - name: Test build configuration scripts
+         run: python3 scripts/test_build_scripts.py
+       - name: Run AnivibeCore tests
+--- a/Anivibe/Features/AnimeDetails/AnimeDetailsView.swift
++++ b/Anivibe/Features/AnimeDetails/AnimeDetailsView.swift
+@@ -13,6 +13,8 @@
+     @State private var showSources = false
+     @State private var pendingPlayback: PlaybackRequest?
+     @State private var kodikModel = KodikOnlineViewModel()
++    @State private var startingPlayback = false
++    @State private var sourceSelectionMessage: String?
+ 
+     init(anime: Anime) {
+         _model = State(initialValue: AnimeDetailsViewModel(anime: anime))
+@@ -53,6 +55,10 @@
+             NavigationStack {
+                 ScrollView {
+                     VStack(alignment: .leading, spacing: Theme.Spacing.l) {
++                        if let message = sourceSelectionMessage {
++                            Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(Theme.secondaryAccent)
++                                .padding(.horizontal, Theme.Spacing.l)
++                        }
+                         if let voice = kodikModel.selectedVoice {
+                             Text("Серии источника · " + voice.translation.title).font(.headline)
+                             Text("Нумерация источника может отличаться от каталога. Здесь показаны его фактические элементы.").font(.footnote)
+@@ -65,10 +71,10 @@
+                 }.navigationTitle("Серии").toolbar { Button("Готово") { showEpisodes = false } }
+             }
+         }
+-        .sheet(isPresented: $showSources) {
++        .sheet(isPresented: $showSources, onDismiss: presentPendingPlayback) {
+             NavigationStack {
+                 if let kodik = env.kodik {
+-                    ScrollView { OnlineSourcesSection(anime: anime, client: kodik, model: kodikModel) }
++                    ScrollView { OnlineSourcesSection(anime: anime, client: kodik, model: kodikModel, playEpisode: playSourceEpisode) }
+                         .navigationTitle("Озвучки и серии")
+                         .toolbar { Button("Готово") { showSources = false } }
+                 }
+@@ -129,19 +135,15 @@
+                 KodikVoicePicker(anime: anime, client: kodik, model: kodikModel)
+             }
+             Button {
+-                if let key = resume?.sourceKey {
+-                    if let voice = kodikModel.selectedVoice,
+-                       let exact = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id).first(where: { $0.sourceKey == key }) {
+-                        playSourceEpisode(exact, voice: voice)
+-                    } else { showEpisodes = true }
+-                } else { startPlayback(episode: resume?.episode ?? 1, position: resume?.position ?? 0) }
++                Task { await startPreferredPlayback() }
+             } label: {
+-                Label(resumeTitle, systemImage: "play.fill")
+-                    .font(.headline)
+-                    .frame(maxWidth: .infinity, minHeight: 30)
+-            }
+-            .buttonStyle(.borderedProminent)
+-            .disabled(episodes.isEmpty && kodikModel.selectedVoice == nil)
++                HStack {
++                    if startingPlayback { ProgressView().tint(Theme.onAccent) }
++                    Label(resumeTitle, systemImage: "play.fill")
++                }.font(.headline).frame(maxWidth: .infinity, minHeight: 44)
++            }
++            .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
++            .disabled(startingPlayback || !detailsLoaded || (episodes.isEmpty && env.kodik == nil))
+ 
+             HStack(spacing: Theme.Spacing.m) {
+                 Button {
+@@ -190,26 +192,76 @@
+         .padding(.horizontal, Theme.Spacing.l)
+     }
+ 
++    private var detailsLoaded: Bool { if case .loaded = model.phase { return true }; return false }
+     private var resumeTitle: String {
+-        guard let resume else { return episodes.isEmpty ? "Нет серий" : "Смотреть" }
+-        if resume.sourceKey != nil { return "Продолжить серию источника" }
++        if startingPlayback { return env.kodik == nil ? "Готовим видео…" : "Готовим Kodik…" }
++        if kodikModel.selectedVoice != nil { return resume == nil ? "Смотреть · Kodik" : "Продолжить · Kodik" }
++        guard let resume else { return episodes.isEmpty && env.kodik == nil ? "Нет серий" : "Смотреть" }
++        if resume.sourceKey != nil { return "Выбрать серию источника" }
+         return resume.isNextEpisode ? "Смотреть серию \(resume.episode)" : "Продолжить: серия \(resume.episode)"
+     }
+-
++    private func presentPendingPlayback() {
++        if let request = pendingPlayback { playback = request; pendingPlayback = nil }
++    }
++    private func present(_ request: PlaybackRequest) {
++        sourceSelectionMessage = nil
++        if showEpisodes { pendingPlayback = request; showEpisodes = false }
++        else if showSources { pendingPlayback = request; showSources = false }
++        else { playback = request }
++    }
++    private func chooseKodikEpisode() {
++        sourceSelectionMessage = "Нумерация Kodik или выбранная озвучка отличаются от сохранённой серии. Выберите фактическую серию Kodik — прогресс другого видео не будет перенесён автоматически."
++        showEpisodes = true
++    }
++    private func startPreferredPlayback() async {
++        guard !startingPlayback else { return }
++        startingPlayback = true
++        defer { startingPlayback = false }
++        if let client = env.kodik { await kodikModel.load(anime: anime, client: client) }
++        guard !Task.isCancelled else { return }
++        if let voice = kodikModel.selectedVoice {
++            let list = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id)
++            if let saved = resume {
++                if let key = saved.sourceKey {
++                    guard let exact = list.first(where: { $0.sourceKey == key }) else { chooseKodikEpisode(); return }
++                    playSourceEpisode(exact, voice: voice)
++                } else if let exact = KodikProvider.catalogueEpisode(number: saved.episode, anime: anime, voice: voice) {
++                    // Source-scoped progress is used; legacy catalogue position is not copied.
++                    playSourceEpisode(exact, voice: voice)
++                } else { chooseKodikEpisode() }
++            } else if let first = list.first(where: { $0.sourceEpisode?.season == kodikModel.selectedSeason }) ?? list.first {
++                playSourceEpisode(first, voice: voice)
++            } else { presentCatalogue(episode: 1, position: 0) }
++        } else if resume?.sourceKey != nil {
++            sourceSelectionMessage = "Сохранённая серия Kodik сейчас недоступна. Повторите поиск озвучек или выберите серию другого источника вручную."
++            showEpisodes = true
++        } else { presentCatalogue(episode: resume?.episode ?? 1, position: resume?.position ?? 0) }
++    }
++    /// Catalogue episode buttons also honour the selected Kodik translation.
+     private func startPlayback(episode: Int, position: Double) {
+-        guard !episodes.isEmpty else { return }
+-        let request = PlaybackRequest(anime: anime, episodes: episodes, episode: episode, startPosition: position)
+-        if showEpisodes { pendingPlayback = request; showEpisodes = false }
+-        else { playback = request }
+-    }
+-
++        Task {
++            guard !startingPlayback else { return }
++            startingPlayback = true
++            defer { startingPlayback = false }
++            if let client = env.kodik { await kodikModel.load(anime: anime, client: client) }
++            guard !Task.isCancelled else { return }
++            if let voice = kodikModel.selectedVoice {
++                if let exact = KodikProvider.catalogueEpisode(number: episode, anime: anime, voice: voice) {
++                    playSourceEpisode(exact, voice: voice)
++                } else { chooseKodikEpisode() }
++            } else { presentCatalogue(episode: episode, position: position) }
++        }
++    }
++    private func presentCatalogue(episode: Int, position: Double) {
++        guard episodes.contains(where: { $0.number == episode }) else { showEpisodes = true; return }
++        present(PlaybackRequest(anime: anime, episodes: episodes, episode: episode, startPosition: position))
++    }
+     private func playSourceEpisode(_ episode: Episode, voice: KodikVoiceOption) {
+         let list = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id)
++        guard list.contains(where: { $0.sourceKey == episode.sourceKey }) else { return }
+         let progress = library.progress(anime.id, episode: episode.progressNumber, sourceKey: episode.sourceKey)
+         let position = (progress?.isFinished ?? true) ? 0 : progress?.position ?? 0
+-        let request = PlaybackRequest(anime: anime, episodes: list, episode: episode.number, startPosition: position)
+-        if showEpisodes { pendingPlayback = request; showEpisodes = false }
+-        else { playback = request }
++        present(PlaybackRequest(anime: anime, episodes: list, episode: episode.number, startPosition: position))
+     }
+ 
+     // MARK: Content
+--- a/Anivibe/Features/Online/KodikPlayerView.swift
++++ b/Anivibe/Features/Online/KodikPlayerView.swift
+@@ -25,6 +25,7 @@
+         webView.isOpaque = false
+         webView.backgroundColor = .black
+         webView.scrollView.isScrollEnabled = false
++        context.coordinator.loadedURL = url
+         webView.load(URLRequest(url: url))
+         return webView
+     }
+--- a/Anivibe/Features/Online/OnlineSourcesSection.swift
++++ b/Anivibe/Features/Online/OnlineSourcesSection.swift
+@@ -17,6 +17,9 @@
+     private(set) var match: KodikMatch?
+     var selectedVoiceID: KodikVoiceOption.ID?
+     var selectedSeason: Int = 1
++    @ObservationIgnored private var lookup: Task<KodikMatch?, Error>?
++    @ObservationIgnored private var lookupID = UUID()
++    @ObservationIgnored private var animeID: Int?
+ 
+     /// В том же порядке, что использует плеер по умолчанию.
+     var voices: [KodikVoiceOption] { KodikProvider.rankedVoices(match?.voices ?? []) }
+@@ -54,41 +57,56 @@
+     }
+ 
+     func load(anime: Anime, client: KodikClient) async {
+-        phase = .loading
++        if animeID == anime.id, phase == .loaded { return }
++        if animeID != anime.id {
++            lookup?.cancel(); lookup = nil; lookupID = UUID()
++            match = nil; selectedVoiceID = nil
++        }
++        animeID = anime.id
++        let task: Task<KodikMatch?, Error>
++        if let pending = lookup { task = pending }
++        else {
++            lookupID = UUID(); phase = .loading
++            let created = Task<KodikMatch?, Error> {
++                try await client.search(titles: anime.allTitles, year: anime.year, shikimoriID: anime.malID)
++            }
++            lookup = created; task = created
++        }
++        let request = lookupID
++        defer { if lookupID == request, phase != .loading { lookup = nil } }
+         do {
+-            if let match = try await client.search(titles: anime.allTitles, year: anime.year, shikimoriID: anime.malID) {
+-                self.match = match
+-                // Сначала — озвучка, выбранная пользователем раньше; иначе та, что включит плеер по умолчанию.
+-                let ranked = KodikProvider.rankedVoices(match.voices)
++            let result = try await task.value
++            guard !Task.isCancelled, lookupID == request, animeID == anime.id else { return }
++            // Another waiter may already have applied it and user may have picked a voice.
++            if phase == .loaded { return }
++            if let result {
++                match = result
++                let ranked = KodikProvider.rankedVoices(result.voices)
+                 let saved = UserDefaults.standard.string(forKey: KodikPreferences.voiceKey)
+                 let firstVoice = ranked.first { $0.translation.title == saved } ?? ranked.first
+                 selectedVoiceID = firstVoice?.id
+                 let seasons = firstVoice.map { Set($0.episodes.map(\.season)).sorted() } ?? []
+                 selectedSeason = seasons.first(where: { $0 >= 1 }) ?? seasons.first ?? 1
+                 phase = .loaded
+-            } else {
+-                phase = .notFound
+-            }
+-        } catch is CancellationError {
+-            // Экран ушёл с экрана во время запроса — повторим при следующем появлении.
+-            phase = .idle
+-        } catch let error as APIError {
+-            if error == .cancelled { phase = .idle; return }
+-            phase = .failed(error.userMessage)
++            } else { match = nil; phase = .notFound }
+         } catch {
+-            phase = .failed(String(describing: error))
+-        }
+-    }
++            guard lookupID == request, !Task.isCancelled else { return }
++            if error is CancellationError || (error as? APIError) == .cancelled { phase = .idle }
++            else if let error = error as? APIError { phase = .failed(error.userMessage) }
++            else { phase = .failed("Не удалось загрузить озвучки Kodik.") }
++        }
++    }
++
+ }
+ 
+ /// Раздел «Смотреть с озвучкой» на странице аниме: поиск по Kodik,
+-/// выбор озвучки и серии, воспроизведение во встроенном веб-плеере сервиса.
++/// выбор озвучки и серии, запуск единого плеера Anivibe с точной серией Kodik.
+ struct OnlineSourcesSection: View {
+     let anime: Anime
+     let client: KodikClient
+     /// Общая модель со страницей аниме (её же использует выбор озвучки над кнопкой «Смотреть»).
+     let model: KodikOnlineViewModel
+-    @State private var webPlayback: WebPlaybackRequest?
++    let playEpisode: (Episode, KodikVoiceOption) -> Void
+ 
+     var body: some View {
+         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+@@ -100,9 +118,7 @@
+ 
+             content
+         }
+-        .fullScreenCover(item: $webPlayback) { request in
+-            KodikPlayerScreen(request: request, client: client)
+-        }
++
+         .task {
+             if model.phase == .idle {
+                 await model.load(anime: anime, client: client)
+@@ -168,8 +184,9 @@
+             if let voice = model.selectedVoice {
+                 if voice.isSingleVideo {
+                     Button {
+-                        webPlayback = WebPlaybackRequest(url: voice.playerURL, title: anime.title.preferred,
+-                                                         subtitle: voice.translation.title)
++                        if let episode = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id).first {
++                            playEpisode(episode, voice)
++                        }
+                     } label: {
+                         Label("Смотреть" + (voice.quality.map { " · \($0)" } ?? ""), systemImage: "play.fill")
+                             .font(.headline)
+@@ -238,9 +255,12 @@
+         return LazyVStack(spacing: 0) {
+             ForEach(episodes) { episode in
+                 Button {
+-                    webPlayback = WebPlaybackRequest(url: episode.playerURL,
+-                                                     title: "\(anime.title.preferred) — серия \(episode.number)",
+-                                                     subtitle: model.selectedVoice?.translation.title)
++                    if let voice = model.selectedVoice,
++                       let exact = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id).first(where: {
++                           $0.sourceEpisode?.season == episode.season && $0.sourceEpisode?.number == episode.number
++                       }) {
++                        playEpisode(exact, voice)
++                    }
+                 } label: {
+                     HStack(spacing: Theme.Spacing.m) {
+                         Text("\(episode.number)")
+@@ -331,7 +351,7 @@
+                 Image(systemName: "mic.fill")
+                     .foregroundStyle(Theme.accent)
+                 VStack(alignment: .leading, spacing: 1) {
+-                    Text("Озвучка")
++                    Text("Источник: Kodik · озвучка")
+                         .font(.caption)
+                         .foregroundStyle(Theme.textSecondary)
+                     Text(model.selectedVoice?.translation.title ?? "Выберите озвучку")
+--- a/Anivibe/Features/Player/PlayerScreen.swift
++++ b/Anivibe/Features/Player/PlayerScreen.swift
+@@ -48,9 +48,10 @@
+ 
+     @State private var controls = PlaybackControlsState()
+     @State private var showSettings = false
++    @State private var webPlayback: WebPlaybackRequest?
+     private var controlsVisible: Bool { controls.isVisible }
+     private var interactionBlocked: Bool {
+-        showSettings || showSources || showEpisodes || model.isScrubbing || model.isBuffering || model.phase != .ready
++        webPlayback != nil || showSettings || showSources || showEpisodes || model.isScrubbing || model.isBuffering || model.phase != .ready
+     }
+     @State private var hideTask: Task<Void, Never>?
+     @State private var showSources = false
+@@ -83,6 +84,17 @@
+             }
+         }
+         .animation(.easeInOut(duration: 0.2), value: controlsVisible)
++        .sheet(item: $webPlayback) { request in
++            NavigationStack {
++                WebPlayerView(url: request.url).background(Color.black)
++                    .navigationTitle("Kodik · веб-плеер").navigationBarTitleDisplayMode(.inline)
++                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Закрыть") { webPlayback = nil } } }
++                    .safeAreaInset(edge: .bottom) {
++                        Text("Прогресс и настройки веб-плеера управляются Kodik; Anivibe не сохраняет их автоматически.")
++                            .font(.footnote).padding(12).background(.regularMaterial)
++                    }
++            }.preferredColorScheme(.dark).presentationDetents([.large])
++        }
+         .sheet(isPresented: $showSettings) {
+             VideoSettingsSheet(model: model).presentationDetents([.medium, .large])
+         }
+@@ -108,7 +120,13 @@
+             NoSourcesView(model: model, close: close)
+         case .failed(let message):
+             PlayerStatusView(systemImage: "exclamationmark.triangle", title: "Не удалось воспроизвести", message: message) {
+-                HStack {
++                VStack(spacing: Theme.Spacing.m) {
++                    if let url = model.kodikWebURL {
++                        Button("Открыть веб-плеер Kodik") {
++                            model.pauseForWebPlayer()
++                            webPlayback = WebPlaybackRequest(url: url, title: model.anime.title.preferred, subtitle: model.selectedVoice)
++                        }.buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
++                    }
+                     Button("Повторить", action: model.retry).buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+                     if !model.otherAvailableCandidates.isEmpty {
+                         Button("Другой источник") { showSources = true }.buttonStyle(.bordered)
+--- a/Anivibe/Features/Player/PlayerViewModel.swift
++++ b/Anivibe/Features/Player/PlayerViewModel.swift
+@@ -112,6 +112,12 @@
+         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+     }
+ 
++    var kodikWebURL: URL? {
++        guard let episode = activeCandidate?.episode else { return nil }
++        return KodikProvider.playerURL(for: episode)
++    }
++    func pauseForWebPlayer() { saveProgress(force: true); player.pause() }
++
+     // MARK: - Sources
+ 
+     func findSources() {
+@@ -128,7 +134,7 @@
+                 found = [SourceCandidate(providerID: provider.id, providerName: provider.displayName,
+                     isTestContent: provider.providesTestContent, episode: exact, availability: availability)]
+             } else {
+-                found = await registry.candidates(for: anime, episode: episode, excluding: [KodikProvider.providerID])
++                found = await registry.candidates(for: anime, season: self.currentEpisode?.season ?? 1, episode: episode)
+             }
+             guard !Task.isCancelled, episode == self.episodeNumber else { return }
+             self.candidates = found
+@@ -161,6 +167,10 @@
+     }
+ 
+     private func play(candidate: SourceCandidate) async {
++        guard !Task.isCancelled, !isTornDown else { return }
++        player.pause()
++        source = nil
++        hasActuallyPlayed = false
+         activeCandidate = candidate
+         phase = .preparing
+         guard let episode = candidate.episode, let provider = await registry.provider(candidate.providerID) else {
+@@ -470,8 +480,9 @@
+         guard force || isPlaying else { return }
+         lastSaveDate = now
+         let snapshot = anime.snapshot
+-        let (episode, position, total) = (currentEpisode?.progressNumber ?? episodeNumber, currentTime, duration)
+-        let key = currentEpisode?.sourceKey
++        let kodikEpisode = activeCandidate?.providerID == KodikProvider.providerID ? activeCandidate?.episode : nil
++        let (episode, position, total) = (kodikEpisode?.number ?? currentEpisode?.progressNumber ?? episodeNumber, currentTime, duration)
++        let key = kodikEpisode?.id ?? currentEpisode?.sourceKey
+         Task { await library.recordProgress(anime: snapshot, episode: episode, position: position, duration: total, sourceKey: key, accountID: progressAccountID) }
+     }
+ 
+--- a/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikClient.swift
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikClient.swift
+@@ -8,7 +8,8 @@
+ /// Важно честно:
+ /// * API требует токен партнёра (получается при регистрации на kodik.biz). Без токена клиент не создаётся.
+ /// * Kodik отдаёт ссылки на свой ВЕБ-плеер (iframe), а не прямые потоки. Поэтому это
+-///   НЕ `VideoSourceProvider`: воспроизведение идёт в WKWebView, а не в нашем AVPlayer.
++///   Клиент поиска сам НЕ VideoSourceProvider; KodikProvider получает нативные потоки,
++///   а встроенный WKWebView используется как явный резервный путь.
+ /// * Прямые HLS-потоки (для нативного плеера с выбором качества и скорости) — см. `KodikStreamResolver`.
+ public struct KodikClient: Sendable {
+ 
+--- a/Packages/AnivibeCore/Sources/AnivibeCore/Providers/KodikProvider.swift
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Providers/KodikProvider.swift
+@@ -89,6 +89,31 @@
+         return .available
+     }
+ 
++    /// Official embed link for the *selected* episode/translation. No native URL
++    /// is invented when Kodik cannot provide HLS; caller may use its web player.
++    public static func playerURL(for episode: ProviderEpisode) -> URL? {
++        guard episode.providerID == providerID, let payload = Payload.decode(episode.payload),
++              let voice = payload.voices.first(where: { $0.title == payload.selected }) ?? payload.voices.first,
++              let url = URL(string: voice.url), url.scheme == "https", url.host != nil else { return nil }
++        return url
++    }
++
++    /// Only map catalogue numbering when the provider list is unambiguous.
++    /// Gaps, specials (season 0), multiple seasons and unknown counts require
++    /// an explicit selection from the real Kodik list, never an inferred offset.
++    public static func catalogueEpisode(number: Int, anime: Anime, voice: KodikVoiceOption) -> Episode? {
++        guard number > 0 else { return nil }
++        let list = sourceEpisodes(for: voice, animeID: anime.id)
++        if voice.isSingleVideo { return number == 1 ? list.first : nil }
++        guard !voice.episodes.isEmpty, voice.episodes.allSatisfy({ $0.season > 0 }),
++              Set(voice.episodes.map(\.season)).count == 1,
++              let total = anime.episodeCount, total > 0 else { return nil }
++        let numbers = Array(Set(voice.episodes.map(\.number))).sorted()
++        guard numbers == Array(1...numbers.count), numbers.count <= total else { return nil }
++        if anime.status != .releasing && numbers.count != total { return nil }
++        return list.first { $0.sourceEpisode?.number == number }
++    }
++
+     /// Та же серия, но с другой озвучкой.
+     public static func episode(_ episode: ProviderEpisode, withVoice voice: String) -> ProviderEpisode {
+         guard var payload = Payload.decode(episode.payload) else { return episode }
+--- a/Packages/AnivibeCore/Sources/AnivibeCore/Providers/ProviderRegistry.swift
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Providers/ProviderRegistry.swift
+@@ -83,6 +83,9 @@
+         return results.sorted { lhs, rhs in
+             if lhs.1.isTestContent != rhs.1.isTestContent { return !lhs.1.isTestContent }
+             if lhs.1.availability.isAvailable != rhs.1.availability.isAvailable { return lhs.1.availability.isAvailable }
++            if (lhs.1.providerID == KodikProvider.providerID) != (rhs.1.providerID == KodikProvider.providerID) {
++                return lhs.1.providerID == KodikProvider.providerID
++            }
+             return lhs.0 < rhs.0
+         }.map(\.1)
+     }
+--- a/Packages/AnivibeCore/Tests/AnivibeCoreTests/KodikTests.swift
++++ b/Packages/AnivibeCore/Tests/AnivibeCoreTests/KodikTests.swift
+@@ -272,4 +272,44 @@
+         XCTAssertEqual(KodikProvider.Payload.decode(switched.payload)?.selected, "AniDUB")
+         XCTAssertEqual(provider.id, KodikProvider.providerID)
+     }
++
++    private func voice(_ pairs: [(Int,Int)], single: Bool = false) -> KodikVoiceOption {
++        KodikVoiceOption(materialID: "serial-100", translation: KodikTranslation(id: 111, title: "Selected Voice", kind: .voice),
++            title: "Title", year: 2026, quality: "720p", playerURL: URL(string: "https://kodik.info/video/1/hash")!,
++            episodes: pairs.map { KodikEpisode(season: $0.0, number: $0.1, title: nil,
++                playerURL: URL(string: "https://kodik.info/seria/\($0.0)-\($0.1)/hash")!) },
++            seasonPlayerURLs: [:], isSingleVideo: single)
++    }
++    func testCatalogueRoutingKeepsActualKodikTranslationAndSourceIdentity() throws {
++        let chosen = voice([(1,1),(1,2),(1,3)])
++        let exact = try XCTUnwrap(KodikProvider.catalogueEpisode(number: 2, anime: makeAnime(episodes: 3), voice: chosen))
++        XCTAssertEqual(exact.sourceEpisode?.titleID, chosen.id)
++        XCTAssertEqual(exact.sourceEpisode?.number, 2)
++        XCTAssertEqual(KodikProvider.playerURL(for: try XCTUnwrap(exact.sourceEpisode))?.absoluteString,
++                       "https://kodik.info/seria/1-2/hash")
++    }
++    func testAmbiguousCatalogueMappingRequiresExplicitSourceEpisode() {
++        let anime = makeAnime(episodes: 3)
++        for chosen in [voice([(1,4),(1,7)]), voice([(0,1),(1,1),(1,2)]), voice([(1,1),(2,1)]), voice([(1,1),(1,2)])] {
++            XCTAssertNil(KodikProvider.catalogueEpisode(number: 1, anime: anime, voice: chosen))
++        }
++        XCTAssertNil(KodikProvider.catalogueEpisode(number: 1, anime: makeAnime(episodes: nil), voice: voice([(1,1)])))
++    }
++    func testMovieAndOngoingKodikRouting() {
++        XCTAssertNotNil(KodikProvider.catalogueEpisode(number: 1, anime: makeAnime(episodes: 1), voice: voice([],single: true)))
++        XCTAssertNil(KodikProvider.catalogueEpisode(number: 2, anime: makeAnime(episodes: 1), voice: voice([],single: true)))
++        XCTAssertNotNil(KodikProvider.catalogueEpisode(number: 2, anime: makeAnime(episodes: 12,status: .releasing), voice: voice([(1,1),(1,2)])))
++    }
++    func testWebFallbackUsesChosenTranslationAndRejectsWrongProviderOrHTTP() {
++        let payload = KodikProvider.Payload(selected: "B", voices: [
++            .init(title: "A",url: "https://kodik.info/seria/1/a"),
++            .init(title: "B",url: "https://kodik.info/seria/1/b")]).encoded()
++        func episode(_ provider: ProviderID, _ data: String) -> ProviderEpisode {
++            ProviderEpisode(providerID: provider,titleID: "t",season: 1,number: 1,payload: data)
++        }
++        XCTAssertEqual(KodikProvider.playerURL(for: episode(KodikProvider.providerID,payload))?.absoluteString,"https://kodik.info/seria/1/b")
++        XCTAssertNil(KodikProvider.playerURL(for: episode("anilibria",payload)))
++        let bad = KodikProvider.Payload(selected: "B", voices: [.init(title: "B",url: "http://example.com")]).encoded()
++        XCTAssertNil(KodikProvider.playerURL(for: episode(KodikProvider.providerID,bad)))
++    }
+ }
+--- a/Packages/AnivibeCore/Tests/AnivibeCoreTests/ProviderTests.swift
++++ b/Packages/AnivibeCore/Tests/AnivibeCoreTests/ProviderTests.swift
+@@ -171,6 +171,33 @@
+         XCTAssertEqual(c[0].episode?.number, 3)
+     }
+ 
++    func testKodikWinsRegardlessOfRegistrationOrder() async {
++        let registry = ProviderRegistry(providers: [
++            FakeProvider(id: "anilibria", displayName: "Anilibria"),
++            FakeProvider(id: KodikProvider.providerID, displayName: "Kodik")
++        ])
++        let candidates = await registry.candidates(for: makeAnime(), episode: 1)
++        XCTAssertEqual(candidates.first?.providerID, KodikProvider.providerID)
++    }
++    func testUnavailableKodikDoesNotBlockWorkingBackup() async {
++        let registry = ProviderRegistry(providers: [
++            FakeProvider(id: KodikProvider.providerID, displayName: "Kodik", result: .failure(.unauthorized)),
++            FakeProvider(id: "anilibria", displayName: "Anilibria")
++        ])
++        let candidates = await registry.candidates(for: makeAnime(), episode: 1)
++        XCTAssertEqual(candidates.first?.providerID.rawValue, "anilibria")
++        XCTAssertTrue(candidates.contains { $0.providerID == KodikProvider.providerID })
++    }
++    func testDisabledKodikDoesNotOverrideExplicitSetting() async {
++        let registry = ProviderRegistry(providers: [
++            FakeProvider(id: "anilibria", displayName: "Anilibria"),
++            FakeProvider(id: KodikProvider.providerID, displayName: "Kodik")
++        ])
++        await registry.setEnabled(false, for: KodikProvider.providerID)
++        let candidates = await registry.candidates(for: makeAnime(), episode: 1)
++        XCTAssertFalse(candidates.contains { $0.providerID == KodikProvider.providerID })
++    }
++
+     func testRegistryDisabledProvidersAndMissingEpisodes() async {
+         let registry = ProviderRegistry(providers: [FakeProvider(id: "a", displayName: "A", episodeCount: 2), FakeProvider(id: "b", displayName: "B")])
+         await registry.setEnabled(false, for: "b")
+--- /dev/null
++++ b/scripts/test_kodik_routing.py
+@@ -0,0 +1,26 @@
++"""Static wiring regression checks; NOT Swift compilation or live Kodik tests."""
++from pathlib import Path
++import unittest
++ROOT = Path(__file__).resolve().parents[1]
++class KodikWiringTests(unittest.TestCase):
++    def test_default_player_does_not_exclude_kodik(self):
++        source = (ROOT/'Anivibe/Features/Player/PlayerViewModel.swift').read_text()
++        self.assertNotIn('excluding: [KodikProvider.providerID]',source)
++        self.assertIn('registry.candidates(for: anime, season:',source)
++    def test_watch_waits_for_voice_lookup_before_routing(self):
++        source = (ROOT/'Anivibe/Features/AnimeDetails/AnimeDetailsView.swift').read_text()
++        flow = source.split('private func startPreferredPlayback() async {',1)[1]
++        self.assertLess(flow.index('await kodikModel.load'),flow.index('if let voice = kodikModel.selectedVoice'))
++        self.assertIn('playSourceEpisode(exact, voice: voice)',flow)
++    def test_online_buttons_share_native_source_identity(self):
++        source=(ROOT/'Anivibe/Features/Online/OnlineSourcesSection.swift').read_text()
++        self.assertNotIn('webPlayback = WebPlaybackRequest',source)
++        self.assertIn('playEpisode(exact, voice)',source)
++    def test_web_fallback_is_offered_on_native_failure(self):
++        source=(ROOT/'Anivibe/Features/Player/PlayerScreen.swift').read_text()
++        self.assertIn('if let url = model.kodikWebURL',source)
++        self.assertIn('WebPlayerView(url: request.url)',source)
++    def test_kodik_has_explicit_registry_priority(self):
++        source=(ROOT/'Packages/AnivibeCore/Sources/AnivibeCore/Providers/ProviderRegistry.swift').read_text()
++        self.assertIn('return lhs.1.providerID == KodikProvider.providerID',source)
++if __name__=='__main__': unittest.main(verbosity=2)

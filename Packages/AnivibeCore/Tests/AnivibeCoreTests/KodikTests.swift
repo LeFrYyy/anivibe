@@ -272,4 +272,44 @@ final class KodikTests: XCTestCase {
         XCTAssertEqual(KodikProvider.Payload.decode(switched.payload)?.selected, "AniDUB")
         XCTAssertEqual(provider.id, KodikProvider.providerID)
     }
+
+    private func voice(_ pairs: [(Int,Int)], single: Bool = false) -> KodikVoiceOption {
+        KodikVoiceOption(materialID: "serial-100", translation: KodikTranslation(id: 111, title: "Selected Voice", kind: .voice),
+            title: "Title", year: 2026, quality: "720p", playerURL: URL(string: "https://kodik.info/video/1/hash")!,
+            episodes: pairs.map { KodikEpisode(season: $0.0, number: $0.1, title: nil,
+                playerURL: URL(string: "https://kodik.info/seria/\($0.0)-\($0.1)/hash")!) },
+            seasonPlayerURLs: [:], isSingleVideo: single)
+    }
+    func testCatalogueRoutingKeepsActualKodikTranslationAndSourceIdentity() throws {
+        let chosen = voice([(1,1),(1,2),(1,3)])
+        let exact = try XCTUnwrap(KodikProvider.catalogueEpisode(number: 2, anime: makeAnime(episodes: 3), voice: chosen))
+        XCTAssertEqual(exact.sourceEpisode?.titleID, chosen.id)
+        XCTAssertEqual(exact.sourceEpisode?.number, 2)
+        XCTAssertEqual(KodikProvider.playerURL(for: try XCTUnwrap(exact.sourceEpisode))?.absoluteString,
+                       "https://kodik.info/seria/1-2/hash")
+    }
+    func testAmbiguousCatalogueMappingRequiresExplicitSourceEpisode() {
+        let anime = makeAnime(episodes: 3)
+        for chosen in [voice([(1,4),(1,7)]), voice([(0,1),(1,1),(1,2)]), voice([(1,1),(2,1)]), voice([(1,1),(1,2)])] {
+            XCTAssertNil(KodikProvider.catalogueEpisode(number: 1, anime: anime, voice: chosen))
+        }
+        XCTAssertNil(KodikProvider.catalogueEpisode(number: 1, anime: makeAnime(episodes: nil), voice: voice([(1,1)])))
+    }
+    func testMovieAndOngoingKodikRouting() {
+        XCTAssertNotNil(KodikProvider.catalogueEpisode(number: 1, anime: makeAnime(episodes: 1), voice: voice([],single: true)))
+        XCTAssertNil(KodikProvider.catalogueEpisode(number: 2, anime: makeAnime(episodes: 1), voice: voice([],single: true)))
+        XCTAssertNotNil(KodikProvider.catalogueEpisode(number: 2, anime: makeAnime(episodes: 12,status: .releasing), voice: voice([(1,1),(1,2)])))
+    }
+    func testWebFallbackUsesChosenTranslationAndRejectsWrongProviderOrHTTP() {
+        let payload = KodikProvider.Payload(selected: "B", voices: [
+            .init(title: "A",url: "https://kodik.info/seria/1/a"),
+            .init(title: "B",url: "https://kodik.info/seria/1/b")]).encoded()
+        func episode(_ provider: ProviderID, _ data: String) -> ProviderEpisode {
+            ProviderEpisode(providerID: provider,titleID: "t",season: 1,number: 1,payload: data)
+        }
+        XCTAssertEqual(KodikProvider.playerURL(for: episode(KodikProvider.providerID,payload))?.absoluteString,"https://kodik.info/seria/1/b")
+        XCTAssertNil(KodikProvider.playerURL(for: episode("anilibria",payload)))
+        let bad = KodikProvider.Payload(selected: "B", voices: [.init(title: "B",url: "http://example.com")]).encoded()
+        XCTAssertNil(KodikProvider.playerURL(for: episode(KodikProvider.providerID,bad)))
+    }
 }

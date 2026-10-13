@@ -151,4 +151,55 @@ final class SocialServiceTests: XCTestCase {
         XCTAssertTrue(t.requests.isEmpty)
     }
 
+
+    func testOldProfileDefaultsEverySharedSectionToPrivate() throws {
+        let profile = try JSONDecoder().decode(UserProfile.self, from: Data(Self.row.utf8))
+        XCTAssertEqual(profile.friendsVisibility, .privateOnly)
+        XCTAssertEqual(profile.historyVisibility, .privateOnly)
+        XCTAssertEqual(profile.libraryVisibility, .privateOnly)
+    }
+    func testSharingSettingsEncodeOnlyExplicitFields() throws {
+        let draft = try ProfileDraft(username: "alice_1", displayName: "Alice", bio: "", visibility: .privateProfile,
+            friendsVisibility: .friends, historyVisibility: .privateOnly, libraryVisibility: .publicProfile).validated()
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as! [String: Any]
+        XCTAssertEqual(json["friends_visibility"] as? String, "friends")
+        XCTAssertEqual(json["history_visibility"] as? String, "private")
+        XCTAssertEqual(json["library_visibility"] as? String, "public")
+        XCTAssertNil(json["user_id"])
+    }
+    func testAvatarSigningIsCoalescedAcrossConcurrentCells() async throws {
+        let t = StubTransport(delay: 0.05) { _ in (200, Data(#"{"url":"https://example.com/avatar?signed=1"}"#.utf8), [:]) }
+        let subject = service(t)
+        async let a = subject.avatarURL(userID: Self.targetID, expectedUserID: Self.actorID, revision: "r1")
+        async let b = subject.avatarURL(userID: Self.targetID, expectedUserID: Self.actorID, revision: "r1")
+        let pair = try await (a,b)
+        XCTAssertEqual(pair.0, pair.1)
+        _ = try await subject.avatarURL(userID: Self.targetID, expectedUserID: Self.actorID, revision: "r1")
+        XCTAssertEqual(t.requests.count, 1)
+        _ = try await subject.avatarURL(userID: Self.targetID, expectedUserID: Self.actorID, revision: "r2")
+        XCTAssertEqual(t.requests.count, 2)
+    }
+    func testSocialProfileChecksViewingAccountBeforeNetwork() async {
+        let t = StubTransport { _ in (200, Data(), [:]) }
+        do {
+            _ = try await service(t).socialProfile(targetID: Self.targetID, expectedUserID: Self.targetID)
+            XCTFail()
+        } catch { XCTAssertEqual(error as? AuthError, .notSignedIn) }
+        XCTAssertTrue(t.requests.isEmpty)
+    }
+    func testSocialProfileUsesSafeRPCAndIndependentOffsets() async throws {
+        let targetRow = Self.row.replacingOccurrences(of: Self.actorID, with: Self.targetID)
+        let envelope = """
+        {"profile":\(targetRow),"friends":[],"friends_count":null,"friends_allowed":false,
+         "history_allowed":false,"library_allowed":false,"history":[],"library":[],
+         "history_has_more":false,"library_has_more":false,"stats":null}
+        """
+        let t = StubTransport { _ in (200, Data(envelope.utf8), [:]) }
+        _ = try await service(t).socialProfile(targetID: Self.targetID, historyOffset: 40, libraryOffset: 80, expectedUserID: Self.actorID)
+        let request = try XCTUnwrap(t.requests.first)
+        XCTAssertEqual(request.url?.path, "/rest/v1/rpc/anivibe_social_profile")
+        XCTAssertEqual(request.bodyJSON["p_history_offset"] as? Int, 40)
+        XCTAssertEqual(request.bodyJSON["p_library_offset"] as? Int, 80)
+        XCTAssertNil(request.bodyJSON["viewer_id"])
+    }
 }

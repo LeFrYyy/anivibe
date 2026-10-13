@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Destructive tests ONLY on a local disposable *_test database, never hosted Supabase."""
 import concurrent.futures
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -114,4 +115,63 @@ class SocialDatabaseTests(unittest.TestCase):
         self.public(B); action(A,B,'send'); sql(f"delete from auth.users where id='{A}'")
         self.assertEqual(self.count('select count(*) from public.friendships'),'0')
         self.assertEqual(self.count(f"select count(*) from public.profiles where user_id='{A}'"),'0')
+    def details(self, actor, target, history_offset=0):
+        return json.loads(sql(f"select public.anivibe_social_profile('{target}',{history_offset},0)", actor).stdout.strip())
+    def history_fixture(self, target=B, n=1):
+        sql(f"insert into public.watch_history(id,user_id,anime_id,title,episode,watched_at) select md5(i::text)::uuid,'{target}',i,'Title '||i,1,now()-i*interval '1 minute' from generate_series(1,{n}) i")
+    def test_social_sections_default_private_even_for_public_profile(self):
+        self.public(B); self.history_fixture()
+        d=self.details(A,B)
+        self.assertFalse(d['history_allowed']); self.assertEqual(d['history'],[])
+        self.assertFalse(d['friends_allowed']); self.assertIsNone(d['friends_count'])
+        self.assertFalse(d['library_allowed']); self.assertIsNone(d['stats'])
+    def test_social_history_only_for_accepted_friends(self):
+        self.public(B); self.history_fixture()
+        sql(f"update public.profiles set history_visibility='friends' where user_id='{B}'",B)
+        action(A,B,'send')
+        self.assertFalse(self.details(A,B)['history_allowed'])
+        action(B,A,'accept')
+        self.assertEqual(len(self.details(A,B)['history']),1)
+        action(A,B,'remove')
+        self.assertFalse(self.details(A,B)['history_allowed'])
+    def test_social_profile_itself_must_be_visible(self):
+        sql(f"update public.profiles set history_visibility='public' where user_id='{B}'",B)
+        self.assertNotEqual(sql(f"select public.anivibe_social_profile('{B}',0,0)",A,False).returncode,0)
+    def test_shared_friend_list_does_not_expose_private_peer(self):
+        self.public(B)
+        sql(f"update public.profiles set friends_visibility='public' where user_id='{B}'",B)
+        sql(f"insert into public.friendships(user_low,user_high,requester_id,status) values('{B}','{C}','{B}','accepted')")
+        d=self.details(A,B)
+        self.assertEqual(d['friends_count'],1); self.assertEqual(d['friends'],[])
+        self.public(C)
+        self.assertEqual(self.details(A,B)['friends'][0]['user_id'],C)
+    def test_history_paging_filters_tombstones_and_excludes_email(self):
+        self.public(B); self.history_fixture(n=45)
+        sql(f"update public.profiles set history_visibility='public' where user_id='{B}'",B)
+        sql(f"update public.watch_history set deleted_at=now(),updated_at=now()+interval '1 second' where user_id='{B}' and anime_id=1")
+        page=self.details(A,B); next_page=self.details(A,B,40)
+        self.assertEqual(len(page['history']),40); self.assertTrue(page['history_has_more'])
+        self.assertEqual(len(next_page['history']),4); self.assertFalse(next_page['history_has_more'])
+        self.assertNotIn('email',page['profile']); self.assertNotIn('position_seconds',json.dumps(page))
+    def folder_upsert(self, actor=A, owner=A, name='Folder', when='2020-10-13T10:00:00Z', mutation=1, deleted=False, ok=True):
+        folder=json.dumps({'id':uid(500),'name':name,'items':[],'createdAt':'2020-10-13T10:00:00Z'})
+        return sql(f"insert into public.account_collections(user_id,id,folder,sort_order,updated_at,mutation_id,is_deleted) values('{owner}','{uid(500)}','{folder}'::jsonb,0,'{when}','{uid(mutation)}',{str(deleted).lower()}) on conflict(user_id,id) do update set folder=excluded.folder,updated_at=excluded.updated_at,mutation_id=excluded.mutation_id,is_deleted=excluded.is_deleted",actor,ok)
+    def test_collections_owner_rls(self):
+        self.folder_upsert()
+        self.assertEqual(self.count('select count(*) from public.account_collections',A),'1')
+        self.assertEqual(self.count('select count(*) from public.account_collections',B),'0')
+        self.assertNotEqual(self.folder_upsert(actor=B,owner=A,ok=False).returncode,0)
+        self.assertNotEqual(sql('set role anon; select * from public.account_collections',ok=False).returncode,0)
+        self.assertNotEqual(sql('delete from public.account_collections',A,False).returncode,0)
+    def test_collections_stale_write_cannot_resurrect_deleted_folder(self):
+        self.folder_upsert(name='Deleted',when='2020-10-13T11:00:00Z',deleted=True,mutation=2)
+        self.folder_upsert(name='Stale',when='2020-10-13T10:00:00Z')
+        self.assertEqual(self.count('select is_deleted from public.account_collections',A),'t')
+        self.assertEqual(self.count("select folder->>'name' from public.account_collections",A),'Deleted')
+    def test_collections_equal_timestamp_uuid_tie_break(self):
+        self.folder_upsert(name='Newer',mutation=3)
+        self.folder_upsert(name='Older',mutation=1)
+        self.assertEqual(self.count("select folder->>'name' from public.account_collections",A),'Newer')
+    def test_anon_cannot_call_social_rpc(self):
+        self.assertNotEqual(sql(f"set role anon; select public.anivibe_social_profile('{B}',0,0)",ok=False).returncode,0)
 if __name__=='__main__': unittest.main(verbosity=2)

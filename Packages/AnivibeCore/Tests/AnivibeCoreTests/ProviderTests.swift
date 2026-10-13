@@ -171,6 +171,33 @@ final class ProviderTests: XCTestCase {
         XCTAssertEqual(c[0].episode?.number, 3)
     }
 
+    func testKodikWinsRegardlessOfRegistrationOrder() async {
+        let registry = ProviderRegistry(providers: [
+            FakeProvider(id: "anilibria", displayName: "Anilibria"),
+            FakeProvider(id: KodikProvider.providerID, displayName: "Kodik")
+        ])
+        let candidates = await registry.candidates(for: makeAnime(), episode: 1)
+        XCTAssertEqual(candidates.first?.providerID, KodikProvider.providerID)
+    }
+    func testUnavailableKodikDoesNotBlockWorkingBackup() async {
+        let registry = ProviderRegistry(providers: [
+            FakeProvider(id: KodikProvider.providerID, displayName: "Kodik", result: .failure(.unauthorized)),
+            FakeProvider(id: "anilibria", displayName: "Anilibria")
+        ])
+        let candidates = await registry.candidates(for: makeAnime(), episode: 1)
+        XCTAssertEqual(candidates.first?.providerID.rawValue, "anilibria")
+        XCTAssertTrue(candidates.contains { $0.providerID == KodikProvider.providerID })
+    }
+    func testDisabledKodikDoesNotOverrideExplicitSetting() async {
+        let registry = ProviderRegistry(providers: [
+            FakeProvider(id: "anilibria", displayName: "Anilibria"),
+            FakeProvider(id: KodikProvider.providerID, displayName: "Kodik")
+        ])
+        await registry.setEnabled(false, for: KodikProvider.providerID)
+        let candidates = await registry.candidates(for: makeAnime(), episode: 1)
+        XCTAssertFalse(candidates.contains { $0.providerID == KodikProvider.providerID })
+    }
+
     func testRegistryDisabledProvidersAndMissingEpisodes() async {
         let registry = ProviderRegistry(providers: [FakeProvider(id: "a", displayName: "A", episodeCount: 2), FakeProvider(id: "b", displayName: "B")])
         await registry.setEnabled(false, for: "b")

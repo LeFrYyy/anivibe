@@ -25,6 +25,7 @@ struct WebPlayerView: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .black
         webView.scrollView.isScrollEnabled = false
+        context.coordinator.loadedURL = url
         webView.load(URLRequest(url: url))
         return webView
     }

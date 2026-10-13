@@ -89,6 +89,31 @@ public struct KodikProvider: VideoSourceProvider {
         return .available
     }
 
+    /// Official embed link for the *selected* episode/translation. No native URL
+    /// is invented when Kodik cannot provide HLS; caller may use its web player.
+    public static func playerURL(for episode: ProviderEpisode) -> URL? {
+        guard episode.providerID == providerID, let payload = Payload.decode(episode.payload),
+              let voice = payload.voices.first(where: { $0.title == payload.selected }) ?? payload.voices.first,
+              let url = URL(string: voice.url), url.scheme == "https", url.host != nil else { return nil }
+        return url
+    }
+
+    /// Only map catalogue numbering when the provider list is unambiguous.
+    /// Gaps, specials (season 0), multiple seasons and unknown counts require
+    /// an explicit selection from the real Kodik list, never an inferred offset.
+    public static func catalogueEpisode(number: Int, anime: Anime, voice: KodikVoiceOption) -> Episode? {
+        guard number > 0 else { return nil }
+        let list = sourceEpisodes(for: voice, animeID: anime.id)
+        if voice.isSingleVideo { return number == 1 ? list.first : nil }
+        guard !voice.episodes.isEmpty, voice.episodes.allSatisfy({ $0.season > 0 }),
+              Set(voice.episodes.map(\.season)).count == 1,
+              let total = anime.episodeCount, total > 0 else { return nil }
+        let numbers = Array(Set(voice.episodes.map(\.number))).sorted()
+        guard numbers == Array(1...numbers.count), numbers.count <= total else { return nil }
+        if anime.status != .releasing && numbers.count != total { return nil }
+        return list.first { $0.sourceEpisode?.number == number }
+    }
+
     /// Та же серия, но с другой озвучкой.
     public static func episode(_ episode: ProviderEpisode, withVoice voice: String) -> ProviderEpisode {
         guard var payload = Payload.decode(episode.payload) else { return episode }

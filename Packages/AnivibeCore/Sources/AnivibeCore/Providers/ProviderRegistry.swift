@@ -83,6 +83,9 @@ public actor ProviderRegistry {
         return results.sorted { lhs, rhs in
             if lhs.1.isTestContent != rhs.1.isTestContent { return !lhs.1.isTestContent }
             if lhs.1.availability.isAvailable != rhs.1.availability.isAvailable { return lhs.1.availability.isAvailable }
+            if (lhs.1.providerID == KodikProvider.providerID) != (rhs.1.providerID == KodikProvider.providerID) {
+                return lhs.1.providerID == KodikProvider.providerID
+            }
             return lhs.0 < rhs.0
         }.map(\.1)
     }

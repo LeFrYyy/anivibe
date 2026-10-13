@@ -28,6 +28,8 @@ jobs:
           swift --version
       - name: Static project checks
         run: python3 scripts/check_project.py
+      - name: Static Kodik routing regressions
+        run: python3 scripts/test_kodik_routing.py
       - name: Test build configuration scripts
         run: python3 scripts/test_build_scripts.py
       - name: Run AnivibeCore tests

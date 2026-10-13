@@ -17,6 +17,9 @@ final class KodikOnlineViewModel {
     private(set) var match: KodikMatch?
     var selectedVoiceID: KodikVoiceOption.ID?
     var selectedSeason: Int = 1
+    @ObservationIgnored private var lookup: Task<KodikMatch?, Error>?
+    @ObservationIgnored private var lookupID = UUID()
+    @ObservationIgnored private var animeID: Int?
 
     /// В том же порядке, что использует плеер по умолчанию.
     var voices: [KodikVoiceOption] { KodikProvider.rankedVoices(match?.voices ?? []) }
@@ -54,41 +57,56 @@ final class KodikOnlineViewModel {
     }
 
     func load(anime: Anime, client: KodikClient) async {
-        phase = .loading
+        if animeID == anime.id, phase == .loaded { return }
+        if animeID != anime.id {
+            lookup?.cancel(); lookup = nil; lookupID = UUID()
+            match = nil; selectedVoiceID = nil
+        }
+        animeID = anime.id
+        let task: Task<KodikMatch?, Error>
+        if let pending = lookup { task = pending }
+        else {
+            lookupID = UUID(); phase = .loading
+            let created = Task<KodikMatch?, Error> {
+                try await client.search(titles: anime.allTitles, year: anime.year, shikimoriID: anime.malID)
+            }
+            lookup = created; task = created
+        }
+        let request = lookupID
+        defer { if lookupID == request, phase != .loading { lookup = nil } }
         do {
-            if let match = try await client.search(titles: anime.allTitles, year: anime.year, shikimoriID: anime.malID) {
-                self.match = match
-                // Сначала — озвучка, выбранная пользователем раньше; иначе та, что включит плеер по умолчанию.
-                let ranked = KodikProvider.rankedVoices(match.voices)
+            let result = try await task.value
+            guard !Task.isCancelled, lookupID == request, animeID == anime.id else { return }
+            // Another waiter may already have applied it and user may have picked a voice.
+            if phase == .loaded { return }
+            if let result {
+                match = result
+                let ranked = KodikProvider.rankedVoices(result.voices)
                 let saved = UserDefaults.standard.string(forKey: KodikPreferences.voiceKey)
                 let firstVoice = ranked.first { $0.translation.title == saved } ?? ranked.first
                 selectedVoiceID = firstVoice?.id
                 let seasons = firstVoice.map { Set($0.episodes.map(\.season)).sorted() } ?? []
                 selectedSeason = seasons.first(where: { $0 >= 1 }) ?? seasons.first ?? 1
                 phase = .loaded
-            } else {
-                phase = .notFound
-            }
-        } catch is CancellationError {
-            // Экран ушёл с экрана во время запроса — повторим при следующем появлении.
-            phase = .idle
-        } catch let error as APIError {
-            if error == .cancelled { phase = .idle; return }
-            phase = .failed(error.userMessage)
+            } else { match = nil; phase = .notFound }
         } catch {
-            phase = .failed(String(describing: error))
+            guard lookupID == request, !Task.isCancelled else { return }
+            if error is CancellationError || (error as? APIError) == .cancelled { phase = .idle }
+            else if let error = error as? APIError { phase = .failed(error.userMessage) }
+            else { phase = .failed("Не удалось загрузить озвучки Kodik.") }
         }
     }
+
 }
 
 /// Раздел «Смотреть с озвучкой» на странице аниме: поиск по Kodik,
-/// выбор озвучки и серии, воспроизведение во встроенном веб-плеере сервиса.
+/// выбор озвучки и серии, запуск единого плеера Anivibe с точной серией Kodik.
 struct OnlineSourcesSection: View {
     let anime: Anime
     let client: KodikClient
     /// Общая модель со страницей аниме (её же использует выбор озвучки над кнопкой «Смотреть»).
     let model: KodikOnlineViewModel
-    @State private var webPlayback: WebPlaybackRequest?
+    let playEpisode: (Episode, KodikVoiceOption) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
@@ -100,9 +118,7 @@ struct OnlineSourcesSection: View {
 
             content
         }
-        .fullScreenCover(item: $webPlayback) { request in
-            KodikPlayerScreen(request: request, client: client)
-        }
+
         .task {
             if model.phase == .idle {
                 await model.load(anime: anime, client: client)
@@ -168,8 +184,9 @@ struct OnlineSourcesSection: View {
             if let voice = model.selectedVoice {
                 if voice.isSingleVideo {
                     Button {
-                        webPlayback = WebPlaybackRequest(url: voice.playerURL, title: anime.title.preferred,
-                                                         subtitle: voice.translation.title)
+                        if let episode = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id).first {
+                            playEpisode(episode, voice)
+                        }
                     } label: {
                         Label("Смотреть" + (voice.quality.map { " · \($0)" } ?? ""), systemImage: "play.fill")
                             .font(.headline)
@@ -238,9 +255,12 @@ struct OnlineSourcesSection: View {
         return LazyVStack(spacing: 0) {
             ForEach(episodes) { episode in
                 Button {
-                    webPlayback = WebPlaybackRequest(url: episode.playerURL,
-                                                     title: "\(anime.title.preferred) — серия \(episode.number)",
-                                                     subtitle: model.selectedVoice?.translation.title)
+                    if let voice = model.selectedVoice,
+                       let exact = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id).first(where: {
+                           $0.sourceEpisode?.season == episode.season && $0.sourceEpisode?.number == episode.number
+                       }) {
+                        playEpisode(exact, voice)
+                    }
                 } label: {
                     HStack(spacing: Theme.Spacing.m) {
                         Text("\(episode.number)")
@@ -331,7 +351,7 @@ struct KodikVoicePicker: View {
                 Image(systemName: "mic.fill")
                     .foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Озвучка")
+                    Text("Источник: Kodik · озвучка")
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
                     Text(model.selectedVoice?.translation.title ?? "Выберите озвучку")

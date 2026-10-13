@@ -48,9 +48,10 @@ private struct PlayerContent: View {
 
     @State private var controls = PlaybackControlsState()
     @State private var showSettings = false
+    @State private var webPlayback: WebPlaybackRequest?
     private var controlsVisible: Bool { controls.isVisible }
     private var interactionBlocked: Bool {
-        showSettings || showSources || showEpisodes || model.isScrubbing || model.isBuffering || model.phase != .ready
+        webPlayback != nil || showSettings || showSources || showEpisodes || model.isScrubbing || model.isBuffering || model.phase != .ready
     }
     @State private var hideTask: Task<Void, Never>?
     @State private var showSources = false
@@ -83,6 +84,17 @@ private struct PlayerContent: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: controlsVisible)
+        .sheet(item: $webPlayback) { request in
+            NavigationStack {
+                WebPlayerView(url: request.url).background(Color.black)
+                    .navigationTitle("Kodik · веб-плеер").navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Закрыть") { webPlayback = nil } } }
+                    .safeAreaInset(edge: .bottom) {
+                        Text("Прогресс и настройки веб-плеера управляются Kodik; Anivibe не сохраняет их автоматически.")
+                            .font(.footnote).padding(12).background(.regularMaterial)
+                    }
+            }.preferredColorScheme(.dark).presentationDetents([.large])
+        }
         .sheet(isPresented: $showSettings) {
             VideoSettingsSheet(model: model).presentationDetents([.medium, .large])
         }
@@ -108,7 +120,13 @@ private struct PlayerContent: View {
             NoSourcesView(model: model, close: close)
         case .failed(let message):
             PlayerStatusView(systemImage: "exclamationmark.triangle", title: "Не удалось воспроизвести", message: message) {
-                HStack {
+                VStack(spacing: Theme.Spacing.m) {
+                    if let url = model.kodikWebURL {
+                        Button("Открыть веб-плеер Kodik") {
+                            model.pauseForWebPlayer()
+                            webPlayback = WebPlaybackRequest(url: url, title: model.anime.title.preferred, subtitle: model.selectedVoice)
+                        }.buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+                    }
                     Button("Повторить", action: model.retry).buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                     if !model.otherAvailableCandidates.isEmpty {
                         Button("Другой источник") { showSources = true }.buttonStyle(.bordered)

@@ -68,10 +68,24 @@ public actor SupabaseSyncService {
                       pulled: entries.count + progress.count + history.count, finishedAt: now())
     }
 
+    /// Called in the same SessionStore sync cycle as library. RLS stays own-only.
+    public func syncCollections(_ records: [CollectionSyncRecord], expectedUserID: String) async throws -> [CollectionSyncRecord] {
+        let session = try await auth.validSession()
+        guard session.user.id == expectedUserID else { throw AuthError.notSignedIn }
+        if !records.isEmpty {
+            try await upsert(table: "account_collections", conflict: "user_id,id",
+                             rows: records.map { CollectionRow(record: $0, userID: expectedUserID) }, token: session.accessToken)
+        }
+        let rows: [CollectionRow] = try await fetch(table: "account_collections", timeColumn: "updated_at", since: nil, token: session.accessToken)
+        guard (try await auth.validSession()).user.id == expectedUserID else { throw AuthError.notSignedIn }
+        return rows.filter { $0.user_id == expectedUserID }.map(\.model)
+    }
+
     // MARK: - REST
 
     private func upsert<Row: Encodable>(table: String, conflict: String, rows: [Row], token: String) async throws {
-        for chunk in stride(from: 0, to: rows.count, by: 200).map({ Array(rows[$0..<min($0 + 200, rows.count)]) }) {
+        let chunkSize = table == "account_collections" ? 1 : 200
+        for chunk in stride(from: 0, to: rows.count, by: chunkSize).map({ Array(rows[$0..<min($0 + chunkSize, rows.count)]) }) {
             var comps = URLComponents(url: config.url.appendingPathComponent("rest/v1/\(table)"), resolvingAgainstBaseURL: false)!
             comps.queryItems = [URLQueryItem(name: "on_conflict", value: conflict)]
             let request = URLRequest.json(url: comps.url!, body: try Self.encoder.encode(chunk), headers: [
@@ -87,7 +101,7 @@ public actor SupabaseSyncService {
     private func fetch<Row: Decodable>(table: String, timeColumn: String, since: Date?, token: String) async throws -> [Row] {
         var output: [Row] = []
         var offset = 0
-        let tieBreaker = table == "watch_history" ? "id.asc" : (table == "watch_progress" ? "anime_id.asc,episode.asc,source_key.asc" : "anime_id.asc")
+        let tieBreaker = (table == "watch_history" || table == "account_collections") ? "id.asc" : (table == "watch_progress" ? "anime_id.asc,episode.asc,source_key.asc" : "anime_id.asc")
         while true {
             try Task.checkCancellation()
             var comps = URLComponents(url: config.url.appendingPathComponent("rest/v1/\(table)"), resolvingAgainstBaseURL: false)!
@@ -231,5 +245,22 @@ struct HistoryRow: Codable {
     var model: HistoryItem {
         HistoryItem(id: id, anime: AnimeSnapshot(id: anime_id, title: title, coverURL: cover_url.flatMap(URL.init(string:))),
                     episode: episode, watchedAt: watched_at, sourceKey: source_key?.nilIfBlank, deletedAt: deleted_at)
+    }
+}
+
+struct CollectionRow: Codable {
+    let user_id: String
+    let id: UUID
+    let folder: AnimeCollection
+    let sort_order: Int
+    let updated_at: Date
+    let mutation_id: UUID
+    let is_deleted: Bool
+    init(record: CollectionSyncRecord, userID: String) {
+        user_id = userID; id = record.id; folder = record.folder; sort_order = record.rank
+        updated_at = record.updatedAt; mutation_id = record.mutationID; is_deleted = record.isDeleted
+    }
+    var model: CollectionSyncRecord {
+        CollectionSyncRecord(folder: folder, rank: sort_order, updatedAt: updated_at, mutationID: mutation_id, isDeleted: is_deleted)
     }
 }

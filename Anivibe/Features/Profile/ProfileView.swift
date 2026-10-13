@@ -10,6 +10,7 @@ struct ProfileView: View {
     @State private var social = SocialStore()
     @State private var editProfile = false
     @State private var confirmSignOut = false
+    @State private var confirmImportFolders = false
 
     private var currentProfile: UserProfile? {
         guard let profile = social.profile, profile.userID == session.user?.id else { return nil }
@@ -67,6 +68,10 @@ struct ProfileView: View {
                 if let profile = currentProfile { ProfileEditorView(store: social, profile: profile) }
             }
             .onChange(of: session.user?.id) { _, _ in editProfile = false }
+            .confirmationDialog("Скопировать локальные папки?", isPresented: $confirmImportFolders, titleVisibility: .visible) {
+                Button("Скопировать") { env.collections.importGuestFolders() }
+                Button("Отмена", role: .cancel) {}
+            } message: { Text("Папки будут добавлены к аккаунту и синхронизированы. Повторное копирование создаст дубликаты.") }
             .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Выйти", role: .destructive) { Task { await session.signOut() } }
                 Button("Отмена", role: .cancel) {}
@@ -201,6 +206,15 @@ struct ProfileView: View {
             if let message = session.lastSyncMessage {
                 Text(message).font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
+            if let error = env.collections.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle").font(.subheadline).foregroundStyle(Theme.danger)
+            }
+            if let message = env.collections.importMessage {
+                Text(message).font(.subheadline).foregroundStyle(Theme.success)
+            }
+            Button("Скопировать локальные папки в аккаунт") { confirmImportFolders = true }.frame(minHeight: 44)
+            Text("Папки аккаунта синхронизируются вместе с библиотекой. Локальные папки можно перенести отдельно — оригинал останется на устройстве.")
+                .font(.footnote).foregroundStyle(Theme.textSecondary)
             Button("Синхронизировать сейчас") { Task { await session.syncIfNeeded(reason: .manual) } }
                 .frame(minHeight: 44).disabled(session.isSyncing)
             Divider()
@@ -226,7 +240,7 @@ struct ProfileIdentityView: View {
         VStack(spacing: 12) {
             Group {
                 if let profile {
-                    ProfileAvatarView(userID: profile.userID, revision: profile.updatedAt, size: 112)
+                    ProfileAvatarView(userID: profile.userID, revision: profile.avatarPath ?? profile.updatedAt, size: 112, avatarAvailable: profile.avatarPath != nil)
                 } else {
                     Image(systemName: "person.crop.circle.fill").resizable().scaledToFit()
                         .foregroundStyle(Theme.accent).frame(width: 112, height: 112)

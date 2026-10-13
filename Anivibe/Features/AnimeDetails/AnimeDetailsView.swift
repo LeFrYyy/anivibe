@@ -13,6 +13,8 @@ struct AnimeDetailsView: View {
     @State private var showSources = false
     @State private var pendingPlayback: PlaybackRequest?
     @State private var kodikModel = KodikOnlineViewModel()
+    @State private var startingPlayback = false
+    @State private var sourceSelectionMessage: String?
 
     init(anime: Anime) {
         _model = State(initialValue: AnimeDetailsViewModel(anime: anime))
@@ -53,6 +55,10 @@ struct AnimeDetailsView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                        if let message = sourceSelectionMessage {
+                            Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(Theme.secondaryAccent)
+                                .padding(.horizontal, Theme.Spacing.l)
+                        }
                         if let voice = kodikModel.selectedVoice {
                             Text("Серии источника · " + voice.translation.title).font(.headline)
                             Text("Нумерация источника может отличаться от каталога. Здесь показаны его фактические элементы.").font(.footnote)
@@ -65,10 +71,10 @@ struct AnimeDetailsView: View {
                 }.navigationTitle("Серии").toolbar { Button("Готово") { showEpisodes = false } }
             }
         }
-        .sheet(isPresented: $showSources) {
+        .sheet(isPresented: $showSources, onDismiss: presentPendingPlayback) {
             NavigationStack {
                 if let kodik = env.kodik {
-                    ScrollView { OnlineSourcesSection(anime: anime, client: kodik, model: kodikModel) }
+                    ScrollView { OnlineSourcesSection(anime: anime, client: kodik, model: kodikModel, playEpisode: playSourceEpisode) }
                         .navigationTitle("Озвучки и серии")
                         .toolbar { Button("Готово") { showSources = false } }
                 }
@@ -129,19 +135,15 @@ struct AnimeDetailsView: View {
                 KodikVoicePicker(anime: anime, client: kodik, model: kodikModel)
             }
             Button {
-                if let key = resume?.sourceKey {
-                    if let voice = kodikModel.selectedVoice,
-                       let exact = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id).first(where: { $0.sourceKey == key }) {
-                        playSourceEpisode(exact, voice: voice)
-                    } else { showEpisodes = true }
-                } else { startPlayback(episode: resume?.episode ?? 1, position: resume?.position ?? 0) }
+                Task { await startPreferredPlayback() }
             } label: {
-                Label(resumeTitle, systemImage: "play.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 30)
+                HStack {
+                    if startingPlayback { ProgressView().tint(Theme.onAccent) }
+                    Label(resumeTitle, systemImage: "play.fill")
+                }.font(.headline).frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(episodes.isEmpty && kodikModel.selectedVoice == nil)
+            .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+            .disabled(startingPlayback || !detailsLoaded || (episodes.isEmpty && env.kodik == nil))
 
             HStack(spacing: Theme.Spacing.m) {
                 Button {
@@ -190,26 +192,76 @@ struct AnimeDetailsView: View {
         .padding(.horizontal, Theme.Spacing.l)
     }
 
+    private var detailsLoaded: Bool { if case .loaded = model.phase { return true }; return false }
     private var resumeTitle: String {
-        guard let resume else { return episodes.isEmpty ? "Нет серий" : "Смотреть" }
-        if resume.sourceKey != nil { return "Продолжить серию источника" }
+        if startingPlayback { return env.kodik == nil ? "Готовим видео…" : "Готовим Kodik…" }
+        if kodikModel.selectedVoice != nil { return resume == nil ? "Смотреть · Kodik" : "Продолжить · Kodik" }
+        guard let resume else { return episodes.isEmpty && env.kodik == nil ? "Нет серий" : "Смотреть" }
+        if resume.sourceKey != nil { return "Выбрать серию источника" }
         return resume.isNextEpisode ? "Смотреть серию \(resume.episode)" : "Продолжить: серия \(resume.episode)"
     }
-
-    private func startPlayback(episode: Int, position: Double) {
-        guard !episodes.isEmpty else { return }
-        let request = PlaybackRequest(anime: anime, episodes: episodes, episode: episode, startPosition: position)
+    private func presentPendingPlayback() {
+        if let request = pendingPlayback { playback = request; pendingPlayback = nil }
+    }
+    private func present(_ request: PlaybackRequest) {
+        sourceSelectionMessage = nil
         if showEpisodes { pendingPlayback = request; showEpisodes = false }
+        else if showSources { pendingPlayback = request; showSources = false }
         else { playback = request }
     }
-
+    private func chooseKodikEpisode() {
+        sourceSelectionMessage = "Нумерация Kodik или выбранная озвучка отличаются от сохранённой серии. Выберите фактическую серию Kodik — прогресс другого видео не будет перенесён автоматически."
+        showEpisodes = true
+    }
+    private func startPreferredPlayback() async {
+        guard !startingPlayback else { return }
+        startingPlayback = true
+        defer { startingPlayback = false }
+        if let client = env.kodik { await kodikModel.load(anime: anime, client: client) }
+        guard !Task.isCancelled else { return }
+        if let voice = kodikModel.selectedVoice {
+            let list = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id)
+            if let saved = resume {
+                if let key = saved.sourceKey {
+                    guard let exact = list.first(where: { $0.sourceKey == key }) else { chooseKodikEpisode(); return }
+                    playSourceEpisode(exact, voice: voice)
+                } else if let exact = KodikProvider.catalogueEpisode(number: saved.episode, anime: anime, voice: voice) {
+                    // Source-scoped progress is used; legacy catalogue position is not copied.
+                    playSourceEpisode(exact, voice: voice)
+                } else { chooseKodikEpisode() }
+            } else if let first = list.first(where: { $0.sourceEpisode?.season == kodikModel.selectedSeason }) ?? list.first {
+                playSourceEpisode(first, voice: voice)
+            } else { presentCatalogue(episode: 1, position: 0) }
+        } else if resume?.sourceKey != nil {
+            sourceSelectionMessage = "Сохранённая серия Kodik сейчас недоступна. Повторите поиск озвучек или выберите серию другого источника вручную."
+            showEpisodes = true
+        } else { presentCatalogue(episode: resume?.episode ?? 1, position: resume?.position ?? 0) }
+    }
+    /// Catalogue episode buttons also honour the selected Kodik translation.
+    private func startPlayback(episode: Int, position: Double) {
+        Task {
+            guard !startingPlayback else { return }
+            startingPlayback = true
+            defer { startingPlayback = false }
+            if let client = env.kodik { await kodikModel.load(anime: anime, client: client) }
+            guard !Task.isCancelled else { return }
+            if let voice = kodikModel.selectedVoice {
+                if let exact = KodikProvider.catalogueEpisode(number: episode, anime: anime, voice: voice) {
+                    playSourceEpisode(exact, voice: voice)
+                } else { chooseKodikEpisode() }
+            } else { presentCatalogue(episode: episode, position: position) }
+        }
+    }
+    private func presentCatalogue(episode: Int, position: Double) {
+        guard episodes.contains(where: { $0.number == episode }) else { showEpisodes = true; return }
+        present(PlaybackRequest(anime: anime, episodes: episodes, episode: episode, startPosition: position))
+    }
     private func playSourceEpisode(_ episode: Episode, voice: KodikVoiceOption) {
         let list = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id)
+        guard list.contains(where: { $0.sourceKey == episode.sourceKey }) else { return }
         let progress = library.progress(anime.id, episode: episode.progressNumber, sourceKey: episode.sourceKey)
         let position = (progress?.isFinished ?? true) ? 0 : progress?.position ?? 0
-        let request = PlaybackRequest(anime: anime, episodes: list, episode: episode.number, startPosition: position)
-        if showEpisodes { pendingPlayback = request; showEpisodes = false }
-        else { playback = request }
+        present(PlaybackRequest(anime: anime, episodes: list, episode: episode.number, startPosition: position))
     }
 
     // MARK: Content

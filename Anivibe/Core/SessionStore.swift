@@ -20,23 +20,30 @@ final class SessionStore {
     private let auth: SupabaseAuthClient?
     private let sync: SupabaseSyncService?
     private let library: LibraryStore
+    let collections: CollectionsStore
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
+    @ObservationIgnored private var needsAnotherSync = false
 
     var isBackendConfigured: Bool { auth != nil }
     var isSignedIn: Bool { user != nil }
 
-    init(auth: SupabaseAuthClient?, sync: SupabaseSyncService?, library: LibraryStore) {
+    init(auth: SupabaseAuthClient?, sync: SupabaseSyncService?, library: LibraryStore, collections: CollectionsStore) {
         self.auth = auth
         self.sync = sync
         self.library = library
+        self.collections = collections
         library.onLocalChange = { [weak self] in self?.scheduleSync() }
+        collections.onLocalChange = { [weak self] in self?.scheduleSync() }
     }
 
     func restore() async {
         guard let auth else { return }
         user = await auth.currentSession?.user
-        do { try await library.repository.switchAccount(userID: user?.id); await library.refresh() }
-        catch { errorMessage = "Не удалось открыть библиотеку аккаунта. Исходный файл сохранён."; user = nil; return }
+        do { try await activateStorage(userID: user?.id) }
+        catch {
+            library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure()
+            errorMessage = "Не удалось открыть данные аккаунта. Исходные файлы сохранены."; user = nil; return
+        }
         lastSync = library.snapshot.lastSyncAt
         await syncIfNeeded(reason: .launch)
     }
@@ -44,8 +51,7 @@ final class SessionStore {
     func signIn(email: String, password: String) async {
         await perform {
             let session = try await self.auth!.signIn(email: email, password: password)
-            try await self.library.repository.switchAccount(userID: session.user.id)
-            await self.library.refresh()
+            try await self.activateStorage(userID: session.user.id)
             self.user = session.user
             await self.syncIfNeeded(reason: .manual)
         }
@@ -55,8 +61,7 @@ final class SessionStore {
         await perform {
             do {
                 let session = try await self.auth!.signUp(email: email, password: password)
-                try await self.library.repository.switchAccount(userID: session.user.id)
-                await self.library.refresh()
+                try await self.activateStorage(userID: session.user.id)
                 self.user = session.user
                 await self.syncIfNeeded(reason: .manual)
             } catch AuthError.confirmationRequired {
@@ -70,8 +75,7 @@ final class SessionStore {
         guard let email = pendingConfirmationEmail else { return }
         await perform {
             let session = try await self.auth!.verifySignupCode(email: email, code: code)
-            try await self.library.repository.switchAccount(userID: session.user.id)
-            await self.library.refresh()
+            try await self.activateStorage(userID: session.user.id)
             self.user = session.user; self.pendingConfirmationEmail = nil
             await self.syncIfNeeded(reason: .manual)
         }
@@ -88,8 +92,7 @@ final class SessionStore {
                 await self.auth!.googleAuthorizationURL(redirectURL: redirect, challenge: challenge)
             }
             let session = try await self.auth!.exchangeOAuthCode(result.code, verifier: result.verifier)
-            try await self.library.repository.switchAccount(userID: session.user.id)
-            await self.library.refresh()
+            try await self.activateStorage(userID: session.user.id)
             self.user = session.user
             await self.syncIfNeeded(reason: .manual)
         }
@@ -103,33 +106,63 @@ final class SessionStore {
     }
 
     func signOut() async {
-        guard let auth else { return }
+        guard let auth, !isBusy else { return }
+        isBusy = true
+        defer { isBusy = false }
         debounceTask?.cancel()
         await auth.signOut()
         user = nil
-        do { try await library.repository.switchAccount(userID: nil); await library.refresh() }
-        catch { errorMessage = "Не удалось восстановить локальную библиотеку. Файл не изменён." }
+        AvatarImageLoader.shared.reset()
+        do { try await activateStorage(userID: nil) }
+        catch { library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure(); errorMessage = "Не удалось восстановить локальные данные. Файлы не изменены." }
         lastSync = nil
         lastSyncMessage = nil
     }
 
     func syncIfNeeded(reason: SyncReason) async {
-        guard let sync, user != nil, !isSyncing else { return }
+        guard let sync, let account = user?.id else { return }
+        if isSyncing { needsAnotherSync = true; return }
         isSyncing = true
-        defer { isSyncing = false }
+        defer {
+            isSyncing = false
+            if needsAnotherSync { needsAnotherSync = false; scheduleSync() }
+        }
         do {
             let report = try await sync.sync()
+            guard user?.id == account else { return }
+            let localFolders = try collections.recordsForSync(accountID: account)
+            let remoteFolders = try await sync.syncCollections(localFolders, expectedUserID: account)
+            guard user?.id == account else { return }
+            try collections.mergeRemote(remoteFolders, accountID: account)
             lastSync = report.finishedAt
-            lastSyncMessage = "Отправлено: \(report.pushed), получено: \(report.pulled)"
+            lastSyncMessage = "Библиотека и папки обновлены. Отправлено: \(report.pushed + localFolders.count), получено: \(report.pulled + remoteFolders.count)"
             await library.refresh()
         } catch let e as AuthError {
-            if e == .sessionExpired || e == .notSignedIn { user = nil }
+            guard user?.id == account else { return }
+            if e == .sessionExpired || e == .notSignedIn {
+                user = nil; AvatarImageLoader.shared.reset()
+                do { try await activateStorage(userID: nil) } catch { library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure() }
+            }
             lastSyncMessage = e.userMessage
         } catch let e as APIError {
-            lastSyncMessage = "Синхронизация не удалась: \(e.userMessage)"
+            guard user?.id == account else { return }
+            await library.refresh()
+            lastSyncMessage = "Синхронизация не завершена (проверьте миграцию social_sharing_collections): \(e.userMessage)"
         } catch {
-            lastSyncMessage = "Синхронизация не удалась."
+            guard user?.id == account else { return }
+            await library.refresh()
+            lastSyncMessage = "Синхронизация библиотеки и папок не завершена."
         }
+    }
+
+    private func activateStorage(userID: String?) async throws {
+        // Prepare destination folders before changing either visible account store.
+        let prepared = try collections.prepareAccount(userID)
+        try await library.repository.switchAccount(userID: userID)
+        collections.activate(prepared, userID: userID)
+        library.allowAccountStorage()
+        AvatarImageLoader.shared.reset()
+        await library.refresh()
     }
 
     /// Изменения библиотеки отправляются пачкой через 8 секунд тишины.

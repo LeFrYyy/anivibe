@@ -34,7 +34,7 @@ struct SettingsView: View {
                 Button("Вернуть стандартный фиолетовый") { settings.accentHex = nil }
                 NavigationLink("Пользовательский фон") { BackgroundSettingsView() }
                 Toggle("Библиотека на главной", isOn: $settings.libraryPinned)
-                Text("Оформление и порядок папок сохраняются на этом устройстве; синхронизация этих настроек пока не поддерживается.")
+                Text("Оформление сохраняется на устройстве. Папки, их содержимое и порядок синхронизируются в аккаунте вместе с библиотекой.")
                     .font(.footnote).foregroundStyle(Theme.textSecondary)
             }
             Section("Воспроизведение") {

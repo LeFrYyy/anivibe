@@ -16,7 +16,7 @@ final class AppEnvironment {
     /// Клиент Kodik (веб-плеер с озвучками). `nil`, если токен не задан в конфигурации.
     let kodik: KodikClient?
     /// Пользовательские папки с аниме на главной.
-    let collections = CollectionsStore()
+    let collections: CollectionsStore
     @ObservationIgnored private var started = false
 
     init(configuration: AppConfiguration, catalog: CatalogService, registry: ProviderRegistry, library: LibraryStore,
@@ -26,6 +26,7 @@ final class AppEnvironment {
         self.registry = registry
         self.library = library
         self.session = session
+        self.collections = session.collections
         self.settings = settings
         self.cache = cache
         self.kodik = kodik
@@ -84,7 +85,7 @@ final class AppEnvironment {
             socialService = SupabaseSocialService(config: supa, auth: client, transport: transport)
             sync = SupabaseSyncService(config: supa, transport: transport, auth: client, library: repository)
         }
-        let session = SessionStore(auth: auth, sync: sync, library: library)
+        let session = SessionStore(auth: auth, sync: sync, library: library, collections: CollectionsStore())
         let settings = AppSettings(testStreamsDefault: config.testStreamsEnabledByDefault)
 
 
@@ -137,58 +138,100 @@ enum KodikPreferences {
 }
 
 
-/// Хранилище папок: состояние + сохранение в JSON (Application Support/collections.json).
+/// Separate local files per account; guest collections.json is preserved and only
+/// copied to an account by the explicit import action. Cloud data stays own-only.
 @Observable
 @MainActor
 final class CollectionsStore {
-    private(set) var state: AnimeCollections
-    @ObservationIgnored private let fileURL: URL?
+    private(set) var state = AnimeCollections()
+    private(set) var activeAccountID: String?
     private(set) var errorMessage: String?
+    private(set) var importMessage: String?
+    @ObservationIgnored var onLocalChange: (@MainActor () -> Void)?
+    @ObservationIgnored private var document = CollectionsSyncState()
+    @ObservationIgnored private var fileURL: URL?
     @ObservationIgnored private var canSave = true
-
+    @ObservationIgnored private let directory: URL?
     var collections: [AnimeCollection] { state.collections }
 
     init() {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+        directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Anivibe", isDirectory: true)
-        if let dir { try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
-        fileURL = dir?.appendingPathComponent("collections.json")
-        if let fileURL, let data = try? Data(contentsOf: fileURL),
-           let decoded = try? JSONDecoder().decode(AnimeCollections.self, from: data) {
-            state = decoded
-        } else {
-            state = AnimeCollections()
-            if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
-                canSave = false
-                errorMessage = "Файл папок повреждён. Он сохранён без изменений; восстановите его из резервной копии."
-            }
+        if let directory { try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+        do { activate(try prepareAccount(nil), userID: nil) }
+        catch { canSave = false; errorMessage = "Файл папок не удалось открыть. Исходный файл сохранён без изменений." }
+    }
+    struct Prepared { let document: CollectionsSyncState; let url: URL }
+    func prepareAccount(_ userID: String?) throws -> Prepared {
+        guard let directory else { throw APIError.badRequest("Хранилище папок недоступно") }
+        let filename: String
+        if let userID {
+            guard UUID(uuidString: userID) != nil else { throw APIError.badRequest("Некорректный ID аккаунта") }
+            filename = "collections-user-" + userID.lowercased() + ".json"
+        } else { filename = "collections.json" }
+        let url = directory.appendingPathComponent(filename)
+        guard FileManager.default.fileExists(atPath: url.path) else { return Prepared(document: CollectionsSyncState(), url: url) }
+        let data = try Data(contentsOf: url)
+        if let document = try? JSONDecoder().decode(CollectionsSyncState.self, from: data) {
+            return Prepared(document: document, url: url)
         }
+        // Original guest JSON remains readable; conversion never auto-uploads it.
+        let legacy = try JSONDecoder().decode(AnimeCollections.self, from: data)
+        var migrated = CollectionsSyncState(); migrated.capture(legacy)
+        return Prepared(document: migrated, url: url)
     }
-
+    func activate(_ prepared: Prepared, userID: String?) {
+        activeAccountID = userID; fileURL = prepared.url; document = prepared.document
+        state = document.visible; canSave = true; errorMessage = nil; importMessage = nil
+    }
+    func clearVisibleOnAccountFailure() {
+        activeAccountID = nil; state = AnimeCollections(); document = CollectionsSyncState(); canSave = false
+        errorMessage = "Папки не удалось открыть. Исходные файлы сохранены."
+    }
     func collection(_ id: UUID) -> AnimeCollection? { state.collection(id) }
-
-    @discardableResult
-    func create(name: String, with first: AnimeSnapshot? = nil) -> UUID {
-        let id = state.create(name: name, with: first)
-        save()
-        return id
+    @discardableResult func create(name: String, with first: AnimeSnapshot? = nil) -> UUID {
+        guard canSave else { return UUID() }
+        let id = state.create(name: String(name.prefix(100)), with: first); saveLocal(); return id
     }
-
-    func reorder(_ id: UUID, to target: UUID) { state.moveCollection(id, to: target); save() }
-    func reorderItem(_ animeID: Int, in id: UUID, to target: Int) { state.moveItem(animeID, in: id, to: target); save() }
-
-    func rename(_ id: UUID, to name: String) { state.rename(id, to: name); save() }
-    func delete(_ id: UUID) { state.delete(id); save() }
-    func add(_ anime: AnimeSnapshot, to id: UUID) { state.add(anime, to: id); save() }
-    func remove(_ animeID: Int, from id: UUID) { state.remove(animeID, from: id); save() }
-    func toggle(_ anime: AnimeSnapshot, in id: UUID) { state.toggle(anime, in: id); save() }
-    func move(in id: UUID, from source: IndexSet, to destination: Int) {
-        state.moveItems(in: id, from: source, to: destination); save()
+    func reorder(_ id: UUID, to target: UUID) { mutate { $0.moveCollection(id, to: target) } }
+    func reorderItem(_ animeID: Int, in id: UUID, to target: Int) { mutate { $0.moveItem(animeID, in: id, to: target) } }
+    func rename(_ id: UUID, to name: String) { mutate { $0.rename(id, to: String(name.prefix(120))) } }
+    func delete(_ id: UUID) { mutate { $0.delete(id) } }
+    func add(_ anime: AnimeSnapshot, to id: UUID) { mutate { $0.add(anime, to: id) } }
+    func remove(_ animeID: Int, from id: UUID) { mutate { $0.remove(animeID, from: id) } }
+    func toggle(_ anime: AnimeSnapshot, in id: UUID) { mutate { $0.toggle(anime, in: id) } }
+    func move(in id: UUID, from source: IndexSet, to destination: Int) { mutate { $0.moveItems(in: id, from: source, to: destination) } }
+    private func mutate(_ work: (inout AnimeCollections) -> Void) { guard canSave else { return }; work(&state); saveLocal() }
+    private func saveLocal() {
+        document.capture(state)
+        do { try persist(); onLocalChange?() }
+        catch { errorMessage = "Папки не удалось сохранить. Не закрывайте приложение и повторите действие." }
     }
-
-    private func save() {
-        guard canSave, let fileURL else { return }
-        do { let data = try JSONEncoder().encode(state); try data.write(to: fileURL, options: .atomic); errorMessage = nil }
-        catch { errorMessage = "Не удалось сохранить папки: \(error.localizedDescription)" }
+    private func persist() throws {
+        guard canSave, let fileURL else { throw APIError.badRequest("Хранилище папок недоступно") }
+        try JSONEncoder().encode(document).write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        errorMessage = nil
+    }
+    func recordsForSync(accountID: String) throws -> [CollectionSyncRecord] {
+        guard activeAccountID == accountID, canSave, errorMessage == nil else { throw APIError.badRequest("Папки не готовы к синхронизации") }
+        return document.recordsToUpload
+    }
+    func mergeRemote(_ records: [CollectionSyncRecord], accountID: String) throws {
+        guard activeAccountID == accountID, canSave else { throw AuthError.notSignedIn }
+        // Merge into current document, not the snapshot taken before network await.
+        let previous = document
+        document.merge(records)
+        do { try persist(); state = document.visible }
+        catch { document = previous; errorMessage = "Не удалось сохранить полученные папки."; throw error }
+    }
+    func importGuestFolders() {
+        guard activeAccountID != nil, canSave else { return }
+        do {
+            let guest = try prepareAccount(nil).document.visible.collections
+            let copied = guest.map { AnimeCollection(name: String($0.name.prefix(120)), items: $0.items, createdAt: $0.createdAt) }
+            state = AnimeCollections(collections: state.collections + copied)
+            saveLocal()
+            if errorMessage == nil { importMessage = "Скопировано папок: \(copied.count). Локальный оригинал сохранён." }
+        } catch { errorMessage = "Локальные папки не удалось прочитать. Исходный файл сохранён." }
     }
 }

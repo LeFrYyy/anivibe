@@ -16,16 +16,22 @@ struct ProfileEditorView: View {
     @State private var displayName: String
     @State private var bio: String
     @State private var visibility: ProfileVisibility
+    @State private var friendsVisibility: SharingVisibility
+    @State private var historyVisibility: SharingVisibility
+    @State private var libraryVisibility: SharingVisibility
     init(store: SocialStore, profile: UserProfile) {
         self.store = store; self.profile = profile
         _username = State(initialValue: profile.username ?? "")
         _displayName = State(initialValue: profile.displayName)
         _bio = State(initialValue: profile.bio)
         _visibility = State(initialValue: profile.visibility)
+        _friendsVisibility = State(initialValue: profile.friendsVisibility)
+        _historyVisibility = State(initialValue: profile.historyVisibility)
+        _libraryVisibility = State(initialValue: profile.libraryVisibility)
     }
     private var validationMessage: String? {
         do {
-            _ = try ProfileDraft(username: username, displayName: displayName, bio: bio, visibility: visibility).validated()
+            _ = try ProfileDraft(username: username, displayName: displayName, bio: bio, visibility: visibility, friendsVisibility: friendsVisibility, historyVisibility: historyVisibility, libraryVisibility: libraryVisibility).validated()
             return nil
         } catch let error as SocialError { return error.userMessage }
         catch { return "Проверьте поля профиля." }
@@ -35,7 +41,7 @@ struct ProfileEditorView: View {
             Form {
                 Section("Аватар") {
                     VStack(spacing: 12) {
-                        ProfileAvatarView(userID: profile.userID, revision: store.profile?.updatedAt ?? profile.updatedAt, size: 112)
+                        ProfileAvatarView(userID: profile.userID, revision: store.profile?.avatarPath ?? store.profile?.updatedAt ?? profile.updatedAt, size: 112, avatarAvailable: store.profile?.avatarPath != nil)
                         Text("Ваш образ в Anivibe").font(.headline)
                     }.frame(maxWidth: .infinity).padding(.vertical, 16)
                     PhotosPicker(selection: $photo, matching: .images) { Label("Выбрать из галереи", systemImage: "photo") }
@@ -60,14 +66,23 @@ struct ProfileEditorView: View {
                     Picker("Профиль", selection: $visibility) {
                         ForEach(ProfileVisibility.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
-                    Text("Публичный профиль доступен авторизованным пользователям и поиску по username. Приватный виден вам, вашим друзьям и адресатам ваших запросов в друзья. Почта, библиотека и история не публикуются.")
+                    Picker("Список друзей", selection: $friendsVisibility) {
+                        ForEach(SharingVisibility.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    Picker("История просмотра", selection: $historyVisibility) {
+                        ForEach(SharingVisibility.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    Picker("Библиотека и избранное", selection: $libraryVisibility) {
+                        ForEach(SharingVisibility.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    Text("Друзья, история и библиотека изначально закрыты. Разрешения работают только для пользователей, которым доступен ваш профиль. Почта, точная позиция плеера и папки остаются личными.")
                         .font(.footnote).foregroundStyle(Theme.textSecondary)
                 }
                 if let validationMessage { Text(validationMessage).font(.footnote).foregroundStyle(Theme.danger) }
                 if let error = store.errorMessage { Text(error).foregroundStyle(Theme.danger) }
                 Section {
                     Button {
-                        let draft = ProfileDraft(username: username, displayName: displayName, bio: bio, visibility: visibility)
+                        let draft = ProfileDraft(username: username, displayName: displayName, bio: bio, visibility: visibility, friendsVisibility: friendsVisibility, historyVisibility: historyVisibility, libraryVisibility: libraryVisibility)
                         Task { if await store.save(draft) { dismiss() } }
                     } label: {
                         HStack { Text("Сохранить"); Spacer(); if store.isSaving { ProgressView() } }
@@ -104,15 +119,3 @@ struct ProfileEditorView: View {
     }
 }
 
-struct PublicProfileView: View {
-    let profile: UserProfile
-    var body: some View {
-        ScrollView {
-            ProfileIdentityView(profile: profile, fallbackSubtitle: "Пока ничего о себе")
-                .padding(24).profilePanel().padding(16)
-        }
-        .screenBackground()
-        .navigationTitle("Профиль")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}

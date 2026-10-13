@@ -1,3 +1,188 @@
+--- a/.github/workflows/ios.yml
++++ b/.github/workflows/ios.yml
+@@ -28,6 +28,8 @@
+           swift --version
+       - name: Static project checks
+         run: python3 scripts/check_project.py
++      - name: Static Kodik routing regressions
++        run: python3 scripts/test_kodik_routing.py
+       - name: Test build configuration scripts
+         run: python3 scripts/test_build_scripts.py
+       - name: Run AnivibeCore tests
+--- a/Anivibe/App/AppEnvironment.swift
++++ b/Anivibe/App/AppEnvironment.swift
+@@ -16,7 +16,7 @@
+     /// Клиент Kodik (веб-плеер с озвучками). `nil`, если токен не задан в конфигурации.
+     let kodik: KodikClient?
+     /// Пользовательские папки с аниме на главной.
+-    let collections = CollectionsStore()
++    let collections: CollectionsStore
+     @ObservationIgnored private var started = false
+ 
+     init(configuration: AppConfiguration, catalog: CatalogService, registry: ProviderRegistry, library: LibraryStore,
+@@ -26,6 +26,7 @@
+         self.registry = registry
+         self.library = library
+         self.session = session
++        self.collections = session.collections
+         self.settings = settings
+         self.cache = cache
+         self.kodik = kodik
+@@ -84,7 +85,7 @@
+             socialService = SupabaseSocialService(config: supa, auth: client, transport: transport)
+             sync = SupabaseSyncService(config: supa, transport: transport, auth: client, library: repository)
+         }
+-        let session = SessionStore(auth: auth, sync: sync, library: library)
++        let session = SessionStore(auth: auth, sync: sync, library: library, collections: CollectionsStore())
+         let settings = AppSettings(testStreamsDefault: config.testStreamsEnabledByDefault)
+ 
+ 
+@@ -137,58 +138,100 @@
+ }
+ 
+ 
+-/// Хранилище папок: состояние + сохранение в JSON (Application Support/collections.json).
++/// Separate local files per account; guest collections.json is preserved and only
++/// copied to an account by the explicit import action. Cloud data stays own-only.
+ @Observable
+ @MainActor
+ final class CollectionsStore {
+-    private(set) var state: AnimeCollections
+-    @ObservationIgnored private let fileURL: URL?
++    private(set) var state = AnimeCollections()
++    private(set) var activeAccountID: String?
+     private(set) var errorMessage: String?
++    private(set) var importMessage: String?
++    @ObservationIgnored var onLocalChange: (@MainActor () -> Void)?
++    @ObservationIgnored private var document = CollectionsSyncState()
++    @ObservationIgnored private var fileURL: URL?
+     @ObservationIgnored private var canSave = true
+-
++    @ObservationIgnored private let directory: URL?
+     var collections: [AnimeCollection] { state.collections }
+ 
+     init() {
+-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
++        directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+             .appendingPathComponent("Anivibe", isDirectory: true)
+-        if let dir { try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
+-        fileURL = dir?.appendingPathComponent("collections.json")
+-        if let fileURL, let data = try? Data(contentsOf: fileURL),
+-           let decoded = try? JSONDecoder().decode(AnimeCollections.self, from: data) {
+-            state = decoded
+-        } else {
+-            state = AnimeCollections()
+-            if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
+-                canSave = false
+-                errorMessage = "Файл папок повреждён. Он сохранён без изменений; восстановите его из резервной копии."
+-            }
+-        }
+-    }
+-
++        if let directory { try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
++        do { activate(try prepareAccount(nil), userID: nil) }
++        catch { canSave = false; errorMessage = "Файл папок не удалось открыть. Исходный файл сохранён без изменений." }
++    }
++    struct Prepared { let document: CollectionsSyncState; let url: URL }
++    func prepareAccount(_ userID: String?) throws -> Prepared {
++        guard let directory else { throw APIError.badRequest("Хранилище папок недоступно") }
++        let filename: String
++        if let userID {
++            guard UUID(uuidString: userID) != nil else { throw APIError.badRequest("Некорректный ID аккаунта") }
++            filename = "collections-user-" + userID.lowercased() + ".json"
++        } else { filename = "collections.json" }
++        let url = directory.appendingPathComponent(filename)
++        guard FileManager.default.fileExists(atPath: url.path) else { return Prepared(document: CollectionsSyncState(), url: url) }
++        let data = try Data(contentsOf: url)
++        if let document = try? JSONDecoder().decode(CollectionsSyncState.self, from: data) {
++            return Prepared(document: document, url: url)
++        }
++        // Original guest JSON remains readable; conversion never auto-uploads it.
++        let legacy = try JSONDecoder().decode(AnimeCollections.self, from: data)
++        var migrated = CollectionsSyncState(); migrated.capture(legacy)
++        return Prepared(document: migrated, url: url)
++    }
++    func activate(_ prepared: Prepared, userID: String?) {
++        activeAccountID = userID; fileURL = prepared.url; document = prepared.document
++        state = document.visible; canSave = true; errorMessage = nil; importMessage = nil
++    }
++    func clearVisibleOnAccountFailure() {
++        activeAccountID = nil; state = AnimeCollections(); document = CollectionsSyncState(); canSave = false
++        errorMessage = "Папки не удалось открыть. Исходные файлы сохранены."
++    }
+     func collection(_ id: UUID) -> AnimeCollection? { state.collection(id) }
+-
+-    @discardableResult
+-    func create(name: String, with first: AnimeSnapshot? = nil) -> UUID {
+-        let id = state.create(name: name, with: first)
+-        save()
+-        return id
+-    }
+-
+-    func reorder(_ id: UUID, to target: UUID) { state.moveCollection(id, to: target); save() }
+-    func reorderItem(_ animeID: Int, in id: UUID, to target: Int) { state.moveItem(animeID, in: id, to: target); save() }
+-
+-    func rename(_ id: UUID, to name: String) { state.rename(id, to: name); save() }
+-    func delete(_ id: UUID) { state.delete(id); save() }
+-    func add(_ anime: AnimeSnapshot, to id: UUID) { state.add(anime, to: id); save() }
+-    func remove(_ animeID: Int, from id: UUID) { state.remove(animeID, from: id); save() }
+-    func toggle(_ anime: AnimeSnapshot, in id: UUID) { state.toggle(anime, in: id); save() }
+-    func move(in id: UUID, from source: IndexSet, to destination: Int) {
+-        state.moveItems(in: id, from: source, to: destination); save()
+-    }
+-
+-    private func save() {
+-        guard canSave, let fileURL else { return }
+-        do { let data = try JSONEncoder().encode(state); try data.write(to: fileURL, options: .atomic); errorMessage = nil }
+-        catch { errorMessage = "Не удалось сохранить папки: \(error.localizedDescription)" }
+-    }
+-}
++    @discardableResult func create(name: String, with first: AnimeSnapshot? = nil) -> UUID {
++        guard canSave else { return UUID() }
++        let id = state.create(name: String(name.prefix(100)), with: first); saveLocal(); return id
++    }
++    func reorder(_ id: UUID, to target: UUID) { mutate { $0.moveCollection(id, to: target) } }
++    func reorderItem(_ animeID: Int, in id: UUID, to target: Int) { mutate { $0.moveItem(animeID, in: id, to: target) } }
++    func rename(_ id: UUID, to name: String) { mutate { $0.rename(id, to: String(name.prefix(120))) } }
++    func delete(_ id: UUID) { mutate { $0.delete(id) } }
++    func add(_ anime: AnimeSnapshot, to id: UUID) { mutate { $0.add(anime, to: id) } }
++    func remove(_ animeID: Int, from id: UUID) { mutate { $0.remove(animeID, from: id) } }
++    func toggle(_ anime: AnimeSnapshot, in id: UUID) { mutate { $0.toggle(anime, in: id) } }
++    func move(in id: UUID, from source: IndexSet, to destination: Int) { mutate { $0.moveItems(in: id, from: source, to: destination) } }
++    private func mutate(_ work: (inout AnimeCollections) -> Void) { guard canSave else { return }; work(&state); saveLocal() }
++    private func saveLocal() {
++        document.capture(state)
++        do { try persist(); onLocalChange?() }
++        catch { errorMessage = "Папки не удалось сохранить. Не закрывайте приложение и повторите действие." }
++    }
++    private func persist() throws {
++        guard canSave, let fileURL else { throw APIError.badRequest("Хранилище папок недоступно") }
++        try JSONEncoder().encode(document).write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
++        errorMessage = nil
++    }
++    func recordsForSync(accountID: String) throws -> [CollectionSyncRecord] {
++        guard activeAccountID == accountID, canSave, errorMessage == nil else { throw APIError.badRequest("Папки не готовы к синхронизации") }
++        return document.recordsToUpload
++    }
++    func mergeRemote(_ records: [CollectionSyncRecord], accountID: String) throws {
++        guard activeAccountID == accountID, canSave else { throw AuthError.notSignedIn }
++        // Merge into current document, not the snapshot taken before network await.
++        let previous = document
++        document.merge(records)
++        do { try persist(); state = document.visible }
++        catch { document = previous; errorMessage = "Не удалось сохранить полученные папки."; throw error }
++    }
++    func importGuestFolders() {
++        guard activeAccountID != nil, canSave else { return }
++        do {
++            let guest = try prepareAccount(nil).document.visible.collections
++            let copied = guest.map { AnimeCollection(name: String($0.name.prefix(120)), items: $0.items, createdAt: $0.createdAt) }
++            state = AnimeCollections(collections: state.collections + copied)
++            saveLocal()
++            if errorMessage == nil { importMessage = "Скопировано папок: \(copied.count). Локальный оригинал сохранён." }
++        } catch { errorMessage = "Локальные папки не удалось прочитать. Исходный файл сохранён." }
++    }
++}
 --- a/Anivibe/App/RootView.swift
 +++ b/Anivibe/App/RootView.swift
 @@ -5,6 +5,7 @@
@@ -105,6 +290,369 @@
 +        return image
      }
  }
+--- a/Anivibe/Core/LibraryStore.swift
++++ b/Anivibe/Core/LibraryStore.swift
+@@ -8,6 +8,8 @@
+     private(set) var snapshot: LibrarySnapshot = .empty
+     private(set) var continueWatching: [ContinueWatchingItem] = []
+     private(set) var errorMessage: String?
++    private(set) var isAccountStorageAvailable = true
++    @ObservationIgnored private var refreshGeneration = UUID()
+     let repository: LibraryRepository
+     /// Вызывается после локальных изменений (для отложенной синхронизации).
+     @ObservationIgnored var onLocalChange: (@MainActor () -> Void)?
+@@ -18,10 +20,21 @@
+ 
+     func load() async { await refresh() }
+ 
++    func hideVisibleOnAccountFailure() {
++        refreshGeneration = UUID(); isAccountStorageAvailable = false; snapshot = .empty; continueWatching = []
++        errorMessage = "Хранилище аккаунта недоступно. Исходные файлы сохранены."
++    }
++    func allowAccountStorage() { refreshGeneration = UUID(); isAccountStorageAvailable = true }
+     func refresh() async {
+-        snapshot = await repository.snapshot()
+-        continueWatching = await repository.continueWatching()
+-        errorMessage = await repository.lastSaveError
++        guard isAccountStorageAvailable else { return }
++        let request = refreshGeneration
++        let account = await repository.activeAccountID
++        let next = await repository.snapshot()
++        let continuing = await repository.continueWatching()
++        let error = await repository.lastSaveError
++        guard isAccountStorageAvailable, request == refreshGeneration,
++              account == (await repository.activeAccountID) else { return }
++        snapshot = next; continueWatching = continuing; errorMessage = error
+     }
+ 
+     // MARK: Queries
+@@ -39,41 +52,49 @@
+     // MARK: Mutations
+ 
+     func setStatus(_ status: LibraryStatus?, for anime: AnimeSnapshot) async {
++        guard isAccountStorageAvailable else { return }
+         await repository.setStatus(status, for: anime)
+         await changed()
+     }
+ 
+     func toggleFavorite(_ anime: AnimeSnapshot) async {
++        guard isAccountStorageAvailable else { return }
+         _ = await repository.toggleFavorite(anime)
+         await changed()
+     }
+ 
+     func remove(_ id: Int) async {
++        guard isAccountStorageAvailable else { return }
+         await repository.remove(animeId: id)
+         await changed()
+     }
+ 
+     func markCompleted(_ anime: AnimeSnapshot) async {
++        guard isAccountStorageAvailable else { return }
+         await repository.markCompleted(anime)
+         await changed()
+     }
+ 
+     func setEpisodeWatched(_ anime: AnimeSnapshot, episode: Int, watched: Bool) async {
++        guard isAccountStorageAvailable else { return }
+         await repository.markEpisodeWatched(anime: anime, episode: episode, watched: watched)
+         await changed()
+     }
+ 
+     func recordProgress(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double, sourceKey: String? = nil, accountID: String?) async {
++        guard isAccountStorageAvailable else { return }
+         await repository.recordProgressForAccount(anime: anime, episode: episode, position: position, duration: duration, sourceKey: sourceKey, accountID: accountID)
+         await changed()
+     }
+ 
+     func clearHistory() async {
++        guard isAccountStorageAvailable else { return }
+         await repository.clearHistory()
+         await changed()
+     }
+ 
+     func removeHistoryItem(_ id: UUID) async {
++        guard isAccountStorageAvailable else { return }
+         await repository.removeHistoryItem(id: id)
+         await changed()
+     }
+--- a/Anivibe/Core/SessionStore.swift
++++ b/Anivibe/Core/SessionStore.swift
+@@ -20,23 +20,30 @@
+     private let auth: SupabaseAuthClient?
+     private let sync: SupabaseSyncService?
+     private let library: LibraryStore
++    let collections: CollectionsStore
+     @ObservationIgnored private var debounceTask: Task<Void, Never>?
++    @ObservationIgnored private var needsAnotherSync = false
+ 
+     var isBackendConfigured: Bool { auth != nil }
+     var isSignedIn: Bool { user != nil }
+ 
+-    init(auth: SupabaseAuthClient?, sync: SupabaseSyncService?, library: LibraryStore) {
++    init(auth: SupabaseAuthClient?, sync: SupabaseSyncService?, library: LibraryStore, collections: CollectionsStore) {
+         self.auth = auth
+         self.sync = sync
+         self.library = library
++        self.collections = collections
+         library.onLocalChange = { [weak self] in self?.scheduleSync() }
++        collections.onLocalChange = { [weak self] in self?.scheduleSync() }
+     }
+ 
+     func restore() async {
+         guard let auth else { return }
+         user = await auth.currentSession?.user
+-        do { try await library.repository.switchAccount(userID: user?.id); await library.refresh() }
+-        catch { errorMessage = "Не удалось открыть библиотеку аккаунта. Исходный файл сохранён."; user = nil; return }
++        do { try await activateStorage(userID: user?.id) }
++        catch {
++            library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure()
++            errorMessage = "Не удалось открыть данные аккаунта. Исходные файлы сохранены."; user = nil; return
++        }
+         lastSync = library.snapshot.lastSyncAt
+         await syncIfNeeded(reason: .launch)
+     }
+@@ -44,8 +51,7 @@
+     func signIn(email: String, password: String) async {
+         await perform {
+             let session = try await self.auth!.signIn(email: email, password: password)
+-            try await self.library.repository.switchAccount(userID: session.user.id)
+-            await self.library.refresh()
++            try await self.activateStorage(userID: session.user.id)
+             self.user = session.user
+             await self.syncIfNeeded(reason: .manual)
+         }
+@@ -55,8 +61,7 @@
+         await perform {
+             do {
+                 let session = try await self.auth!.signUp(email: email, password: password)
+-                try await self.library.repository.switchAccount(userID: session.user.id)
+-                await self.library.refresh()
++                try await self.activateStorage(userID: session.user.id)
+                 self.user = session.user
+                 await self.syncIfNeeded(reason: .manual)
+             } catch AuthError.confirmationRequired {
+@@ -70,8 +75,7 @@
+         guard let email = pendingConfirmationEmail else { return }
+         await perform {
+             let session = try await self.auth!.verifySignupCode(email: email, code: code)
+-            try await self.library.repository.switchAccount(userID: session.user.id)
+-            await self.library.refresh()
++            try await self.activateStorage(userID: session.user.id)
+             self.user = session.user; self.pendingConfirmationEmail = nil
+             await self.syncIfNeeded(reason: .manual)
+         }
+@@ -88,8 +92,7 @@
+                 await self.auth!.googleAuthorizationURL(redirectURL: redirect, challenge: challenge)
+             }
+             let session = try await self.auth!.exchangeOAuthCode(result.code, verifier: result.verifier)
+-            try await self.library.repository.switchAccount(userID: session.user.id)
+-            await self.library.refresh()
++            try await self.activateStorage(userID: session.user.id)
+             self.user = session.user
+             await self.syncIfNeeded(reason: .manual)
+         }
+@@ -103,33 +106,63 @@
+     }
+ 
+     func signOut() async {
+-        guard let auth else { return }
++        guard let auth, !isBusy else { return }
++        isBusy = true
++        defer { isBusy = false }
+         debounceTask?.cancel()
+         await auth.signOut()
+         user = nil
+-        do { try await library.repository.switchAccount(userID: nil); await library.refresh() }
+-        catch { errorMessage = "Не удалось восстановить локальную библиотеку. Файл не изменён." }
++        AvatarImageLoader.shared.reset()
++        do { try await activateStorage(userID: nil) }
++        catch { library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure(); errorMessage = "Не удалось восстановить локальные данные. Файлы не изменены." }
+         lastSync = nil
+         lastSyncMessage = nil
+     }
+ 
+     func syncIfNeeded(reason: SyncReason) async {
+-        guard let sync, user != nil, !isSyncing else { return }
++        guard let sync, let account = user?.id else { return }
++        if isSyncing { needsAnotherSync = true; return }
+         isSyncing = true
+-        defer { isSyncing = false }
++        defer {
++            isSyncing = false
++            if needsAnotherSync { needsAnotherSync = false; scheduleSync() }
++        }
+         do {
+             let report = try await sync.sync()
++            guard user?.id == account else { return }
++            let localFolders = try collections.recordsForSync(accountID: account)
++            let remoteFolders = try await sync.syncCollections(localFolders, expectedUserID: account)
++            guard user?.id == account else { return }
++            try collections.mergeRemote(remoteFolders, accountID: account)
+             lastSync = report.finishedAt
+-            lastSyncMessage = "Отправлено: \(report.pushed), получено: \(report.pulled)"
++            lastSyncMessage = "Библиотека и папки обновлены. Отправлено: \(report.pushed + localFolders.count), получено: \(report.pulled + remoteFolders.count)"
+             await library.refresh()
+         } catch let e as AuthError {
+-            if e == .sessionExpired || e == .notSignedIn { user = nil }
++            guard user?.id == account else { return }
++            if e == .sessionExpired || e == .notSignedIn {
++                user = nil; AvatarImageLoader.shared.reset()
++                do { try await activateStorage(userID: nil) } catch { library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure() }
++            }
+             lastSyncMessage = e.userMessage
+         } catch let e as APIError {
+-            lastSyncMessage = "Синхронизация не удалась: \(e.userMessage)"
++            guard user?.id == account else { return }
++            await library.refresh()
++            lastSyncMessage = "Синхронизация не завершена (проверьте миграцию social_sharing_collections): \(e.userMessage)"
+         } catch {
+-            lastSyncMessage = "Синхронизация не удалась."
++            guard user?.id == account else { return }
++            await library.refresh()
++            lastSyncMessage = "Синхронизация библиотеки и папок не завершена."
+         }
++    }
++
++    private func activateStorage(userID: String?) async throws {
++        // Prepare destination folders before changing either visible account store.
++        let prepared = try collections.prepareAccount(userID)
++        try await library.repository.switchAccount(userID: userID)
++        collections.activate(prepared, userID: userID)
++        library.allowAccountStorage()
++        AvatarImageLoader.shared.reset()
++        await library.refresh()
+     }
+ 
+     /// Изменения библиотеки отправляются пачкой через 8 секунд тишины.
+--- a/Anivibe/Core/SocialStore.swift
++++ b/Anivibe/Core/SocialStore.swift
+@@ -33,12 +33,22 @@
+             let own = try await service.ownProfile()
+             guard loadID == operation, currentUserID == userID, own.userID == userID, !Task.isCancelled else { return }
+             profile = own
++            if own.avatarPath != nil {
++                Task { _ = try? await AvatarImageLoader.shared.image(service: service, viewer: userID, target: own.userID, revision: own.avatarPath ?? own.updatedAt) }
++            }
+             let edges = try await service.friendships()
+             let ids = Array(Set(edges.map { $0.peerID(for: userID) }))
+-            let profiles = try await service.profiles(ids: ids)
++            var profiles: [UserProfile] = []
++            for offset in stride(from: 0, to: ids.count, by: 100) {
++                profiles += try await service.profiles(ids: Array(ids[offset..<min(offset + 100, ids.count)]))
++                guard loadID == operation, currentUserID == userID, !Task.isCancelled else { return }
++            }
+             guard loadID == operation, currentUserID == userID, !Task.isCancelled else { return }
+             friendships = edges
+             peers = Dictionary(uniqueKeysWithValues: profiles.map { ($0.userID, $0) })
++            for peer in profiles.prefix(10) where peer.avatarPath != nil {
++                Task { _ = try? await AvatarImageLoader.shared.image(service: service, viewer: userID, target: peer.userID, revision: peer.avatarPath ?? peer.updatedAt) }
++            }
+         } catch {
+             if loadID == operation, !Task.isCancelled { errorMessage = message(error) }
+         }
+@@ -61,8 +71,12 @@
+         defer { isSaving = false }
+         do {
+             try await service.setAvatar(jpeg: jpeg, expectedUserID: account)
++            AvatarImageLoader.shared.reset()
+             if currentUserID == account { await load(service: service, userID: account) }
+         } catch { if currentUserID == account { errorMessage = message(error) } }
++    }
++    func clearSearch() {
++        searchID = UUID(); searchResults = []; searchError = nil; isSearching = false
+     }
+     func search(_ username: String) async {
+         guard let service, let account = currentUserID else { return }
+@@ -80,6 +94,7 @@
+         isSaving = true; errorMessage = nil
+         do {
+             try await service.friendAction(targetID: targetID, action: action, expectedUserID: account)
++            AvatarImageLoader.shared.reset()
+             if currentUserID == account { await load(service: service, userID: account) }
+         } catch { if currentUserID == account { errorMessage = message(error) } }
+         isSaving = false
+@@ -95,3 +110,80 @@
+         return "Не удалось загрузить данные. Проверьте подключение и повторите попытку."
+     }
+ }
++
++/// Friend-profile pages remain scoped to both the target and viewing account.
++@Observable
++@MainActor
++final class SocialProfileStore {
++    let targetID: String
++    private(set) var details: SocialProfileDetails?
++    private(set) var history: [HistoryItem] = []
++    private(set) var entries: [LibraryEntry] = []
++    private(set) var isLoading = false
++    private(set) var isPaging = false
++    private(set) var historyHasMore = false
++    private(set) var libraryHasMore = false
++    var errorMessage: String?
++    @ObservationIgnored private var operation = UUID()
++    @ObservationIgnored private var viewer: String?
++    @ObservationIgnored private var historyOffset = 0
++    @ObservationIgnored private var libraryOffset = 0
++    init(targetID: String) { self.targetID = targetID }
++    func clear() {
++        operation = UUID(); details = nil; history = []; entries = []; historyOffset = 0; libraryOffset = 0
++        historyHasMore = false; libraryHasMore = false; isLoading = false; isPaging = false; errorMessage = nil
++    }
++    func load(service: SupabaseSocialService?, viewerID: String?) async {
++        clear(); viewer = viewerID
++        guard let service, let viewerID else { errorMessage = "Войдите в аккаунт, чтобы открыть профиль."; return }
++        let request = operation; isLoading = true
++        defer { if operation == request { isLoading = false } }
++        do {
++            let response = try await service.socialProfile(targetID: targetID, expectedUserID: viewerID)
++            guard request == operation, viewer == viewerID, !Task.isCancelled else { return }
++            applyMetadata(response)
++            history = response.history; entries = response.library
++            historyOffset = response.history.count; libraryOffset = response.library.count
++        } catch { if request == operation, !Task.isCancelled { errorMessage = message(error) } }
++    }
++    func moreHistory(service: SupabaseSocialService?) async { await page(service: service, historyPage: true) }
++    func moreLibrary(service: SupabaseSocialService?) async { await page(service: service, historyPage: false) }
++    private func page(service: SupabaseSocialService?, historyPage: Bool) async {
++        guard let service, let viewer, !isLoading, !isPaging,
++              (historyPage ? historyHasMore : libraryHasMore) else { return }
++        let request = operation; isPaging = true; errorMessage = nil
++        defer { if operation == request { isPaging = false } }
++        do {
++            let response = try await service.socialProfile(targetID: targetID,
++                historyOffset: historyPage ? historyOffset : 0, libraryOffset: historyPage ? 0 : libraryOffset, expectedUserID: viewer)
++            guard request == operation, !Task.isCancelled else { return }
++            // Permission changes wipe formerly visible data; no stale private rows.
++            applyMetadata(response, updateHistory: historyPage, updateLibrary: !historyPage)
++            if historyPage, response.historyAllowed {
++                historyOffset += response.history.count
++                let ids = Set(history.map(\.id)); history += response.history.filter { !ids.contains($0.id) }
++            }
++            if !historyPage, response.libraryAllowed {
++                libraryOffset += response.library.count
++                let ids = Set(entries.map(\.id)); entries += response.library.filter { !ids.contains($0.id) }
++            }
++        } catch {
++            if request == operation, !Task.isCancelled {
++                if error as? SocialError == .denied { clear() }
++                errorMessage = message(error)
++            }
++        }
++    }
++    private func applyMetadata(_ response: SocialProfileDetails, updateHistory: Bool = true, updateLibrary: Bool = true) {
++        details = response
++        if !response.historyAllowed { history = [] }
++        if !response.libraryAllowed { entries = [] }
++        if updateHistory || !response.historyAllowed { historyHasMore = response.historyHasMore }
++        if updateLibrary || !response.libraryAllowed { libraryHasMore = response.libraryHasMore }
++    }
++    private func message(_ error: Error) -> String {
++        if let error = error as? SocialError { return error.userMessage }
++        if let error = error as? AuthError { return error.userMessage }
++        return "Не удалось загрузить профиль. Проверьте подключение и обновите экран."
++    }
++}
 --- a/Anivibe/DesignSystem/Components/PosterCard.swift
 +++ b/Anivibe/DesignSystem/Components/PosterCard.swift
 @@ -17,9 +17,9 @@
@@ -217,6 +765,182 @@
 +extension View {
 +    func profilePanel() -> some View { modifier(ProfilePanelModifier()) }
 +}
+--- a/Anivibe/Features/AnimeDetails/AnimeDetailsView.swift
++++ b/Anivibe/Features/AnimeDetails/AnimeDetailsView.swift
+@@ -13,6 +13,8 @@
+     @State private var showSources = false
+     @State private var pendingPlayback: PlaybackRequest?
+     @State private var kodikModel = KodikOnlineViewModel()
++    @State private var startingPlayback = false
++    @State private var sourceSelectionMessage: String?
+ 
+     init(anime: Anime) {
+         _model = State(initialValue: AnimeDetailsViewModel(anime: anime))
+@@ -53,6 +55,10 @@
+             NavigationStack {
+                 ScrollView {
+                     VStack(alignment: .leading, spacing: Theme.Spacing.l) {
++                        if let message = sourceSelectionMessage {
++                            Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(Theme.secondaryAccent)
++                                .padding(.horizontal, Theme.Spacing.l)
++                        }
+                         if let voice = kodikModel.selectedVoice {
+                             Text("Серии источника · " + voice.translation.title).font(.headline)
+                             Text("Нумерация источника может отличаться от каталога. Здесь показаны его фактические элементы.").font(.footnote)
+@@ -65,10 +71,10 @@
+                 }.navigationTitle("Серии").toolbar { Button("Готово") { showEpisodes = false } }
+             }
+         }
+-        .sheet(isPresented: $showSources) {
++        .sheet(isPresented: $showSources, onDismiss: presentPendingPlayback) {
+             NavigationStack {
+                 if let kodik = env.kodik {
+-                    ScrollView { OnlineSourcesSection(anime: anime, client: kodik, model: kodikModel) }
++                    ScrollView { OnlineSourcesSection(anime: anime, client: kodik, model: kodikModel, playEpisode: playSourceEpisode) }
+                         .navigationTitle("Озвучки и серии")
+                         .toolbar { Button("Готово") { showSources = false } }
+                 }
+@@ -129,19 +135,15 @@
+                 KodikVoicePicker(anime: anime, client: kodik, model: kodikModel)
+             }
+             Button {
+-                if let key = resume?.sourceKey {
+-                    if let voice = kodikModel.selectedVoice,
+-                       let exact = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id).first(where: { $0.sourceKey == key }) {
+-                        playSourceEpisode(exact, voice: voice)
+-                    } else { showEpisodes = true }
+-                } else { startPlayback(episode: resume?.episode ?? 1, position: resume?.position ?? 0) }
++                Task { await startPreferredPlayback() }
+             } label: {
+-                Label(resumeTitle, systemImage: "play.fill")
+-                    .font(.headline)
+-                    .frame(maxWidth: .infinity, minHeight: 30)
+-            }
+-            .buttonStyle(.borderedProminent)
+-            .disabled(episodes.isEmpty && kodikModel.selectedVoice == nil)
++                HStack {
++                    if startingPlayback { ProgressView().tint(Theme.onAccent) }
++                    Label(resumeTitle, systemImage: "play.fill")
++                }.font(.headline).frame(maxWidth: .infinity, minHeight: 44)
++            }
++            .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
++            .disabled(startingPlayback || !detailsLoaded || (episodes.isEmpty && env.kodik == nil))
+ 
+             HStack(spacing: Theme.Spacing.m) {
+                 Button {
+@@ -190,26 +192,76 @@
+         .padding(.horizontal, Theme.Spacing.l)
+     }
+ 
++    private var detailsLoaded: Bool { if case .loaded = model.phase { return true }; return false }
+     private var resumeTitle: String {
+-        guard let resume else { return episodes.isEmpty ? "Нет серий" : "Смотреть" }
+-        if resume.sourceKey != nil { return "Продолжить серию источника" }
++        if startingPlayback { return env.kodik == nil ? "Готовим видео…" : "Готовим Kodik…" }
++        if kodikModel.selectedVoice != nil { return resume == nil ? "Смотреть · Kodik" : "Продолжить · Kodik" }
++        guard let resume else { return episodes.isEmpty && env.kodik == nil ? "Нет серий" : "Смотреть" }
++        if resume.sourceKey != nil { return "Выбрать серию источника" }
+         return resume.isNextEpisode ? "Смотреть серию \(resume.episode)" : "Продолжить: серия \(resume.episode)"
+     }
+-
++    private func presentPendingPlayback() {
++        if let request = pendingPlayback { playback = request; pendingPlayback = nil }
++    }
++    private func present(_ request: PlaybackRequest) {
++        sourceSelectionMessage = nil
++        if showEpisodes { pendingPlayback = request; showEpisodes = false }
++        else if showSources { pendingPlayback = request; showSources = false }
++        else { playback = request }
++    }
++    private func chooseKodikEpisode() {
++        sourceSelectionMessage = "Нумерация Kodik или выбранная озвучка отличаются от сохранённой серии. Выберите фактическую серию Kodik — прогресс другого видео не будет перенесён автоматически."
++        showEpisodes = true
++    }
++    private func startPreferredPlayback() async {
++        guard !startingPlayback else { return }
++        startingPlayback = true
++        defer { startingPlayback = false }
++        if let client = env.kodik { await kodikModel.load(anime: anime, client: client) }
++        guard !Task.isCancelled else { return }
++        if let voice = kodikModel.selectedVoice {
++            let list = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id)
++            if let saved = resume {
++                if let key = saved.sourceKey {
++                    guard let exact = list.first(where: { $0.sourceKey == key }) else { chooseKodikEpisode(); return }
++                    playSourceEpisode(exact, voice: voice)
++                } else if let exact = KodikProvider.catalogueEpisode(number: saved.episode, anime: anime, voice: voice) {
++                    // Source-scoped progress is used; legacy catalogue position is not copied.
++                    playSourceEpisode(exact, voice: voice)
++                } else { chooseKodikEpisode() }
++            } else if let first = list.first(where: { $0.sourceEpisode?.season == kodikModel.selectedSeason }) ?? list.first {
++                playSourceEpisode(first, voice: voice)
++            } else { presentCatalogue(episode: 1, position: 0) }
++        } else if resume?.sourceKey != nil {
++            sourceSelectionMessage = "Сохранённая серия Kodik сейчас недоступна. Повторите поиск озвучек или выберите серию другого источника вручную."
++            showEpisodes = true
++        } else { presentCatalogue(episode: resume?.episode ?? 1, position: resume?.position ?? 0) }
++    }
++    /// Catalogue episode buttons also honour the selected Kodik translation.
+     private func startPlayback(episode: Int, position: Double) {
+-        guard !episodes.isEmpty else { return }
+-        let request = PlaybackRequest(anime: anime, episodes: episodes, episode: episode, startPosition: position)
+-        if showEpisodes { pendingPlayback = request; showEpisodes = false }
+-        else { playback = request }
+-    }
+-
++        Task {
++            guard !startingPlayback else { return }
++            startingPlayback = true
++            defer { startingPlayback = false }
++            if let client = env.kodik { await kodikModel.load(anime: anime, client: client) }
++            guard !Task.isCancelled else { return }
++            if let voice = kodikModel.selectedVoice {
++                if let exact = KodikProvider.catalogueEpisode(number: episode, anime: anime, voice: voice) {
++                    playSourceEpisode(exact, voice: voice)
++                } else { chooseKodikEpisode() }
++            } else { presentCatalogue(episode: episode, position: position) }
++        }
++    }
++    private func presentCatalogue(episode: Int, position: Double) {
++        guard episodes.contains(where: { $0.number == episode }) else { showEpisodes = true; return }
++        present(PlaybackRequest(anime: anime, episodes: episodes, episode: episode, startPosition: position))
++    }
+     private func playSourceEpisode(_ episode: Episode, voice: KodikVoiceOption) {
+         let list = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id)
++        guard list.contains(where: { $0.sourceKey == episode.sourceKey }) else { return }
+         let progress = library.progress(anime.id, episode: episode.progressNumber, sourceKey: episode.sourceKey)
+         let position = (progress?.isFinished ?? true) ? 0 : progress?.position ?? 0
+-        let request = PlaybackRequest(anime: anime, episodes: list, episode: episode.number, startPosition: position)
+-        if showEpisodes { pendingPlayback = request; showEpisodes = false }
+-        else { playback = request }
++        present(PlaybackRequest(anime: anime, episodes: list, episode: episode.number, startPosition: position))
+     }
+ 
+     // MARK: Content
+--- a/Anivibe/Features/Home/HomeView.swift
++++ b/Anivibe/Features/Home/HomeView.swift
+@@ -22,6 +22,10 @@
+                     if env.catalog.isDemo {
+                         DemoBanner()
+                     }
++                    if let error = env.collections.errorMessage {
++                        Label(error, systemImage: "exclamationmark.triangle")
++                            .font(.subheadline).foregroundStyle(Theme.danger).padding(.horizontal, 16)
++                    }
+                     foldersSection
+                     continueSection
+                     recentEpisodesSection
+@@ -60,6 +64,10 @@
+             .refreshable {
+                 await model.load(catalog: env.catalog, force: true)
+                 await model.loadRecentEpisodes(catalog: env.catalog)
++            }
++            .onChange(of: env.collections.activeAccountID) { _, _ in
++                openedFolder = nil; path = NavigationPath(); editingFolders = false; draggedFolder = nil
++                showNewFolder = false; deleteFolderID = nil
+             }
+             .task { await model.load(catalog: env.catalog) }
+             .task { await model.loadRecentEpisodes(catalog: env.catalog) }
 --- a/Anivibe/Features/Library/LibraryView.swift
 +++ b/Anivibe/Features/Library/LibraryView.swift
 @@ -30,8 +30,20 @@
@@ -253,51 +977,893 @@
                              }
                              .buttonStyle(.plain)
                              .accessibilityAddTraits(section == s ? .isSelected : [])
+--- a/Anivibe/Features/Online/KodikPlayerView.swift
++++ b/Anivibe/Features/Online/KodikPlayerView.swift
+@@ -25,6 +25,7 @@
+         webView.isOpaque = false
+         webView.backgroundColor = .black
+         webView.scrollView.isScrollEnabled = false
++        context.coordinator.loadedURL = url
+         webView.load(URLRequest(url: url))
+         return webView
+     }
+--- a/Anivibe/Features/Online/OnlineSourcesSection.swift
++++ b/Anivibe/Features/Online/OnlineSourcesSection.swift
+@@ -17,6 +17,9 @@
+     private(set) var match: KodikMatch?
+     var selectedVoiceID: KodikVoiceOption.ID?
+     var selectedSeason: Int = 1
++    @ObservationIgnored private var lookup: Task<KodikMatch?, Error>?
++    @ObservationIgnored private var lookupID = UUID()
++    @ObservationIgnored private var animeID: Int?
+ 
+     /// В том же порядке, что использует плеер по умолчанию.
+     var voices: [KodikVoiceOption] { KodikProvider.rankedVoices(match?.voices ?? []) }
+@@ -54,41 +57,56 @@
+     }
+ 
+     func load(anime: Anime, client: KodikClient) async {
+-        phase = .loading
++        if animeID == anime.id, phase == .loaded { return }
++        if animeID != anime.id {
++            lookup?.cancel(); lookup = nil; lookupID = UUID()
++            match = nil; selectedVoiceID = nil
++        }
++        animeID = anime.id
++        let task: Task<KodikMatch?, Error>
++        if let pending = lookup { task = pending }
++        else {
++            lookupID = UUID(); phase = .loading
++            let created = Task<KodikMatch?, Error> {
++                try await client.search(titles: anime.allTitles, year: anime.year, shikimoriID: anime.malID)
++            }
++            lookup = created; task = created
++        }
++        let request = lookupID
++        defer { if lookupID == request, phase != .loading { lookup = nil } }
+         do {
+-            if let match = try await client.search(titles: anime.allTitles, year: anime.year, shikimoriID: anime.malID) {
+-                self.match = match
+-                // Сначала — озвучка, выбранная пользователем раньше; иначе та, что включит плеер по умолчанию.
+-                let ranked = KodikProvider.rankedVoices(match.voices)
++            let result = try await task.value
++            guard !Task.isCancelled, lookupID == request, animeID == anime.id else { return }
++            // Another waiter may already have applied it and user may have picked a voice.
++            if phase == .loaded { return }
++            if let result {
++                match = result
++                let ranked = KodikProvider.rankedVoices(result.voices)
+                 let saved = UserDefaults.standard.string(forKey: KodikPreferences.voiceKey)
+                 let firstVoice = ranked.first { $0.translation.title == saved } ?? ranked.first
+                 selectedVoiceID = firstVoice?.id
+                 let seasons = firstVoice.map { Set($0.episodes.map(\.season)).sorted() } ?? []
+                 selectedSeason = seasons.first(where: { $0 >= 1 }) ?? seasons.first ?? 1
+                 phase = .loaded
+-            } else {
+-                phase = .notFound
+-            }
+-        } catch is CancellationError {
+-            // Экран ушёл с экрана во время запроса — повторим при следующем появлении.
+-            phase = .idle
+-        } catch let error as APIError {
+-            if error == .cancelled { phase = .idle; return }
+-            phase = .failed(error.userMessage)
++            } else { match = nil; phase = .notFound }
+         } catch {
+-            phase = .failed(String(describing: error))
+-        }
+-    }
++            guard lookupID == request, !Task.isCancelled else { return }
++            if error is CancellationError || (error as? APIError) == .cancelled { phase = .idle }
++            else if let error = error as? APIError { phase = .failed(error.userMessage) }
++            else { phase = .failed("Не удалось загрузить озвучки Kodik.") }
++        }
++    }
++
+ }
+ 
+ /// Раздел «Смотреть с озвучкой» на странице аниме: поиск по Kodik,
+-/// выбор озвучки и серии, воспроизведение во встроенном веб-плеере сервиса.
++/// выбор озвучки и серии, запуск единого плеера Anivibe с точной серией Kodik.
+ struct OnlineSourcesSection: View {
+     let anime: Anime
+     let client: KodikClient
+     /// Общая модель со страницей аниме (её же использует выбор озвучки над кнопкой «Смотреть»).
+     let model: KodikOnlineViewModel
+-    @State private var webPlayback: WebPlaybackRequest?
++    let playEpisode: (Episode, KodikVoiceOption) -> Void
+ 
+     var body: some View {
+         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+@@ -100,9 +118,7 @@
+ 
+             content
+         }
+-        .fullScreenCover(item: $webPlayback) { request in
+-            KodikPlayerScreen(request: request, client: client)
+-        }
++
+         .task {
+             if model.phase == .idle {
+                 await model.load(anime: anime, client: client)
+@@ -168,8 +184,9 @@
+             if let voice = model.selectedVoice {
+                 if voice.isSingleVideo {
+                     Button {
+-                        webPlayback = WebPlaybackRequest(url: voice.playerURL, title: anime.title.preferred,
+-                                                         subtitle: voice.translation.title)
++                        if let episode = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id).first {
++                            playEpisode(episode, voice)
++                        }
+                     } label: {
+                         Label("Смотреть" + (voice.quality.map { " · \($0)" } ?? ""), systemImage: "play.fill")
+                             .font(.headline)
+@@ -238,9 +255,12 @@
+         return LazyVStack(spacing: 0) {
+             ForEach(episodes) { episode in
+                 Button {
+-                    webPlayback = WebPlaybackRequest(url: episode.playerURL,
+-                                                     title: "\(anime.title.preferred) — серия \(episode.number)",
+-                                                     subtitle: model.selectedVoice?.translation.title)
++                    if let voice = model.selectedVoice,
++                       let exact = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id).first(where: {
++                           $0.sourceEpisode?.season == episode.season && $0.sourceEpisode?.number == episode.number
++                       }) {
++                        playEpisode(exact, voice)
++                    }
+                 } label: {
+                     HStack(spacing: Theme.Spacing.m) {
+                         Text("\(episode.number)")
+@@ -331,7 +351,7 @@
+                 Image(systemName: "mic.fill")
+                     .foregroundStyle(Theme.accent)
+                 VStack(alignment: .leading, spacing: 1) {
+-                    Text("Озвучка")
++                    Text("Источник: Kodik · озвучка")
+                         .font(.caption)
+                         .foregroundStyle(Theme.textSecondary)
+                     Text(model.selectedVoice?.translation.title ?? "Выберите озвучку")
+--- a/Anivibe/Features/Player/PlayerScreen.swift
++++ b/Anivibe/Features/Player/PlayerScreen.swift
+@@ -48,9 +48,10 @@
+ 
+     @State private var controls = PlaybackControlsState()
+     @State private var showSettings = false
++    @State private var webPlayback: WebPlaybackRequest?
+     private var controlsVisible: Bool { controls.isVisible }
+     private var interactionBlocked: Bool {
+-        showSettings || showSources || showEpisodes || model.isScrubbing || model.isBuffering || model.phase != .ready
++        webPlayback != nil || showSettings || showSources || showEpisodes || model.isScrubbing || model.isBuffering || model.phase != .ready
+     }
+     @State private var hideTask: Task<Void, Never>?
+     @State private var showSources = false
+@@ -83,6 +84,17 @@
+             }
+         }
+         .animation(.easeInOut(duration: 0.2), value: controlsVisible)
++        .sheet(item: $webPlayback) { request in
++            NavigationStack {
++                WebPlayerView(url: request.url).background(Color.black)
++                    .navigationTitle("Kodik · веб-плеер").navigationBarTitleDisplayMode(.inline)
++                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Закрыть") { webPlayback = nil } } }
++                    .safeAreaInset(edge: .bottom) {
++                        Text("Прогресс и настройки веб-плеера управляются Kodik; Anivibe не сохраняет их автоматически.")
++                            .font(.footnote).padding(12).background(.regularMaterial)
++                    }
++            }.preferredColorScheme(.dark).presentationDetents([.large])
++        }
+         .sheet(isPresented: $showSettings) {
+             VideoSettingsSheet(model: model).presentationDetents([.medium, .large])
+         }
+@@ -108,7 +120,13 @@
+             NoSourcesView(model: model, close: close)
+         case .failed(let message):
+             PlayerStatusView(systemImage: "exclamationmark.triangle", title: "Не удалось воспроизвести", message: message) {
+-                HStack {
++                VStack(spacing: Theme.Spacing.m) {
++                    if let url = model.kodikWebURL {
++                        Button("Открыть веб-плеер Kodik") {
++                            model.pauseForWebPlayer()
++                            webPlayback = WebPlaybackRequest(url: url, title: model.anime.title.preferred, subtitle: model.selectedVoice)
++                        }.buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
++                    }
+                     Button("Повторить", action: model.retry).buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+                     if !model.otherAvailableCandidates.isEmpty {
+                         Button("Другой источник") { showSources = true }.buttonStyle(.bordered)
+--- a/Anivibe/Features/Player/PlayerViewModel.swift
++++ b/Anivibe/Features/Player/PlayerViewModel.swift
+@@ -112,6 +112,12 @@
+         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+     }
+ 
++    var kodikWebURL: URL? {
++        guard let episode = activeCandidate?.episode else { return nil }
++        return KodikProvider.playerURL(for: episode)
++    }
++    func pauseForWebPlayer() { saveProgress(force: true); player.pause() }
++
+     // MARK: - Sources
+ 
+     func findSources() {
+@@ -128,7 +134,7 @@
+                 found = [SourceCandidate(providerID: provider.id, providerName: provider.displayName,
+                     isTestContent: provider.providesTestContent, episode: exact, availability: availability)]
+             } else {
+-                found = await registry.candidates(for: anime, episode: episode, excluding: [KodikProvider.providerID])
++                found = await registry.candidates(for: anime, season: self.currentEpisode?.season ?? 1, episode: episode)
+             }
+             guard !Task.isCancelled, episode == self.episodeNumber else { return }
+             self.candidates = found
+@@ -161,6 +167,10 @@
+     }
+ 
+     private func play(candidate: SourceCandidate) async {
++        guard !Task.isCancelled, !isTornDown else { return }
++        player.pause()
++        source = nil
++        hasActuallyPlayed = false
+         activeCandidate = candidate
+         phase = .preparing
+         guard let episode = candidate.episode, let provider = await registry.provider(candidate.providerID) else {
+@@ -470,8 +480,9 @@
+         guard force || isPlaying else { return }
+         lastSaveDate = now
+         let snapshot = anime.snapshot
+-        let (episode, position, total) = (currentEpisode?.progressNumber ?? episodeNumber, currentTime, duration)
+-        let key = currentEpisode?.sourceKey
++        let kodikEpisode = activeCandidate?.providerID == KodikProvider.providerID ? activeCandidate?.episode : nil
++        let (episode, position, total) = (kodikEpisode?.number ?? currentEpisode?.progressNumber ?? episodeNumber, currentTime, duration)
++        let key = kodikEpisode?.id ?? currentEpisode?.sourceKey
+         Task { await library.recordProgress(anime: snapshot, episode: episode, position: position, duration: total, sourceKey: key, accountID: progressAccountID) }
+     }
+ 
 --- a/Anivibe/Features/Profile/FriendsView.swift
 +++ b/Anivibe/Features/Profile/FriendsView.swift
-@@ -69,6 +69,8 @@
-             if store.isLoading || store.isSaving { ProgressView("Обновляем…") }
-             if let error = store.errorMessage { Text(error).foregroundStyle(Theme.danger) }
-         }
-+        .scrollContentBackground(.hidden)
-+        .screenBackground()
-         .navigationTitle("Друзья")
-         .onChange(of: session.user?.id) { _, id in if id != userID { dismiss() } }
-         .toolbar { Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.disabled(store.isLoading || store.isSaving) }
+@@ -2,92 +2,398 @@
+ import AnivibeCore
+ 
+ struct FriendsView: View {
++    enum Tab: String, CaseIterable { case friends = "Друзья", requests = "Заявки", search = "Поиск" }
+     @Bindable var store: SocialStore
+     let userID: String
++    @Environment(AppEnvironment.self) private var env
+     @Environment(SessionStore.self) private var session
+     @Environment(\.dismiss) private var dismiss
++    @State private var tab: Tab = .friends
+     @State private var username = ""
++    @State private var lastSearch = ""
+     @State private var removeTarget: String?
+     private var accepted: [Friendship] { store.friendships.filter { $0.status == "accepted" } }
+     private var incoming: [Friendship] { store.friendships.filter { $0.status == "pending" && $0.requesterID != userID } }
+     private var outgoing: [Friendship] { store.friendships.filter { $0.status == "pending" && $0.requesterID == userID } }
+     var body: some View {
+-        List {
+-            Section("Поиск по username") {
+-                TextField("Минимум 3 символа", text: $username)
+-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+-                    .onSubmit { Task { await store.search(username) } }
+-                Button { Task { await store.search(username) } } label: {
+-                    HStack { Text("Найти"); Spacer(); if store.isSearching { ProgressView() } }
+-                }.disabled(store.isSearching || username.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
+-                if let error = store.searchError { Text(error).foregroundStyle(Theme.danger) }
+-                ForEach(store.searchResults) { profile in
+-                    VStack(alignment: .leading, spacing: 8) {
+-                        NavigationLink { PublicProfileView(profile: profile) } label: {
+-                            VStack(alignment: .leading) { Text(profile.displayName); Text("@" + (profile.username ?? "")).font(.caption).foregroundStyle(Theme.textSecondary) }
+-                        }
+-                        if let edge = store.edge(with: profile.userID) {
+-                            Text(edge.status == "accepted" ? "Уже в друзьях" : "Запрос уже отправлен").font(.caption)
+-                        } else {
+-                            Button("Добавить в друзья") { Task { await store.act(targetID: profile.userID, action: .send) } }.disabled(store.isSaving)
+-                        }
+-                    }
+-                }
+-                if !store.isSearching, store.searchResults.isEmpty, store.searchError == nil {
+-                    Text("В поиске видны публичные профили и ваши друзья.").font(.footnote).foregroundStyle(Theme.textSecondary)
+-                }
+-            }
+-            Section("Друзья · \(accepted.count)/10") {
+-                if accepted.isEmpty { Text("Пока нет друзей").foregroundStyle(Theme.textSecondary) }
+-                ForEach(accepted) { edge in
+-                    peerRow(edge)
+-                        .swipeActions { Button("Удалить", role: .destructive) { removeTarget = edge.peerID(for: userID) }.disabled(store.isSaving) }
+-                }
+-            }
+-            Section("Входящие запросы") {
+-                if incoming.isEmpty { Text("Новых запросов нет").foregroundStyle(Theme.textSecondary) }
+-                ForEach(incoming) { edge in
+-                    VStack(alignment: .leading, spacing: 8) {
+-                        peerRow(edge)
+-                        HStack {
+-                            Button("Принять") { Task { await store.act(targetID: edge.peerID(for: userID), action: .accept) } }
+-                            Spacer()
+-                            Button("Отклонить", role: .destructive) { Task { await store.act(targetID: edge.peerID(for: userID), action: .decline) } }
+-                        }.disabled(store.isSaving)
+-                    }
+-                }
+-            }
+-            Section("Исходящие запросы") {
+-                if outgoing.isEmpty { Text("Нет отправленных запросов").foregroundStyle(Theme.textSecondary) }
+-                ForEach(outgoing) { edge in
+-                    VStack(alignment: .leading, spacing: 8) {
+-                        peerRow(edge)
+-                        Button("Отменить запрос") { Task { await store.act(targetID: edge.peerID(for: userID), action: .cancel) } }.disabled(store.isSaving)
+-                    }
+-                }
+-            }
+-            if store.isLoading || store.isSaving { ProgressView("Обновляем…") }
+-            if let error = store.errorMessage { Text(error).foregroundStyle(Theme.danger) }
+-        }
+-        .navigationTitle("Друзья")
+-        .onChange(of: session.user?.id) { _, id in if id != userID { dismiss() } }
+-        .toolbar { Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.disabled(store.isLoading || store.isSaving) }
++        ScrollView {
++            LazyVStack(alignment: .leading, spacing: 20) {
++                VStack(alignment: .leading, spacing: 8) {
++                    Text("Смотрите. Делитесь. Обсуждайте.").font(.title2.bold())
++                    Text("Ваши люди и их аниме — в одном месте.").font(.subheadline).foregroundStyle(Theme.textSecondary)
++                }
++                Picker("Раздел", selection: $tab) {
++                    ForEach(Tab.allCases, id: \.self) { Text($0 == .requests && !incoming.isEmpty ? "Заявки · \(incoming.count)" : $0.rawValue).tag($0) }
++                }.pickerStyle(.segmented)
++                if store.isLoading || store.isSaving { ProgressView("Обновляем…").frame(maxWidth: .infinity) }
++                if let error = store.errorMessage {
++                    SocialErrorPanel(message: error) { Task { await reload() } }
++                }
++                switch tab {
++                case .friends:
++                    Text("Друзья · \(accepted.count)/10").font(.headline)
++                    if accepted.isEmpty && !store.isLoading {
++                        SocialEmptyPanel(icon: "person.2", title: "Хорошие истории лучше вместе", message: "Найдите друга по username и отправьте приглашение.")
++                        Button("Найти друзей") { tab = .search }.buttonStyle(.borderedProminent).controlSize(.large).foregroundStyle(Theme.onAccent)
++                    }
++                    ForEach(accepted) { edge in friendCard(edge) }
++                case .requests:
++                    Text("Входящие · \(incoming.count)").font(.headline)
++                    if incoming.isEmpty { SocialEmptyPanel(icon: "tray", title: "Новых заявок нет", message: "Приглашения в друзья появятся здесь.") }
++                    ForEach(incoming) { edge in friendCard(edge) }
++                    Text("Отправленные · \(outgoing.count)").font(.headline)
++                    if outgoing.isEmpty { Text("Вы пока не отправляли приглашений.").foregroundStyle(Theme.textSecondary).font(.subheadline) }
++                    ForEach(outgoing) { edge in friendCard(edge) }
++                case .search:
++                    VStack(alignment: .leading, spacing: 12) {
++                        HStack(spacing: 12) {
++                            Image(systemName: "magnifyingglass").foregroundStyle(Theme.textSecondary)
++                            TextField("Username друга", text: $username)
++                                .textInputAutocapitalization(.never).autocorrectionDisabled()
++                                .submitLabel(.search).onSubmit { Task { await runSearch() } }
++                            if store.isSearching { ProgressView() }
++                        }.frame(minHeight: 44)
++                        Text("Минимум 3 символа. В поиске — публичные профили и ваши друзья.")
++                            .font(.footnote).foregroundStyle(Theme.textSecondary)
++                    }.profilePanel()
++                    if let error = store.searchError { SocialErrorPanel(message: error) { lastSearch = ""; Task { await runSearch() } } }
++                    ForEach(store.searchResults) { profile in
++                        VStack(alignment: .leading, spacing: 12) {
++                            NavigationLink { PublicProfileView(profile: profile) } label: { SocialPersonRow(profile: profile) }.buttonStyle(.plain)
++                            relationAction(profile.userID)
++                        }.profilePanel()
++                    }
++                    if store.searchResults.isEmpty && !store.isSearching {
++                        SocialEmptyPanel(icon: "person.crop.circle.badge.magnifyingglass",
++                            title: lastSearch.isEmpty ? "Найдите своих" : "Ничего не найдено",
++                            message: "Введите username без @. Приватные профили могут быть недоступны в поиске.")
++                    }
++                }
++            }.padding(16).padding(.bottom, 16)
++        }
++        .screenBackground().navigationTitle("Друзья").navigationBarTitleDisplayMode(.inline)
++        .task(id: userID) { await reload() }
++        .task(id: username) {
++            if tab == .search {
++                let term = normalizedSearch
++                if term.count < 3 { lastSearch = ""; store.clearSearch(); return }
++                do { try await Task.sleep(nanoseconds: 350_000_000) } catch { return }
++                guard !Task.isCancelled else { return }
++                await runSearch()
++            }
++        }
++        .onChange(of: session.user?.id) { _, id in if id != userID { store.clearSearch(); dismiss() } }
++        .toolbar { Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Обновить друзей").disabled(store.isLoading || store.isSaving) }
+         .refreshable { await reload() }
+         .confirmationDialog("Удалить из друзей?", isPresented: Binding(get: { removeTarget != nil }, set: { if !$0 { removeTarget = nil } }), titleVisibility: .visible) {
+             Button("Удалить", role: .destructive) { if let id = removeTarget { Task { await store.act(targetID: id, action: .remove) } }; removeTarget = nil }
+-        }
+-    }
++            Button("Отмена", role: .cancel) { removeTarget = nil }
++        }
++    }
++    private var normalizedSearch: String { username.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "@")).lowercased() }
++    private func runSearch() async {
++        let term = normalizedSearch
++        guard term.count >= 3, lastSearch != term, session.user?.id == userID else { return }
++        lastSearch = term; await store.search(term)
++        if Task.isCancelled { lastSearch = "" }
++    }
++    private func reload() async {
++        guard session.user?.id == userID else { return }
++        await store.load(service: env.socialService, userID: userID)
++    }
++    @ViewBuilder private func friendCard(_ edge: Friendship) -> some View {
++        let id = edge.peerID(for: userID)
++        VStack(alignment: .leading, spacing: 12) {
++            if let profile = store.peers[id] {
++                NavigationLink { PublicProfileView(profile: profile) } label: { SocialPersonRow(profile: profile) }.buttonStyle(.plain)
++            } else { Label("Профиль недоступен", systemImage: "lock").foregroundStyle(Theme.textSecondary) }
++            relationAction(id)
++        }.profilePanel()
++    }
++    @ViewBuilder private func relationAction(_ target: String) -> some View {
++        if let edge = store.edge(with: target) {
++            if edge.status == "accepted" {
++                HStack {
++                    Label("В друзьях", systemImage: "checkmark.circle").font(.subheadline).foregroundStyle(Theme.success)
++                    Spacer()
++                    Button { removeTarget = target } label: { Image(systemName: "person.badge.minus").frame(minWidth: 44, minHeight: 44) }
++                        .accessibilityLabel("Удалить из друзей").disabled(store.isSaving)
++                }
++            } else if edge.requesterID != userID {
++                HStack {
++                    Button("Принять") { Task { await store.act(targetID: target, action: .accept) } }.buttonStyle(.borderedProminent).controlSize(.large).foregroundStyle(Theme.onAccent)
++                    Button("Отклонить") { Task { await store.act(targetID: target, action: .decline) } }.buttonStyle(.bordered).controlSize(.large)
++                }.disabled(store.isSaving)
++            } else {
++                Button("Отменить приглашение") { Task { await store.act(targetID: target, action: .cancel) } }.buttonStyle(.bordered).controlSize(.large).disabled(store.isSaving)
++            }
++        } else {
++            Button { Task { await store.act(targetID: target, action: .send) } } label: { Label("Добавить в друзья", systemImage: "person.badge.plus") }
++                .buttonStyle(.bordered).controlSize(.large).disabled(store.isSaving || store.isLoading)
++        }
++    }
++}
++
++struct PublicProfileView: View {
++    let profile: UserProfile
+     @Environment(AppEnvironment.self) private var env
+-    private func reload() async { await store.load(service: env.socialService, userID: userID) }
+-    @ViewBuilder private func peerRow(_ edge: Friendship) -> some View {
+-        let id = edge.peerID(for: userID)
+-        if let profile = store.peers[id] {
+-            NavigationLink { PublicProfileView(profile: profile) } label: {
+-                VStack(alignment: .leading) {
+-                    Text(profile.displayName)
+-                    if let username = profile.username { Text("@" + username).font(.caption).foregroundStyle(Theme.textSecondary) }
+-                }
+-            }
+-        } else { Text("Приватный профиль · " + String(id.prefix(8))) }
+-    }
+-}
++    @Environment(SessionStore.self) private var session
++    @Environment(\.dismiss) private var dismiss
++    @State private var data: SocialProfileStore
++    @State private var relationships = SocialStore()
++    @State private var viewerID: String?
++    @State private var confirmRemove = false
++    init(profile: UserProfile) { self.profile = profile; _data = State(initialValue: SocialProfileStore(targetID: profile.userID)) }
++    var body: some View {
++        ScrollView {
++            LazyVStack(alignment: .leading, spacing: 24) {
++                if let details = data.details {
++                    ProfileIdentityView(profile: details.profile, fallbackSubtitle: "Пока ничего о себе")
++                        .padding(.vertical, 12)
++                    if details.profile.userID != session.user?.id { friendshipActions }
++                    counters(details)
++                    friendPreview(details)
++                    historyPreview(details)
++                    libraryPreview(details)
++                } else if data.isLoading {
++                    ProgressView("Загружаем профиль…").frame(maxWidth: .infinity, minHeight: 240)
++                }
++                if let error = data.errorMessage { SocialErrorPanel(message: error) { Task { await reload() } } }
++                if let error = relationships.errorMessage { Text(error).font(.subheadline).foregroundStyle(Theme.danger) }
++            }.padding(16).padding(.bottom, 24)
++        }
++        .screenBackground().navigationTitle(profile.userID == session.user?.id ? "Мой профиль" : "Профиль друга").navigationBarTitleDisplayMode(.inline)
++        .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
++        .task { viewerID = session.user?.id; await reload() }
++        .refreshable { await reload() }
++        .onChange(of: session.user?.id) { _, id in if id != viewerID { data.clear(); dismiss() } }
++        .confirmationDialog("Удалить из друзей?", isPresented: $confirmRemove, titleVisibility: .visible) {
++            Button("Удалить", role: .destructive) { Task { await act(.remove) } }
++            Button("Отмена", role: .cancel) {}
++        }
++    }
++    private func reload() async {
++        let viewer = session.user?.id
++        await data.load(service: env.socialService, viewerID: viewer)
++        guard session.user?.id == viewer else { return }
++        await relationships.load(service: env.socialService, userID: viewer)
++    }
++    private func act(_ action: FriendAction) async {
++        await relationships.act(targetID: profile.userID, action: action)
++        await data.load(service: env.socialService, viewerID: session.user?.id)
++    }
++    @ViewBuilder private var friendshipActions: some View {
++        if relationships.isLoading { ProgressView("Проверяем приглашение…") }
++        else if let edge = relationships.edge(with: profile.userID) {
++            if edge.status == "accepted" {
++                HStack {
++                    Label("Вы друзья", systemImage: "checkmark.circle").foregroundStyle(Theme.success)
++                    Spacer()
++                    Button { confirmRemove = true } label: { Image(systemName: "person.badge.minus").frame(minWidth: 44, minHeight: 44) }
++                        .accessibilityLabel("Удалить из друзей").disabled(relationships.isSaving)
++                }.profilePanel()
++            } else if edge.requesterID == session.user?.id {
++                Button("Отменить приглашение") { Task { await act(.cancel) } }.buttonStyle(.bordered).controlSize(.large).disabled(relationships.isSaving)
++            } else {
++                HStack {
++                    Button("Принять приглашение") { Task { await act(.accept) } }.buttonStyle(.borderedProminent).controlSize(.large).foregroundStyle(Theme.onAccent)
++                    Button("Отклонить") { Task { await act(.decline) } }.buttonStyle(.bordered).controlSize(.large)
++                }.disabled(relationships.isSaving)
++            }
++        } else {
++            Button { Task { await act(.send) } } label: {
++                Label("Добавить в друзья", systemImage: "person.badge.plus").frame(maxWidth: .infinity, minHeight: 44)
++            }.buttonStyle(.borderedProminent).controlSize(.large).foregroundStyle(Theme.onAccent)
++                .disabled(relationships.isSaving || relationships.errorMessage != nil)
++        }
++    }
++    private func counters(_ details: SocialProfileDetails) -> some View {
++        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
++            VStack(alignment: .leading, spacing: 8) {
++                Image(systemName: details.friendsAllowed ? "person.2" : "lock").foregroundStyle(Theme.accent)
++                Text(details.friendsCount.map { $0.formatted() } ?? "Закрыто").font(.title2.bold())
++                Text("Друзья").font(.subheadline).foregroundStyle(Theme.textSecondary)
++            }.frame(maxWidth: .infinity, alignment: .leading).profilePanel()
++            VStack(alignment: .leading, spacing: 8) {
++                Image(systemName: details.libraryAllowed ? "checkmark.circle" : "lock").foregroundStyle(Theme.secondaryAccent)
++                Text(details.stats?["completed"].map { $0.formatted() } ?? "Закрыто").font(.title2.bold())
++                Text("Просмотрено").font(.subheadline).foregroundStyle(Theme.textSecondary)
++            }.frame(maxWidth: .infinity, alignment: .leading).profilePanel()
++        }
++    }
++    private func friendPreview(_ details: SocialProfileDetails) -> some View {
++        VStack(alignment: .leading, spacing: 16) {
++            HStack {
++                Text("Друзья").font(.title3.bold()); Spacer()
++                if details.friendsAllowed {
++                    NavigationLink { SocialFriendsList(data: data) } label: { Text("Все").frame(minHeight: 44) }
++                }
++            }
++            if !details.friendsAllowed { SocialPrivacyNote(text: "Владелец закрыл список друзей.") }
++            else if details.friends.isEmpty { Text("Нет доступных вам профилей друзей.").font(.subheadline).foregroundStyle(Theme.textSecondary) }
++            else {
++                ForEach(details.friends.prefix(3)) { peer in
++                    NavigationLink { PublicProfileView(profile: peer) } label: { SocialPersonRow(profile: peer) }.buttonStyle(.plain)
++                }
++            }
++        }.profilePanel()
++    }
++    private func historyPreview(_ details: SocialProfileDetails) -> some View {
++        VStack(alignment: .leading, spacing: 16) {
++            HStack {
++                Text("Недавно смотрел").font(.title3.bold()); Spacer()
++                if details.historyAllowed { NavigationLink { SocialActivityList(data: data, kind: .history) } label: { Text("Все").frame(minHeight: 44) } }
++            }
++            if !details.historyAllowed { SocialPrivacyNote(text: "История просмотра доступна только с разрешения владельца.") }
++            else if data.history.isEmpty { Text("История пока пуста.").font(.subheadline).foregroundStyle(Theme.textSecondary) }
++            else {
++                ForEach(data.history.prefix(3)) { item in
++                    NavigationLink(value: item.anime) { SocialAnimeRow(anime: item.anime, subtitle: "Серия \(item.episode) · " + item.watchedAt.formatted(date: .abbreviated, time: .omitted)) }.buttonStyle(.plain)
++                }
++            }
++        }.profilePanel()
++    }
++    private func libraryPreview(_ details: SocialProfileDetails) -> some View {
++        VStack(alignment: .leading, spacing: 16) {
++            HStack {
++                Text("Библиотека").font(.title3.bold()); Spacer()
++                if details.libraryAllowed { NavigationLink { SocialActivityList(data: data, kind: .library) } label: { Text("Все").frame(minHeight: 44) } }
++            }
++            if !details.libraryAllowed { SocialPrivacyNote(text: "Списки и избранное закрыты владельцем.") }
++            else {
++                ForEach(LibraryStatus.allCases, id: \.self) { status in
++                    HStack {
++                        Label(status.localizedName, systemImage: status.systemImage).foregroundStyle(Theme.textSecondary)
++                        Spacer(); Text((details.stats?[status.rawValue] ?? 0).formatted()).fontWeight(.semibold).monospacedDigit()
++                    }.font(.subheadline).frame(minHeight: 32)
++                }
++                if data.entries.isEmpty { Text("В библиотеке пока нет тайтлов.").font(.subheadline).foregroundStyle(Theme.textSecondary) }
++            }
++        }.profilePanel()
++    }
++}
++
++private struct SocialFriendsList: View {
++    @Bindable var data: SocialProfileStore
++    @Environment(AppEnvironment.self) private var env
++    @Environment(SessionStore.self) private var session
++    @Environment(\.dismiss) private var dismiss
++    @State private var viewerID: String?
++    var body: some View {
++        ScrollView {
++            LazyVStack(alignment: .leading, spacing: 12) {
++                Text("Показаны только профили, доступные вам. Приватные профили других пользователей не раскрываются.")
++                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
++                if data.details?.friendsAllowed == true {
++                    ForEach(data.details?.friends ?? []) { profile in
++                        NavigationLink { PublicProfileView(profile: profile) } label: { SocialPersonRow(profile: profile).profilePanel() }.buttonStyle(.plain)
++                    }
++                    if data.details?.friends.isEmpty == true { SocialEmptyPanel(icon: "person.2", title: "Нет доступных профилей", message: "Список может быть пустым или содержать закрытые профили.") }
++                } else { SocialPrivacyNote(text: "Владелец закрыл список друзей.").profilePanel() }
++                if let error = data.errorMessage { SocialErrorPanel(message: error) { Task { await reload() } } }
++            }.padding(16)
++        }
++        .screenBackground().navigationTitle("Друзья пользователя")
++        .onAppear { viewerID = session.user?.id }
++        .onChange(of: session.user?.id) { _, id in if id != viewerID { data.clear(); dismiss() } }
++        .refreshable { await reload() }
++    }
++    private func reload() async { await data.load(service: env.socialService, viewerID: session.user?.id) }
++}
++
++private struct SocialActivityList: View {
++    enum Kind: Equatable { case history, library }
++    @Bindable var data: SocialProfileStore
++    let kind: Kind
++    @Environment(AppEnvironment.self) private var env
++    @Environment(SessionStore.self) private var session
++    @Environment(\.dismiss) private var dismiss
++    @State private var viewerID: String?
++    var body: some View {
++        ScrollView {
++            LazyVStack(spacing: 12) {
++                if kind == .history {
++                    if data.details?.historyAllowed != true { SocialPrivacyNote(text: "История закрыта владельцем.").profilePanel() }
++                    else if data.history.isEmpty { SocialEmptyPanel(icon: "clock", title: "История пока пуста", message: "Новые просмотры появятся после синхронизации владельца.") }
++                    else {
++                        ForEach(data.history) { item in
++                            NavigationLink(value: item.anime) { SocialAnimeRow(anime: item.anime, subtitle: "Серия \(item.episode) · " + item.watchedAt.formatted(date: .abbreviated, time: .shortened)).profilePanel() }.buttonStyle(.plain)
++                        }
++                    }
++                    if data.historyHasMore { Button("Загрузить ещё") { Task { await data.moreHistory(service: env.socialService) } }.frame(minHeight: 44).disabled(data.isPaging || data.isLoading) }
++                } else {
++                    if data.details?.libraryAllowed != true { SocialPrivacyNote(text: "Библиотека закрыта владельцем.").profilePanel() }
++                    else if data.entries.isEmpty { SocialEmptyPanel(icon: "books.vertical", title: "Библиотека пока пуста", message: "Здесь будут списки и избранное пользователя.") }
++                    else {
++                        ForEach(data.entries) { entry in
++                            NavigationLink(value: entry.anime) { SocialAnimeRow(anime: entry.anime, subtitle: (entry.status?.localizedName ?? "Без списка") + (entry.isFavorite ? " · Избранное" : "")).profilePanel() }.buttonStyle(.plain)
++                        }
++                    }
++                    if data.libraryHasMore { Button("Загрузить ещё") { Task { await data.moreLibrary(service: env.socialService) } }.frame(minHeight: 44).disabled(data.isPaging || data.isLoading) }
++                }
++                if data.isPaging || data.isLoading { ProgressView() }
++                if let error = data.errorMessage { SocialErrorPanel(message: error) { Task { await reload() } } }
++                Text("Общие данные · только просмотр").font(.footnote).foregroundStyle(Theme.textSecondary)
++            }.padding(16)
++        }
++        .screenBackground().navigationTitle(kind == .history ? "История просмотра" : "Библиотека пользователя")
++        .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
++        .onAppear { viewerID = session.user?.id }
++        .onChange(of: session.user?.id) { _, id in if id != viewerID { data.clear(); dismiss() } }
++        .refreshable { await reload() }
++    }
++    private func reload() async { await data.load(service: env.socialService, viewerID: session.user?.id) }
++}
++
++private struct SocialPersonRow: View {
++    let profile: UserProfile
++    var body: some View {
++        HStack(spacing: 12) {
++            ProfileAvatarView(userID: profile.userID, revision: profile.avatarPath ?? profile.updatedAt, size: 52, avatarAvailable: profile.avatarPath != nil)
++            VStack(alignment: .leading, spacing: 4) {
++                Text(profile.displayName).font(.headline).foregroundStyle(Theme.textPrimary).lineLimit(2)
++                Text(profile.username.map { "@" + $0 } ?? "Без username").font(.subheadline).foregroundStyle(Theme.textSecondary).lineLimit(1)
++            }
++            Spacer(minLength: 4)
++            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.textSecondary)
++        }.frame(minHeight: 52).contentShape(Rectangle()).accessibilityElement(children: .combine)
++    }
++}
++private struct SocialAnimeRow: View {
++    let anime: AnimeSnapshot
++    let subtitle: String
++    var body: some View {
++        HStack(spacing: 12) {
++            PosterImage(url: anime.coverURL, cornerRadius: 8).frame(width: 48, height: 72)
++            VStack(alignment: .leading, spacing: 6) {
++                Text(anime.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary).lineLimit(2)
++                Text(subtitle).font(.footnote).foregroundStyle(Theme.textSecondary)
++            }
++            Spacer(minLength: 0)
++            Image(systemName: "chevron.right").font(.footnote).foregroundStyle(Theme.textSecondary)
++        }.contentShape(Rectangle()).accessibilityElement(children: .combine)
++    }
++}
++private struct SocialPrivacyNote: View {
++    let text: String
++    var body: some View { Label(text, systemImage: "lock").font(.subheadline).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true) }
++}
++private struct SocialEmptyPanel: View {
++    let icon: String; let title: String; let message: String
++    var body: some View {
++        VStack(alignment: .leading, spacing: 12) {
++            Image(systemName: icon).font(.title2).foregroundStyle(Theme.accent)
++            Text(title).font(.headline)
++            Text(message).font(.subheadline).foregroundStyle(Theme.textSecondary)
++        }.frame(maxWidth: .infinity, alignment: .leading).profilePanel()
++    }
++}
++private struct SocialErrorPanel: View {
++    let message: String; let retry: () -> Void
++    var body: some View {
++        VStack(alignment: .leading, spacing: 12) {
++            Label(message, systemImage: "exclamationmark.triangle").font(.subheadline).foregroundStyle(Theme.danger)
++            Button("Повторить", action: retry).frame(minHeight: 44)
++        }.frame(maxWidth: .infinity, alignment: .leading).profilePanel()
++    }
++}
+--- a/Anivibe/Features/Profile/ProfileAvatarView.swift
++++ b/Anivibe/Features/Profile/ProfileAvatarView.swift
+@@ -1,25 +1,93 @@
+ import SwiftUI
++import AnivibeCore
+ 
+-/// Short-lived signed links only; reset when account or profile revision changes.
++/// Decoded avatars live only in memory, scoped to viewer + target + revision.
++/// No durable cache of private avatars or signed URLs. 40 s TTL < server's 60 s.
++@MainActor
++final class AvatarImageLoader {
++    static let shared = AvatarImageLoader()
++    private final class Entry: NSObject {
++        let image: UIImage
++        let expires = Date().addingTimeInterval(40)
++        init(_ image: UIImage) { self.image = image }
++    }
++    private let cache = NSCache<NSString, Entry>()
++    private var flights: [String: Task<UIImage?, Error>] = [:]
++    private var generation = UUID()
++    private let network: URLSession
++    init() {
++        cache.totalCostLimit = 16 * 1024 * 1024; cache.countLimit = 64
++        let config = URLSessionConfiguration.ephemeral
++        config.timeoutIntervalForRequest = 15; config.timeoutIntervalForResource = 20
++        network = URLSession(configuration: config)
++    }
++    static func key(viewer: String, target: String, revision: String) -> String { viewer + "/" + target + "/" + revision }
++    func cached(key: String) -> UIImage? {
++        guard let entry = cache.object(forKey: key as NSString) else { return nil }
++        guard entry.expires > Date() else { cache.removeObject(forKey: key as NSString); return nil }
++        return entry.image
++    }
++    func reset() {
++        generation = UUID(); cache.removeAllObjects()
++        flights.values.forEach { $0.cancel() }; flights.removeAll()
++    }
++    func image(service: SupabaseSocialService, viewer: String, target: String, revision: String) async throws -> UIImage? {
++        let key = Self.key(viewer: viewer, target: target, revision: revision)
++        if let hit = cached(key: key) { return hit }
++        if let pending = flights[key] { return try await pending.value }
++        let operation = generation
++        let pending = Task<UIImage?, Error> { [self] in
++            guard let url = try await service.avatarURL(userID: target, expectedUserID: viewer, revision: revision) else { return nil }
++            try Task.checkCancellation()
++            let (data, response) = try await network.data(from: url)
++            guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true,
++                  data.count <= 1_048_576, let decoded = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
++            return await decoded.byPreparingForDisplay() ?? decoded
++        }
++        flights[key] = pending
++        defer { if generation == operation { flights[key] = nil } }
++        let image = try await pending.value
++        try Task.checkCancellation()
++        guard generation == operation else { throw CancellationError() }
++        if let image {
++            let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 512 * 512 * 4
++            cache.setObject(Entry(image), forKey: key as NSString, cost: cost)
++        }
++        return image
++    }
++}
++
+ struct ProfileAvatarView: View {
+     let userID: String
+     var revision: String = ""
+     var size: CGFloat = 40
++    var avatarAvailable = true
+     @Environment(AppEnvironment.self) private var env
+     @Environment(SessionStore.self) private var session
+-    @State private var url: URL?
++    @State private var image: UIImage?
++    @State private var loadedKey = ""
++    private var key: String { AvatarImageLoader.key(viewer: session.user?.id ?? "guest", target: userID, revision: revision) }
+     var body: some View {
+-        AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: {
+-            Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.secondary)
+-        }
+-        .frame(width: size, height: size).clipShape(Circle())
+-        .task(id: userID + revision + (session.user?.id ?? "guest")) {
+-            url = nil
+-            guard let account = session.user?.id else { return }
+-            let loaded = try? await env.socialService?.avatarURL(userID: userID, expectedUserID: account)
+-            guard !Task.isCancelled, session.user?.id == account else { return }
+-            url = loaded
+-        }
+-        .accessibilityLabel("Аватар")
++        let hit = avatarAvailable ? ((loadedKey == key ? image : nil) ?? AvatarImageLoader.shared.cached(key: key)) : nil
++        Circle().fill(Theme.accent.opacity(0.12))
++            .overlay {
++                if let hit { Image(uiImage: hit).resizable().scaledToFill() }
++                else {
++                    Image(systemName: "person.fill").resizable().scaledToFit()
++                        .foregroundStyle(Theme.textSecondary).padding(size * 0.24)
++                }
++            }
++            .frame(width: size, height: size).clipShape(Circle())
++            .task(id: key + String(avatarAvailable)) {
++                let requestKey = key
++                image = nil; loadedKey = requestKey
++                guard avatarAvailable, let viewer = session.user?.id, let service = env.socialService else { return }
++                do {
++                    let result = try await AvatarImageLoader.shared.image(service: service, viewer: viewer, target: userID, revision: revision)
++                    guard !Task.isCancelled, session.user?.id == viewer, key == requestKey else { return }
++                    image = result
++                } catch { /* A failed avatar must not block profile actions. */ }
++            }
++            .accessibilityLabel("Аватар")
+     }
+ }
 --- a/Anivibe/Features/Profile/ProfileEditorView.swift
 +++ b/Anivibe/Features/Profile/ProfileEditorView.swift
-@@ -23,11 +23,21 @@
+@@ -16,18 +16,34 @@
+     @State private var displayName: String
+     @State private var bio: String
+     @State private var visibility: ProfileVisibility
++    @State private var friendsVisibility: SharingVisibility
++    @State private var historyVisibility: SharingVisibility
++    @State private var libraryVisibility: SharingVisibility
+     init(store: SocialStore, profile: UserProfile) {
+         self.store = store; self.profile = profile
+         _username = State(initialValue: profile.username ?? "")
+         _displayName = State(initialValue: profile.displayName)
          _bio = State(initialValue: profile.bio)
          _visibility = State(initialValue: profile.visibility)
-     }
++        _friendsVisibility = State(initialValue: profile.friendsVisibility)
++        _historyVisibility = State(initialValue: profile.historyVisibility)
++        _libraryVisibility = State(initialValue: profile.libraryVisibility)
++    }
 +    private var validationMessage: String? {
 +        do {
-+            _ = try ProfileDraft(username: username, displayName: displayName, bio: bio, visibility: visibility).validated()
++            _ = try ProfileDraft(username: username, displayName: displayName, bio: bio, visibility: visibility, friendsVisibility: friendsVisibility, historyVisibility: historyVisibility, libraryVisibility: libraryVisibility).validated()
 +            return nil
 +        } catch let error as SocialError { return error.userMessage }
 +        catch { return "Проверьте поля профиля." }
-+    }
+     }
      var body: some View {
          NavigationStack {
              Form {
                  Section("Аватар") {
 -                    ProfileAvatarView(userID: profile.userID, revision: store.profile?.updatedAt ?? profile.updatedAt, size: 80)
 +                    VStack(spacing: 12) {
-+                        ProfileAvatarView(userID: profile.userID, revision: store.profile?.updatedAt ?? profile.updatedAt, size: 112)
++                        ProfileAvatarView(userID: profile.userID, revision: store.profile?.avatarPath ?? store.profile?.updatedAt ?? profile.updatedAt, size: 112, avatarAvailable: store.profile?.avatarPath != nil)
 +                        Text("Ваш образ в Anivibe").font(.headline)
 +                    }.frame(maxWidth: .infinity).padding(.vertical, 16)
                      PhotosPicker(selection: $photo, matching: .images) { Label("Выбрать из галереи", systemImage: "photo") }
                          .disabled(store.isSaving || preparingPhoto)
                      if store.profile?.avatarPath != nil {
-@@ -53,6 +63,7 @@
-                     Text("Публичный профиль доступен авторизованным пользователям и поиску по username. Приватный виден вам, вашим друзьям и адресатам ваших запросов в друзья. Почта, библиотека и история не публикуются.")
+@@ -50,20 +66,34 @@
+                     Picker("Профиль", selection: $visibility) {
+                         ForEach(ProfileVisibility.allCases, id: \.self) { Text($0.title).tag($0) }
+                     }
+-                    Text("Публичный профиль доступен авторизованным пользователям и поиску по username. Приватный виден вам, вашим друзьям и адресатам ваших запросов в друзья. Почта, библиотека и история не публикуются.")
++                    Picker("Список друзей", selection: $friendsVisibility) {
++                        ForEach(SharingVisibility.allCases, id: \.self) { Text($0.title).tag($0) }
++                    }
++                    Picker("История просмотра", selection: $historyVisibility) {
++                        ForEach(SharingVisibility.allCases, id: \.self) { Text($0.title).tag($0) }
++                    }
++                    Picker("Библиотека и избранное", selection: $libraryVisibility) {
++                        ForEach(SharingVisibility.allCases, id: \.self) { Text($0.title).tag($0) }
++                    }
++                    Text("Друзья, история и библиотека изначально закрыты. Разрешения работают только для пользователей, которым доступен ваш профиль. Почта, точная позиция плеера и папки остаются личными.")
                          .font(.footnote).foregroundStyle(Theme.textSecondary)
                  }
 +                if let validationMessage { Text(validationMessage).font(.footnote).foregroundStyle(Theme.danger) }
                  if let error = store.errorMessage { Text(error).foregroundStyle(Theme.danger) }
                  Section {
                      Button {
-@@ -60,10 +71,14 @@
+-                        let draft = ProfileDraft(username: username, displayName: displayName, bio: bio, visibility: visibility)
++                        let draft = ProfileDraft(username: username, displayName: displayName, bio: bio, visibility: visibility, friendsVisibility: friendsVisibility, historyVisibility: historyVisibility, libraryVisibility: libraryVisibility)
                          Task { if await store.save(draft) { dismiss() } }
                      } label: {
                          HStack { Text("Сохранить"); Spacer(); if store.isSaving { ProgressView() } }
@@ -313,10 +1879,13 @@
              .task(id: photo) {
                  guard let photo else { return }
                  preparingPhoto = true; photoError = nil
-@@ -92,12 +107,12 @@
- struct PublicProfileView: View {
-     let profile: UserProfile
-     var body: some View {
+@@ -89,15 +119,3 @@
+     }
+ }
+ 
+-struct PublicProfileView: View {
+-    let profile: UserProfile
+-    var body: some View {
 -        Form {
 -            Section {
 -                HStack { ProfileAvatarView(userID: profile.userID, revision: profile.updatedAt, size: 64); Text(profile.displayName) }
@@ -324,18 +1893,11 @@
 -                if !profile.bio.isEmpty { Text(verbatim: profile.bio) }
 -            }
 -        }.navigationTitle("Профиль")
-+        ScrollView {
-+            ProfileIdentityView(profile: profile, fallbackSubtitle: "Пока ничего о себе")
-+                .padding(24).profilePanel().padding(16)
-+        }
-+        .screenBackground()
-+        .navigationTitle("Профиль")
-+        .navigationBarTitleDisplayMode(.inline)
-     }
- }
+-    }
+-}
 --- a/Anivibe/Features/Profile/ProfileView.swift
 +++ b/Anivibe/Features/Profile/ProfileView.swift
-@@ -1,102 +1,273 @@
+@@ -1,102 +1,287 @@
  import SwiftUI
  import AnivibeCore
  
@@ -350,6 +1912,7 @@
 -    @Environment(SessionStore.self) private var session
 -    @Environment(LibraryStore.self) private var library
 +    @State private var confirmSignOut = false
++    @State private var confirmImportFolders = false
 +
 +    private var currentProfile: UserProfile? {
 +        guard let profile = social.profile, profile.userID == session.user?.id else { return nil }
@@ -461,6 +2024,10 @@
 +                if let profile = currentProfile { ProfileEditorView(store: social, profile: profile) }
 +            }
 +            .onChange(of: session.user?.id) { _, _ in editProfile = false }
++            .confirmationDialog("Скопировать локальные папки?", isPresented: $confirmImportFolders, titleVisibility: .visible) {
++                Button("Скопировать") { env.collections.importGuestFolders() }
++                Button("Отмена", role: .cancel) {}
++            } message: { Text("Папки будут добавлены к аккаунту и синхронизированы. Повторное копирование создаст дубликаты.") }
 +            .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmSignOut, titleVisibility: .visible) {
 +                Button("Выйти", role: .destructive) { Task { await session.signOut() } }
 +                Button("Отмена", role: .cancel) {}
@@ -618,6 +2185,15 @@
 -        }
 +                Text(message).font(.subheadline).foregroundStyle(Theme.textSecondary)
 +            }
++            if let error = env.collections.errorMessage {
++                Label(error, systemImage: "exclamationmark.triangle").font(.subheadline).foregroundStyle(Theme.danger)
++            }
++            if let message = env.collections.importMessage {
++                Text(message).font(.subheadline).foregroundStyle(Theme.success)
++            }
++            Button("Скопировать локальные папки в аккаунт") { confirmImportFolders = true }.frame(minHeight: 44)
++            Text("Папки аккаунта синхронизируются вместе с библиотекой. Локальные папки можно перенести отдельно — оригинал останется на устройстве.")
++                .font(.footnote).foregroundStyle(Theme.textSecondary)
 +            Button("Синхронизировать сейчас") { Task { await session.syncIfNeeded(reason: .manual) } }
 +                .frame(minHeight: 44).disabled(session.isSyncing)
 +            Divider()
@@ -643,7 +2219,7 @@
 +        VStack(spacing: 12) {
 +            Group {
 +                if let profile {
-+                    ProfileAvatarView(userID: profile.userID, revision: profile.updatedAt, size: 112)
++                    ProfileAvatarView(userID: profile.userID, revision: profile.avatarPath ?? profile.updatedAt, size: 112, avatarAvailable: profile.avatarPath != nil)
 +                } else {
 +                    Image(systemName: "person.crop.circle.fill").resizable().scaledToFit()
 +                        .foregroundStyle(Theme.accent).frame(width: 112, height: 112)
@@ -699,6 +2275,15 @@
                      }
                  }
                  ColorPicker("Свой цвет", selection: Binding(get: { Theme.accent }, set: { color in
+@@ -34,7 +34,7 @@
+                 Button("Вернуть стандартный фиолетовый") { settings.accentHex = nil }
+                 NavigationLink("Пользовательский фон") { BackgroundSettingsView() }
+                 Toggle("Библиотека на главной", isOn: $settings.libraryPinned)
+-                Text("Оформление и порядок папок сохраняются на этом устройстве; синхронизация этих настроек пока не поддерживается.")
++                Text("Оформление сохраняется на устройстве. Папки, их содержимое и порядок синхронизируются в аккаунте вместе с библиотекой.")
+                     .font(.footnote).foregroundStyle(Theme.textSecondary)
+             }
+             Section("Воспроизведение") {
 @@ -70,6 +70,8 @@
                  }
              }
@@ -708,3 +2293,829 @@
          .navigationTitle("Настройки")
          .task { await reloadProviders() }
      }
+--- a/Packages/AnivibeCore/Sources/AnivibeCore/Models/AnimeCollection.swift
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Models/AnimeCollection.swift
+@@ -96,3 +96,57 @@
+         return "\(base) \(n)"
+     }
+ }
++
++/// Sync unit is one whole folder (name + ordered items). Concurrent edits of the
++/// same folder use timestamp/mutation-ID LWW; different folders merge independently.
++public struct CollectionSyncRecord: Codable, Hashable, Sendable, Identifiable {
++    public var id: UUID { folder.id }
++    public var folder: AnimeCollection
++    public var rank: Int
++    public var updatedAt: Date
++    public var mutationID: UUID
++    public var isDeleted: Bool
++    public init(folder: AnimeCollection, rank: Int, updatedAt: Date = Date(), mutationID: UUID = UUID(), isDeleted: Bool = false) {
++        self.folder = folder; self.rank = rank; self.updatedAt = Date(timeIntervalSince1970: floor(updatedAt.timeIntervalSince1970 * 1000) / 1000); self.mutationID = mutationID; self.isDeleted = isDeleted
++    }
++    public func isNewer(than other: Self) -> Bool {
++        updatedAt != other.updatedAt ? updatedAt > other.updatedAt : mutationID.uuidString > other.mutationID.uuidString
++    }
++}
++public struct CollectionsSyncState: Codable, Hashable, Sendable {
++    public var records: [CollectionSyncRecord]
++    public var acknowledgedMutations: [String: UUID]?
++    public init(records: [CollectionSyncRecord] = []) { self.records = records; self.acknowledgedMutations = nil }
++    public var recordsToUpload: [CollectionSyncRecord] {
++        records.filter { acknowledgedMutations?[$0.id.uuidString] != $0.mutationID }
++    }
++    public var visible: AnimeCollections {
++        AnimeCollections(collections: records.filter { !$0.isDeleted }.sorted {
++            $0.rank != $1.rank ? $0.rank < $1.rank : $0.id.uuidString < $1.id.uuidString
++        }.map(\.folder))
++    }
++    public mutating func capture(_ state: AnimeCollections, at date: Date = Date()) {
++        let time = Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 * 1000) / 1000)
++        let live = Set(state.collections.map(\.id))
++        for i in records.indices where !records[i].isDeleted && !live.contains(records[i].id) {
++            records[i].isDeleted = true; records[i].updatedAt = max(time, records[i].updatedAt.addingTimeInterval(0.002)); records[i].mutationID = UUID()
++        }
++        for (rank, folder) in state.collections.enumerated() {
++            if let i = records.firstIndex(where: { $0.id == folder.id }) {
++                if records[i].folder != folder || records[i].rank != rank || records[i].isDeleted {
++                    records[i] = CollectionSyncRecord(folder: folder, rank: rank, updatedAt: max(time, records[i].updatedAt.addingTimeInterval(0.002)))
++                }
++            } else { records.append(CollectionSyncRecord(folder: folder, rank: rank, updatedAt: date)) }
++        }
++    }
++    public mutating func merge(_ remote: [CollectionSyncRecord]) {
++        var acknowledged = acknowledgedMutations ?? [:]
++        for record in remote {
++            acknowledged[record.id.uuidString] = record.mutationID
++            if let i = records.firstIndex(where: { $0.id == record.id }) {
++                if record.mutationID == records[i].mutationID || record.isNewer(than: records[i]) { records[i] = record }
++            } else { records.append(record) }
++        }
++        acknowledgedMutations = acknowledged
++    }
++}
+--- a/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikClient.swift
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikClient.swift
+@@ -8,7 +8,8 @@
+ /// Важно честно:
+ /// * API требует токен партнёра (получается при регистрации на kodik.biz). Без токена клиент не создаётся.
+ /// * Kodik отдаёт ссылки на свой ВЕБ-плеер (iframe), а не прямые потоки. Поэтому это
+-///   НЕ `VideoSourceProvider`: воспроизведение идёт в WKWebView, а не в нашем AVPlayer.
++///   Клиент поиска сам НЕ VideoSourceProvider; KodikProvider получает нативные потоки,
++///   а встроенный WKWebView используется как явный резервный путь.
+ /// * Прямые HLS-потоки (для нативного плеера с выбором качества и скорости) — см. `KodikStreamResolver`.
+ public struct KodikClient: Sendable {
+ 
+--- a/Packages/AnivibeCore/Sources/AnivibeCore/Providers/KodikProvider.swift
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Providers/KodikProvider.swift
+@@ -89,6 +89,31 @@
+         return .available
+     }
+ 
++    /// Official embed link for the *selected* episode/translation. No native URL
++    /// is invented when Kodik cannot provide HLS; caller may use its web player.
++    public static func playerURL(for episode: ProviderEpisode) -> URL? {
++        guard episode.providerID == providerID, let payload = Payload.decode(episode.payload),
++              let voice = payload.voices.first(where: { $0.title == payload.selected }) ?? payload.voices.first,
++              let url = URL(string: voice.url), url.scheme == "https", url.host != nil else { return nil }
++        return url
++    }
++
++    /// Only map catalogue numbering when the provider list is unambiguous.
++    /// Gaps, specials (season 0), multiple seasons and unknown counts require
++    /// an explicit selection from the real Kodik list, never an inferred offset.
++    public static func catalogueEpisode(number: Int, anime: Anime, voice: KodikVoiceOption) -> Episode? {
++        guard number > 0 else { return nil }
++        let list = sourceEpisodes(for: voice, animeID: anime.id)
++        if voice.isSingleVideo { return number == 1 ? list.first : nil }
++        guard !voice.episodes.isEmpty, voice.episodes.allSatisfy({ $0.season > 0 }),
++              Set(voice.episodes.map(\.season)).count == 1,
++              let total = anime.episodeCount, total > 0 else { return nil }
++        let numbers = Array(Set(voice.episodes.map(\.number))).sorted()
++        guard numbers == Array(1...numbers.count), numbers.count <= total else { return nil }
++        if anime.status != .releasing && numbers.count != total { return nil }
++        return list.first { $0.sourceEpisode?.number == number }
++    }
++
+     /// Та же серия, но с другой озвучкой.
+     public static func episode(_ episode: ProviderEpisode, withVoice voice: String) -> ProviderEpisode {
+         guard var payload = Payload.decode(episode.payload) else { return episode }
+--- a/Packages/AnivibeCore/Sources/AnivibeCore/Providers/ProviderRegistry.swift
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Providers/ProviderRegistry.swift
+@@ -83,6 +83,9 @@
+         return results.sorted { lhs, rhs in
+             if lhs.1.isTestContent != rhs.1.isTestContent { return !lhs.1.isTestContent }
+             if lhs.1.availability.isAvailable != rhs.1.availability.isAvailable { return lhs.1.availability.isAvailable }
++            if (lhs.1.providerID == KodikProvider.providerID) != (rhs.1.providerID == KodikProvider.providerID) {
++                return lhs.1.providerID == KodikProvider.providerID
++            }
+             return lhs.0 < rhs.0
+         }.map(\.1)
+     }
+--- a/Packages/AnivibeCore/Sources/AnivibeCore/Sync/SupabaseSocialService.swift
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Sync/SupabaseSocialService.swift
+@@ -6,6 +6,12 @@
+ public enum ProfileVisibility: String, Codable, CaseIterable, Hashable, Sendable {
+     case privateProfile = "private", publicProfile = "public"
+     public var title: String { self == .publicProfile ? "Публичный" : "Приватный" }
++}
++public enum SharingVisibility: String, Codable, CaseIterable, Hashable, Sendable {
++    case privateOnly = "private", friends, publicProfile = "public"
++    public var title: String {
++        switch self { case .privateOnly: return "Только я"; case .friends: return "Друзья"; case .publicProfile: return "Все пользователи" }
++    }
+ }
+ public struct UserProfile: Codable, Hashable, Sendable, Identifiable {
+     public var id: String { userID }
+@@ -17,10 +23,28 @@
+     public let visibility: ProfileVisibility
+     public let createdAt: String
+     public let updatedAt: String
++    public let friendsVisibility: SharingVisibility
++    public let historyVisibility: SharingVisibility
++    public let libraryVisibility: SharingVisibility
++    public init(from decoder: Decoder) throws {
++        let c = try decoder.container(keyedBy: CodingKeys.self)
++        userID = try c.decode(String.self, forKey: .userID)
++        username = try c.decodeIfPresent(String.self, forKey: .username)
++        displayName = try c.decode(String.self, forKey: .displayName)
++        bio = try c.decode(String.self, forKey: .bio)
++        avatarPath = try c.decodeIfPresent(String.self, forKey: .avatarPath)
++        visibility = try c.decode(ProfileVisibility.self, forKey: .visibility)
++        createdAt = try c.decode(String.self, forKey: .createdAt)
++        updatedAt = try c.decode(String.self, forKey: .updatedAt)
++        friendsVisibility = try c.decodeIfPresent(SharingVisibility.self, forKey: .friendsVisibility) ?? .privateOnly
++        historyVisibility = try c.decodeIfPresent(SharingVisibility.self, forKey: .historyVisibility) ?? .privateOnly
++        libraryVisibility = try c.decodeIfPresent(SharingVisibility.self, forKey: .libraryVisibility) ?? .privateOnly
++    }
+     enum CodingKeys: String, CodingKey {
+         case userID = "user_id", username, displayName = "display_name", bio, visibility
+         case avatarPath = "avatar_path"
+         case createdAt = "created_at", updatedAt = "updated_at"
++        case friendsVisibility = "friends_visibility", historyVisibility = "history_visibility", libraryVisibility = "library_visibility"
+     }
+ }
+ public struct ProfileDraft: Encodable, Sendable {
+@@ -28,10 +52,16 @@
+     public var displayName: String
+     public var bio: String
+     public var visibility: ProfileVisibility
+-    public init(username: String, displayName: String, bio: String, visibility: ProfileVisibility) {
++    public var friendsVisibility: SharingVisibility?
++    public var historyVisibility: SharingVisibility?
++    public var libraryVisibility: SharingVisibility?
++    public init(username: String, displayName: String, bio: String, visibility: ProfileVisibility, friendsVisibility: SharingVisibility? = nil, historyVisibility: SharingVisibility? = nil, libraryVisibility: SharingVisibility? = nil) {
+         self.username = username; self.displayName = displayName; self.bio = bio; self.visibility = visibility
+-    }
+-    enum CodingKeys: String, CodingKey { case username, displayName = "display_name", bio, visibility }
++        self.friendsVisibility = friendsVisibility; self.historyVisibility = historyVisibility; self.libraryVisibility = libraryVisibility
++    }
++    enum CodingKeys: String, CodingKey { case username, displayName = "display_name", bio, visibility
++        case friendsVisibility = "friends_visibility", historyVisibility = "history_visibility", libraryVisibility = "library_visibility"
++    }
+     public func validated() throws -> ProfileDraft {
+         let name = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+         let display = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+@@ -42,7 +72,7 @@
+         guard (1...60).contains(display.unicodeScalars.count), about.unicodeScalars.count <= 500 else {
+             throw SocialError.validation("Имя: 1–60 символов; описание: до 500 символов.")
+         }
+-        return ProfileDraft(username: name, displayName: display, bio: about, visibility: visibility)
++        return ProfileDraft(username: name, displayName: display, bio: about, visibility: visibility, friendsVisibility: friendsVisibility, historyVisibility: historyVisibility, libraryVisibility: libraryVisibility)
+     }
+ }
+ public struct Friendship: Codable, Hashable, Sendable, Identifiable {
+@@ -61,7 +91,7 @@
+         switch self {
+         case .validation(let text): return text
+         case .usernameTaken: return "Этот username уже занят. Выберите другой."
+-        case .backendMissing: return "Профили ещё не настроены на сервере. Примените миграцию profiles_friends в Supabase."
++        case .backendMissing: return "На сервере отсутствует нужная миграция профилей. Примените миграции из supabase/migrations, включая social_sharing_collections."
+         case .profileMissing: return "Профиль не найден. Проверьте миграцию профилей на сервере."
+         case .denied: return "Действие недоступно или запрос уже изменился. Обновите список."
+         case .rateLimited: return "Слишком много запросов. Подождите и попробуйте позже."
+@@ -133,7 +163,21 @@
+         let session = try await auth.validSession()
+         if let expectedUserID, session.user.id != expectedUserID { throw AuthError.notSignedIn }
+         _ = try await request(path: "rpc/anivibe_friend_action", method: "POST", body: try JSONEncoder().encode(["p_target": targetID, "p_action": action.rawValue]), session: session)
+-    }
++        avatarLinks.removeAll(); avatarFlights.values.forEach { $0.cancel() }; avatarFlights.removeAll()
++    }
++    /// Server checks base profile access and each sharing setting independently.
++    public func socialProfile(targetID: String, historyOffset: Int = 0, libraryOffset: Int = 0, expectedUserID: String) async throws -> SocialProfileDetails {
++        guard UUID(uuidString: targetID) != nil, historyOffset >= 0, libraryOffset >= 0 else { throw SocialError.denied }
++        let session = try await auth.validSession()
++        guard session.user.id == expectedUserID else { throw AuthError.notSignedIn }
++        let body = try JSONSerialization.data(withJSONObject: ["p_target": targetID, "p_history_offset": historyOffset, "p_library_offset": libraryOffset])
++        let data = try await request(path: "rpc/anivibe_social_profile", method: "POST", body: body, session: session)
++        let response = try SupabaseSyncService.decoder.decode(SocialProfileDetails.self, from: data)
++        guard response.profile.userID == targetID,
++              (try await auth.validSession()).user.id == expectedUserID else { throw SocialError.denied }
++        return response
++    }
++
+     public func comments(animeID: Int, offset: Int = 0, popular: Bool = false, expectedUserID: String? = nil) async throws -> [TitleComment] {
+         let session = try await auth.validSession()
+         if let expectedUserID, session.user.id != expectedUserID { throw AuthError.notSignedIn }
+@@ -147,19 +191,35 @@
+         payload["p_comment"] = commentID.map { $0 as Any } ?? NSNull()
+         _ = try await request(path: "rpc/anivibe_comment_action", method: "POST", body: JSONSerialization.data(withJSONObject: payload), session: session)
+     }
+-    public func avatarURL(userID: String, expectedUserID: String? = nil) async throws -> URL? {
++    private struct CachedAvatarLink { let url: URL?; let expires: Date }
++    private var avatarLinks: [String: CachedAvatarLink] = [:]
++    private var avatarFlights: [String: Task<URL?, Error>] = [:]
++    public func avatarURL(userID: String, expectedUserID: String? = nil, revision: String = "") async throws -> URL? {
+         guard UUID(uuidString: userID) != nil else { throw SocialError.denied }
+         let session = try await auth.validSession()
+         if let expectedUserID, session.user.id != expectedUserID { throw AuthError.notSignedIn }
+-        let data = try await avatarRequest(method: "POST", body: JSONEncoder().encode(["user_id": userID]), session: session)
+-        let result = try JSONDecoder().decode(AvatarLink.self, from: data)
+-        return result.url
++        let key = session.user.id + "/" + userID + "/" + revision
++        if let cached = avatarLinks[key], cached.expires > Date() { return cached.url }
++        if let pending = avatarFlights[key] { return try await pending.value }
++        let pending = Task<URL?, Error> { [self] in
++            let data = try await avatarRequest(method: "POST", body: JSONEncoder().encode(["user_id": userID]), session: session)
++            return try JSONDecoder().decode(AvatarLink.self, from: data).url
++        }
++        avatarFlights[key] = pending
++        defer { avatarFlights[key] = nil }
++        let url = try await pending.value
++        try Task.checkCancellation()
++        // Server links live for 60 s. Keep margin for network/decoding, never persist.
++        avatarLinks = avatarLinks.filter { $0.value.expires > Date() }
++        avatarLinks[key] = CachedAvatarLink(url: url, expires: Date().addingTimeInterval(url == nil ? 10 : 40))
++        return url
+     }
+     public func setAvatar(jpeg: Data?, expectedUserID: String) async throws {
+         let session = try await auth.validSession()
+         guard session.user.id == expectedUserID else { throw AuthError.notSignedIn }
+         guard jpeg == nil || jpeg!.count <= 1_048_576 else { throw SocialError.validation("Аватар слишком большой (максимум 1 МБ).") }
+         _ = try await avatarRequest(method: jpeg == nil ? "DELETE" : "PUT", body: jpeg, session: session)
++        avatarLinks.removeAll()
+     }
+     private func avatarRequest(method: String, body: Data?, session: AuthSession) async throws -> Data {
+         var req = URLRequest(url: config.url.appendingPathComponent("functions/v1/avatar"))
+@@ -199,3 +259,37 @@
+         return data
+     }
+ }
++
++/// Sanitized read-only view of another account. Never includes email or player position.
++public struct SocialProfileDetails: Decodable, Sendable {
++    public let profile: UserProfile
++    public let friends: [UserProfile]
++    public let friendsCount: Int?
++    public let friendsAllowed: Bool
++    public let historyAllowed: Bool
++    public let libraryAllowed: Bool
++    public let history: [HistoryItem]
++    public let library: [LibraryEntry]
++    public let historyHasMore: Bool
++    public let libraryHasMore: Bool
++    public let stats: [String: Int]?
++    enum CodingKeys: String, CodingKey {
++        case profile, friends, history, library, stats
++        case friendsCount = "friends_count", friendsAllowed = "friends_allowed", historyAllowed = "history_allowed", libraryAllowed = "library_allowed"
++        case historyHasMore = "history_has_more", libraryHasMore = "library_has_more"
++    }
++    public init(from decoder: Decoder) throws {
++        let c = try decoder.container(keyedBy: CodingKeys.self)
++        profile = try c.decode(UserProfile.self, forKey: .profile)
++        friends = try c.decode([UserProfile].self, forKey: .friends)
++        friendsCount = try c.decodeIfPresent(Int.self, forKey: .friendsCount)
++        friendsAllowed = try c.decode(Bool.self, forKey: .friendsAllowed)
++        historyAllowed = try c.decode(Bool.self, forKey: .historyAllowed)
++        libraryAllowed = try c.decode(Bool.self, forKey: .libraryAllowed)
++        history = try c.decode([HistoryRow].self, forKey: .history).map(\.model)
++        library = try c.decode([EntryRow].self, forKey: .library).map(\.model)
++        historyHasMore = try c.decode(Bool.self, forKey: .historyHasMore)
++        libraryHasMore = try c.decode(Bool.self, forKey: .libraryHasMore)
++        stats = try c.decodeIfPresent([String: Int].self, forKey: .stats)
++    }
++}
+--- a/Packages/AnivibeCore/Sources/AnivibeCore/Sync/SupabaseSyncService.swift
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Sync/SupabaseSyncService.swift
+@@ -68,10 +68,24 @@
+                       pulled: entries.count + progress.count + history.count, finishedAt: now())
+     }
+ 
++    /// Called in the same SessionStore sync cycle as library. RLS stays own-only.
++    public func syncCollections(_ records: [CollectionSyncRecord], expectedUserID: String) async throws -> [CollectionSyncRecord] {
++        let session = try await auth.validSession()
++        guard session.user.id == expectedUserID else { throw AuthError.notSignedIn }
++        if !records.isEmpty {
++            try await upsert(table: "account_collections", conflict: "user_id,id",
++                             rows: records.map { CollectionRow(record: $0, userID: expectedUserID) }, token: session.accessToken)
++        }
++        let rows: [CollectionRow] = try await fetch(table: "account_collections", timeColumn: "updated_at", since: nil, token: session.accessToken)
++        guard (try await auth.validSession()).user.id == expectedUserID else { throw AuthError.notSignedIn }
++        return rows.filter { $0.user_id == expectedUserID }.map(\.model)
++    }
++
+     // MARK: - REST
+ 
+     private func upsert<Row: Encodable>(table: String, conflict: String, rows: [Row], token: String) async throws {
+-        for chunk in stride(from: 0, to: rows.count, by: 200).map({ Array(rows[$0..<min($0 + 200, rows.count)]) }) {
++        let chunkSize = table == "account_collections" ? 1 : 200
++        for chunk in stride(from: 0, to: rows.count, by: chunkSize).map({ Array(rows[$0..<min($0 + chunkSize, rows.count)]) }) {
+             var comps = URLComponents(url: config.url.appendingPathComponent("rest/v1/\(table)"), resolvingAgainstBaseURL: false)!
+             comps.queryItems = [URLQueryItem(name: "on_conflict", value: conflict)]
+             let request = URLRequest.json(url: comps.url!, body: try Self.encoder.encode(chunk), headers: [
+@@ -87,7 +101,7 @@
+     private func fetch<Row: Decodable>(table: String, timeColumn: String, since: Date?, token: String) async throws -> [Row] {
+         var output: [Row] = []
+         var offset = 0
+-        let tieBreaker = table == "watch_history" ? "id.asc" : (table == "watch_progress" ? "anime_id.asc,episode.asc,source_key.asc" : "anime_id.asc")
++        let tieBreaker = (table == "watch_history" || table == "account_collections") ? "id.asc" : (table == "watch_progress" ? "anime_id.asc,episode.asc,source_key.asc" : "anime_id.asc")
+         while true {
+             try Task.checkCancellation()
+             var comps = URLComponents(url: config.url.appendingPathComponent("rest/v1/\(table)"), resolvingAgainstBaseURL: false)!
+@@ -233,3 +247,20 @@
+                     episode: episode, watchedAt: watched_at, sourceKey: source_key?.nilIfBlank, deletedAt: deleted_at)
+     }
+ }
++
++struct CollectionRow: Codable {
++    let user_id: String
++    let id: UUID
++    let folder: AnimeCollection
++    let sort_order: Int
++    let updated_at: Date
++    let mutation_id: UUID
++    let is_deleted: Bool
++    init(record: CollectionSyncRecord, userID: String) {
++        user_id = userID; id = record.id; folder = record.folder; sort_order = record.rank
++        updated_at = record.updatedAt; mutation_id = record.mutationID; is_deleted = record.isDeleted
++    }
++    var model: CollectionSyncRecord {
++        CollectionSyncRecord(folder: folder, rank: sort_order, updatedAt: updated_at, mutationID: mutation_id, isDeleted: is_deleted)
++    }
++}
+--- /dev/null
++++ b/Packages/AnivibeCore/Tests/AnivibeCoreTests/CollectionsSyncTests.swift
+@@ -0,0 +1,99 @@
++import XCTest
++@testable import AnivibeCore
++
++final class CollectionsSyncTests: XCTestCase {
++    let first = Date(timeIntervalSince1970: 1_800_000_000)
++    func testDeleteTombstoneBeatsOldDevice() {
++        var local = AnimeCollections(); let id = local.create(name: "Любимое")
++        var document = CollectionsSyncState(); document.capture(local, at: first)
++        let stale = document.records
++        local.delete(id); document.capture(local, at: first.addingTimeInterval(10))
++        document.merge(stale)
++        XCTAssertTrue(document.visible.collections.isEmpty)
++        XCTAssertTrue(document.records.first?.isDeleted == true)
++        XCTAssertEqual(document.recordsToUpload.count, 1)
++    }
++    func testIndependentFoldersMergeAndKeepOrderedItems() {
++        var a = AnimeCollections(); let id = a.create(name: "A", with: AnimeSnapshot(id: 1, title: "First"))
++        a.add(AnimeSnapshot(id: 2, title: "Second"), to: id)
++        var left = CollectionsSyncState(); left.capture(a, at: first)
++        var b = AnimeCollections(); _ = b.create(name: "B")
++        var right = CollectionsSyncState(); right.capture(b, at: first)
++        left.merge(right.records)
++        XCTAssertEqual(left.visible.collections.count, 2)
++        XCTAssertEqual(left.visible.collection(id)?.items.map(\.id), [2,1])
++    }
++    func testLocalMutationDuringRequestRemainsDirty() {
++        var folders = AnimeCollections(); let id = folders.create(name: "Before")
++        var document = CollectionsSyncState(); document.capture(folders, at: first)
++        let inFlight = document.records
++        folders.rename(id, to: "After"); document.capture(folders, at: first.addingTimeInterval(5))
++        document.merge(inFlight)
++        XCTAssertEqual(document.visible.collection(id)?.name, "After")
++        XCTAssertEqual(document.recordsToUpload.count, 1)
++    }
++    func testAcknowledgedFoldersAreNotUploadedAgain() {
++        var folders = AnimeCollections(); _ = folders.create(name: "A")
++        var document = CollectionsSyncState(); document.capture(folders, at: first)
++        document.merge(document.records)
++        XCTAssertTrue(document.recordsToUpload.isEmpty)
++    }
++    func testReorderIsCapturedAndRoundTrips() throws {
++        var folders = AnimeCollections(); let a = folders.create(name: "A"); let b = folders.create(name: "B")
++        var document = CollectionsSyncState(); document.capture(folders, at: first)
++        folders.moveCollection(b, to: a); document.capture(folders, at: first.addingTimeInterval(5))
++        let decoded = try JSONDecoder().decode(CollectionsSyncState.self, from: JSONEncoder().encode(document))
++        XCTAssertEqual(decoded.visible.collections.map(\.id), [b,a])
++    }
++    func testEqualTimestampHasDeterministicTieBreak() {
++        let folder = AnimeCollection(name: "A")
++        let low = CollectionSyncRecord(folder: folder, rank: 0, updatedAt: first,
++            mutationID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!)
++        var changed = folder; changed.name = "B"
++        let high = CollectionSyncRecord(folder: changed, rank: 0, updatedAt: first,
++            mutationID: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!)
++        var left = CollectionsSyncState(records: [low]); var right = CollectionsSyncState(records: [high])
++        left.merge([high]); right.merge([low])
++        XCTAssertEqual(left.visible, right.visible)
++        XCTAssertEqual(left.visible.collections.first?.name, "B")
++    }
++    func testServerClampOfSameMutationIsAccepted() {
++        let record = CollectionSyncRecord(folder: AnimeCollection(name: "A"), rank: 0, updatedAt: first.addingTimeInterval(3600))
++        var canonical = record; canonical.updatedAt = first
++        var document = CollectionsSyncState(records: [record]); document.merge([canonical])
++        XCTAssertEqual(document.records.first?.updatedAt, first)
++        XCTAssertTrue(document.recordsToUpload.isEmpty)
++    }
++}
++
++final class CollectionsCloudTests: XCTestCase {
++    private let owner = "00000000-0000-0000-0000-00000000000a"
++    private func service(_ transport: StubTransport) -> SupabaseSyncService {
++        let config = AppConfiguration.Supabase(url: URL(string: "https://example.supabase.co")!, anonKey: "test")
++        let session = AuthSession(accessToken: "jwt", refreshToken: "r", expiresAt: Date().addingTimeInterval(3600), user: AuthUser(id: owner, email: nil))
++        let auth = SupabaseAuthClient(config: config, transport: transport, store: InMemoryTokenStore(session))
++        return SupabaseSyncService(config: config, transport: transport, auth: auth, library: LibraryRepository(persistence: InMemoryLibraryPersistence()))
++    }
++    func testAccountMismatchDoesNotSendFolderData() async {
++        let transport = StubTransport { _ in (200, Data("[]".utf8), [:]) }
++        do { _ = try await service(transport).syncCollections([], expectedUserID: "other"); XCTFail() }
++        catch { XCTAssertEqual(error as? AuthError, .notSignedIn) }
++        XCTAssertTrue(transport.requests.isEmpty)
++    }
++    func testFolderPayloadIncludesOrderItemsAndDeletionAndUsesUserJWT() async throws {
++        let record = CollectionSyncRecord(folder: AnimeCollection(name: "A", items: [AnimeSnapshot(id: 1,title: "Title")]), rank: 3, isDeleted: true)
++        let rows = [CollectionRow(record: record, userID: owner)]
++        let response = try SupabaseSyncService.encoder.encode(rows)
++        let transport = StubTransport { request in request.httpMethod == "POST" ? (204,Data(),[:]) : (200,response,[:]) }
++        let result = try await service(transport).syncCollections([record], expectedUserID: owner)
++        XCTAssertEqual(result.first?.rank, 3)
++        XCTAssertTrue(result.first?.isDeleted == true)
++        XCTAssertEqual(result.first?.folder.items.map(\.id), [1])
++        let request = try XCTUnwrap(transport.requests.first)
++        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer jwt")
++        XCTAssertEqual(request.url?.path, "/rest/v1/account_collections")
++        let sent = try SupabaseSyncService.decoder.decode([CollectionRow].self, from: XCTUnwrap(request.httpBody))
++        XCTAssertEqual(sent.first?.user_id, owner)
++        XCTAssertEqual(sent.first?.mutation_id, record.mutationID)
++    }
++}
+--- a/Packages/AnivibeCore/Tests/AnivibeCoreTests/KodikTests.swift
++++ b/Packages/AnivibeCore/Tests/AnivibeCoreTests/KodikTests.swift
+@@ -272,4 +272,44 @@
+         XCTAssertEqual(KodikProvider.Payload.decode(switched.payload)?.selected, "AniDUB")
+         XCTAssertEqual(provider.id, KodikProvider.providerID)
+     }
++
++    private func voice(_ pairs: [(Int,Int)], single: Bool = false) -> KodikVoiceOption {
++        KodikVoiceOption(materialID: "serial-100", translation: KodikTranslation(id: 111, title: "Selected Voice", kind: .voice),
++            title: "Title", year: 2026, quality: "720p", playerURL: URL(string: "https://kodik.info/video/1/hash")!,
++            episodes: pairs.map { KodikEpisode(season: $0.0, number: $0.1, title: nil,
++                playerURL: URL(string: "https://kodik.info/seria/\($0.0)-\($0.1)/hash")!) },
++            seasonPlayerURLs: [:], isSingleVideo: single)
++    }
++    func testCatalogueRoutingKeepsActualKodikTranslationAndSourceIdentity() throws {
++        let chosen = voice([(1,1),(1,2),(1,3)])
++        let exact = try XCTUnwrap(KodikProvider.catalogueEpisode(number: 2, anime: makeAnime(episodes: 3), voice: chosen))
++        XCTAssertEqual(exact.sourceEpisode?.titleID, chosen.id)
++        XCTAssertEqual(exact.sourceEpisode?.number, 2)
++        XCTAssertEqual(KodikProvider.playerURL(for: try XCTUnwrap(exact.sourceEpisode))?.absoluteString,
++                       "https://kodik.info/seria/1-2/hash")
++    }
++    func testAmbiguousCatalogueMappingRequiresExplicitSourceEpisode() {
++        let anime = makeAnime(episodes: 3)
++        for chosen in [voice([(1,4),(1,7)]), voice([(0,1),(1,1),(1,2)]), voice([(1,1),(2,1)]), voice([(1,1),(1,2)])] {
++            XCTAssertNil(KodikProvider.catalogueEpisode(number: 1, anime: anime, voice: chosen))
++        }
++        XCTAssertNil(KodikProvider.catalogueEpisode(number: 1, anime: makeAnime(episodes: nil), voice: voice([(1,1)])))
++    }
++    func testMovieAndOngoingKodikRouting() {
++        XCTAssertNotNil(KodikProvider.catalogueEpisode(number: 1, anime: makeAnime(episodes: 1), voice: voice([],single: true)))
++        XCTAssertNil(KodikProvider.catalogueEpisode(number: 2, anime: makeAnime(episodes: 1), voice: voice([],single: true)))
++        XCTAssertNotNil(KodikProvider.catalogueEpisode(number: 2, anime: makeAnime(episodes: 12,status: .releasing), voice: voice([(1,1),(1,2)])))
++    }
++    func testWebFallbackUsesChosenTranslationAndRejectsWrongProviderOrHTTP() {
++        let payload = KodikProvider.Payload(selected: "B", voices: [
++            .init(title: "A",url: "https://kodik.info/seria/1/a"),
++            .init(title: "B",url: "https://kodik.info/seria/1/b")]).encoded()
++        func episode(_ provider: ProviderID, _ data: String) -> ProviderEpisode {
++            ProviderEpisode(providerID: provider,titleID: "t",season: 1,number: 1,payload: data)
++        }
++        XCTAssertEqual(KodikProvider.playerURL(for: episode(KodikProvider.providerID,payload))?.absoluteString,"https://kodik.info/seria/1/b")
++        XCTAssertNil(KodikProvider.playerURL(for: episode("anilibria",payload)))
++        let bad = KodikProvider.Payload(selected: "B", voices: [.init(title: "B",url: "http://example.com")]).encoded()
++        XCTAssertNil(KodikProvider.playerURL(for: episode(KodikProvider.providerID,bad)))
++    }
+ }
+--- a/Packages/AnivibeCore/Tests/AnivibeCoreTests/ProviderTests.swift
++++ b/Packages/AnivibeCore/Tests/AnivibeCoreTests/ProviderTests.swift
+@@ -171,6 +171,33 @@
+         XCTAssertEqual(c[0].episode?.number, 3)
+     }
+ 
++    func testKodikWinsRegardlessOfRegistrationOrder() async {
++        let registry = ProviderRegistry(providers: [
++            FakeProvider(id: "anilibria", displayName: "Anilibria"),
++            FakeProvider(id: KodikProvider.providerID, displayName: "Kodik")
++        ])
++        let candidates = await registry.candidates(for: makeAnime(), episode: 1)
++        XCTAssertEqual(candidates.first?.providerID, KodikProvider.providerID)
++    }
++    func testUnavailableKodikDoesNotBlockWorkingBackup() async {
++        let registry = ProviderRegistry(providers: [
++            FakeProvider(id: KodikProvider.providerID, displayName: "Kodik", result: .failure(.unauthorized)),
++            FakeProvider(id: "anilibria", displayName: "Anilibria")
++        ])
++        let candidates = await registry.candidates(for: makeAnime(), episode: 1)
++        XCTAssertEqual(candidates.first?.providerID.rawValue, "anilibria")
++        XCTAssertTrue(candidates.contains { $0.providerID == KodikProvider.providerID })
++    }
++    func testDisabledKodikDoesNotOverrideExplicitSetting() async {
++        let registry = ProviderRegistry(providers: [
++            FakeProvider(id: "anilibria", displayName: "Anilibria"),
++            FakeProvider(id: KodikProvider.providerID, displayName: "Kodik")
++        ])
++        await registry.setEnabled(false, for: KodikProvider.providerID)
++        let candidates = await registry.candidates(for: makeAnime(), episode: 1)
++        XCTAssertFalse(candidates.contains { $0.providerID == KodikProvider.providerID })
++    }
++
+     func testRegistryDisabledProvidersAndMissingEpisodes() async {
+         let registry = ProviderRegistry(providers: [FakeProvider(id: "a", displayName: "A", episodeCount: 2), FakeProvider(id: "b", displayName: "B")])
+         await registry.setEnabled(false, for: "b")
+--- a/Packages/AnivibeCore/Tests/AnivibeCoreTests/SocialServiceTests.swift
++++ b/Packages/AnivibeCore/Tests/AnivibeCoreTests/SocialServiceTests.swift
+@@ -151,4 +151,55 @@
+         XCTAssertTrue(t.requests.isEmpty)
+     }
+ 
++
++    func testOldProfileDefaultsEverySharedSectionToPrivate() throws {
++        let profile = try JSONDecoder().decode(UserProfile.self, from: Data(Self.row.utf8))
++        XCTAssertEqual(profile.friendsVisibility, .privateOnly)
++        XCTAssertEqual(profile.historyVisibility, .privateOnly)
++        XCTAssertEqual(profile.libraryVisibility, .privateOnly)
++    }
++    func testSharingSettingsEncodeOnlyExplicitFields() throws {
++        let draft = try ProfileDraft(username: "alice_1", displayName: "Alice", bio: "", visibility: .privateProfile,
++            friendsVisibility: .friends, historyVisibility: .privateOnly, libraryVisibility: .publicProfile).validated()
++        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as! [String: Any]
++        XCTAssertEqual(json["friends_visibility"] as? String, "friends")
++        XCTAssertEqual(json["history_visibility"] as? String, "private")
++        XCTAssertEqual(json["library_visibility"] as? String, "public")
++        XCTAssertNil(json["user_id"])
++    }
++    func testAvatarSigningIsCoalescedAcrossConcurrentCells() async throws {
++        let t = StubTransport(delay: 0.05) { _ in (200, Data(#"{"url":"https://example.com/avatar?signed=1"}"#.utf8), [:]) }
++        let subject = service(t)
++        async let a = subject.avatarURL(userID: Self.targetID, expectedUserID: Self.actorID, revision: "r1")
++        async let b = subject.avatarURL(userID: Self.targetID, expectedUserID: Self.actorID, revision: "r1")
++        let pair = try await (a,b)
++        XCTAssertEqual(pair.0, pair.1)
++        _ = try await subject.avatarURL(userID: Self.targetID, expectedUserID: Self.actorID, revision: "r1")
++        XCTAssertEqual(t.requests.count, 1)
++        _ = try await subject.avatarURL(userID: Self.targetID, expectedUserID: Self.actorID, revision: "r2")
++        XCTAssertEqual(t.requests.count, 2)
++    }
++    func testSocialProfileChecksViewingAccountBeforeNetwork() async {
++        let t = StubTransport { _ in (200, Data(), [:]) }
++        do {
++            _ = try await service(t).socialProfile(targetID: Self.targetID, expectedUserID: Self.targetID)
++            XCTFail()
++        } catch { XCTAssertEqual(error as? AuthError, .notSignedIn) }
++        XCTAssertTrue(t.requests.isEmpty)
++    }
++    func testSocialProfileUsesSafeRPCAndIndependentOffsets() async throws {
++        let targetRow = Self.row.replacingOccurrences(of: Self.actorID, with: Self.targetID)
++        let envelope = """
++        {"profile":\(targetRow),"friends":[],"friends_count":null,"friends_allowed":false,
++         "history_allowed":false,"library_allowed":false,"history":[],"library":[],
++         "history_has_more":false,"library_has_more":false,"stats":null}
++        """
++        let t = StubTransport { _ in (200, Data(envelope.utf8), [:]) }
++        _ = try await service(t).socialProfile(targetID: Self.targetID, historyOffset: 40, libraryOffset: 80, expectedUserID: Self.actorID)
++        let request = try XCTUnwrap(t.requests.first)
++        XCTAssertEqual(request.url?.path, "/rest/v1/rpc/anivibe_social_profile")
++        XCTAssertEqual(request.bodyJSON["p_history_offset"] as? Int, 40)
++        XCTAssertEqual(request.bodyJSON["p_library_offset"] as? Int, 80)
++        XCTAssertNil(request.bodyJSON["viewer_id"])
++    }
+ }
+--- /dev/null
++++ b/scripts/test_kodik_routing.py
+@@ -0,0 +1,26 @@
++"""Static wiring regression checks; NOT Swift compilation or live Kodik tests."""
++from pathlib import Path
++import unittest
++ROOT = Path(__file__).resolve().parents[1]
++class KodikWiringTests(unittest.TestCase):
++    def test_default_player_does_not_exclude_kodik(self):
++        source = (ROOT/'Anivibe/Features/Player/PlayerViewModel.swift').read_text()
++        self.assertNotIn('excluding: [KodikProvider.providerID]',source)
++        self.assertIn('registry.candidates(for: anime, season:',source)
++    def test_watch_waits_for_voice_lookup_before_routing(self):
++        source = (ROOT/'Anivibe/Features/AnimeDetails/AnimeDetailsView.swift').read_text()
++        flow = source.split('private func startPreferredPlayback() async {',1)[1]
++        self.assertLess(flow.index('await kodikModel.load'),flow.index('if let voice = kodikModel.selectedVoice'))
++        self.assertIn('playSourceEpisode(exact, voice: voice)',flow)
++    def test_online_buttons_share_native_source_identity(self):
++        source=(ROOT/'Anivibe/Features/Online/OnlineSourcesSection.swift').read_text()
++        self.assertNotIn('webPlayback = WebPlaybackRequest',source)
++        self.assertIn('playEpisode(exact, voice)',source)
++    def test_web_fallback_is_offered_on_native_failure(self):
++        source=(ROOT/'Anivibe/Features/Player/PlayerScreen.swift').read_text()
++        self.assertIn('if let url = model.kodikWebURL',source)
++        self.assertIn('WebPlayerView(url: request.url)',source)
++    def test_kodik_has_explicit_registry_priority(self):
++        source=(ROOT/'Packages/AnivibeCore/Sources/AnivibeCore/Providers/ProviderRegistry.swift').read_text()
++        self.assertIn('return lhs.1.providerID == KodikProvider.providerID',source)
++if __name__=='__main__': unittest.main(verbosity=2)
+--- /dev/null
++++ b/supabase/migrations/20261013040000_social_sharing_collections.sql
+@@ -0,0 +1,118 @@
++-- Additive migration: private sharing defaults, no broad SELECT grant on library/history.
++begin;
++alter table public.profiles
++  add column friends_visibility text not null default 'private' check (friends_visibility in ('private','friends','public')),
++  add column history_visibility text not null default 'private' check (history_visibility in ('private','friends','public')),
++  add column library_visibility text not null default 'private' check (library_visibility in ('private','friends','public'));
++grant update (friends_visibility,history_visibility,library_visibility) on public.profiles to authenticated;
++
++create function public.anivibe_can_view_profile(p_target uuid) returns boolean
++language sql stable security definer set search_path='' as $$
++ select auth.uid() is not null and exists(
++   select 1 from public.profiles p where p.user_id=p_target and (
++     p.user_id=auth.uid() or p.visibility='public' or exists(
++       select 1 from public.friendships f where p_target in (f.user_low,f.user_high)
++       and auth.uid() in (f.user_low,f.user_high)
++       and (f.status='accepted' or (f.status='pending' and f.requester_id=p_target))
++     )
++   )
++ )
++$$;
++create function public.anivibe_can_view_shared(p_target uuid,p_mode text) returns boolean
++language sql stable security definer set search_path='' as $$
++ select auth.uid() is not null and (
++   auth.uid()=p_target or p_mode='public' or (p_mode='friends' and exists(
++     select 1 from public.friendships f where f.status='accepted'
++     and p_target in (f.user_low,f.user_high) and auth.uid() in (f.user_low,f.user_high)
++   ))
++ )
++$$;
++revoke all on function public.anivibe_can_view_profile(uuid),public.anivibe_can_view_shared(uuid,text) from public,anon,authenticated;
++
++create function public.anivibe_social_profile(p_target uuid,p_history_offset integer default 0,p_library_offset integer default 0)
++returns jsonb language plpgsql stable security definer set search_path='' as $$
++declare
++ p public.profiles%rowtype; fa boolean; ha boolean; la boolean;
++ fs jsonb := '[]'; hs jsonb := '[]'; ls jsonb := '[]'; fc integer; stats jsonb;
++ hm boolean := false; lm boolean := false;
++begin
++ if not public.anivibe_can_view_profile(p_target) then raise exception 'request_not_allowed'; end if;
++ if p_history_offset is null or p_library_offset is null or p_history_offset<0 or p_library_offset<0
++    or p_history_offset>100000 or p_library_offset>100000 then raise exception 'request_not_allowed'; end if;
++ select * into strict p from public.profiles where user_id=p_target;
++ fa := public.anivibe_can_view_shared(p_target,p.friends_visibility);
++ ha := public.anivibe_can_view_shared(p_target,p.history_visibility);
++ la := public.anivibe_can_view_shared(p_target,p.library_visibility);
++ if fa then
++   select count(*) into fc from public.friendships f where f.status='accepted' and p_target in (f.user_low,f.user_high);
++   select coalesce(jsonb_agg(to_jsonb(q) order by q.display_name,q.user_id),'[]'::jsonb) into fs from (
++     select peer.* from public.friendships f join public.profiles peer
++     on peer.user_id=case when f.user_low=p_target then f.user_high else f.user_low end
++     where f.status='accepted' and p_target in (f.user_low,f.user_high)
++     -- Sharing a friend list does not make private peers' identities public.
++     and public.anivibe_can_view_profile(peer.user_id)
++   ) q;
++ end if;
++ if ha then
++   select coalesce(jsonb_agg(to_jsonb(q) order by q.watched_at desc,q.id desc),'[]'::jsonb) into hs from (
++     select * from public.watch_history where user_id=p_target and deleted_at is null
++     order by watched_at desc,id desc limit 40 offset p_history_offset
++   ) q;
++   hm := exists(select 1 from public.watch_history where user_id=p_target and deleted_at is null
++     order by watched_at desc,id desc offset (p_history_offset+40) limit 1);
++ end if;
++ if la then
++   select coalesce(jsonb_agg(to_jsonb(q) order by q.updated_at desc,q.anime_id desc),'[]'::jsonb) into ls from (
++     select * from public.library_entries where user_id=p_target and not is_deleted and (status is not null or is_favorite)
++     order by updated_at desc,anime_id desc limit 40 offset p_library_offset
++   ) q;
++   lm := exists(select 1 from public.library_entries where user_id=p_target and not is_deleted and (status is not null or is_favorite)
++     order by updated_at desc,anime_id desc offset (p_library_offset+40) limit 1);
++   select jsonb_build_object('watching',count(*) filter(where status='watching'),
++     'completed',count(*) filter(where status='completed'),'planned',count(*) filter(where status='planned'),
++     'onHold',count(*) filter(where status='onHold'),'favorites',count(*) filter(where is_favorite),
++     'titles',count(*)) into stats from public.library_entries
++     where user_id=p_target and not is_deleted and (status is not null or is_favorite);
++ end if;
++ return jsonb_build_object('profile',to_jsonb(p),'friends_allowed',fa,'history_allowed',ha,'library_allowed',la,
++   'friends',fs,'friends_count',fc,'history',hs,'library',ls,'stats',stats,
++   'history_has_more',hm,'library_has_more',lm);
++end $$;
++revoke all on function public.anivibe_social_profile(uuid,integer,integer) from public,anon;
++grant execute on function public.anivibe_social_profile(uuid,integer,integer) to authenticated;
++
++create table public.account_collections (
++ user_id uuid not null references auth.users(id) on delete cascade,
++ id uuid not null,
++ folder jsonb not null check (jsonb_typeof(folder)='object' and folder ?& array['id','items','name','createdAt'] and jsonb_typeof(folder->'items')='array'
++   and jsonb_typeof(folder->'name')='string' and char_length(folder->>'name') between 1 and 120
++   and (folder->>'id')::uuid=id and jsonb_typeof(folder->'createdAt')='string'
++   and jsonb_array_length(folder->'items')<=2000 and octet_length(folder::text)<=2000000),
++ sort_order integer not null check(sort_order between 0 and 100000),
++ updated_at timestamptz not null,
++ mutation_id uuid not null,
++ is_deleted boolean not null default false,
++ primary key(user_id,id)
++);
++create index account_collections_user_updated_idx on public.account_collections(user_id,updated_at,id);
++alter table public.account_collections enable row level security;
++revoke all on public.account_collections from public,anon,authenticated;
++grant select,insert,update on public.account_collections to authenticated;
++create policy collections_select_own on public.account_collections for select to authenticated using(user_id=(select auth.uid()));
++create policy collections_insert_own on public.account_collections for insert to authenticated with check(user_id=(select auth.uid()));
++create policy collections_update_own on public.account_collections for update to authenticated
++ using(user_id=(select auth.uid())) with check(user_id=(select auth.uid()));
++create function public.anivibe_collection_lww() returns trigger language plpgsql set search_path='' as $$
++begin
++ if new.updated_at > now()+interval '5 minutes' then new.updated_at := now(); end if;
++ if tg_op='UPDATE' then
++   if new.user_id<>old.user_id or new.id<>old.id then raise exception 'request_not_allowed'; end if;
++   if (new.updated_at,new.mutation_id)<=(old.updated_at,old.mutation_id) then return null; end if;
++ end if;
++ return new;
++end $$;
++revoke all on function public.anivibe_collection_lww() from public,anon,authenticated;
++create trigger account_collections_lww before insert or update on public.account_collections
++ for each row execute function public.anivibe_collection_lww();
++notify pgrst,'reload schema';
++commit;
+--- a/supabase/tests/social_test.py
++++ b/supabase/tests/social_test.py
+@@ -1,6 +1,7 @@
+ #!/usr/bin/env python3
+ """Destructive tests ONLY on a local disposable *_test database, never hosted Supabase."""
+ import concurrent.futures
++import json
+ import os
+ from pathlib import Path
+ import subprocess
+@@ -114,4 +115,63 @@
+         self.public(B); action(A,B,'send'); sql(f"delete from auth.users where id='{A}'")
+         self.assertEqual(self.count('select count(*) from public.friendships'),'0')
+         self.assertEqual(self.count(f"select count(*) from public.profiles where user_id='{A}'"),'0')
++    def details(self, actor, target, history_offset=0):
++        return json.loads(sql(f"select public.anivibe_social_profile('{target}',{history_offset},0)", actor).stdout.strip())
++    def history_fixture(self, target=B, n=1):
++        sql(f"insert into public.watch_history(id,user_id,anime_id,title,episode,watched_at) select md5(i::text)::uuid,'{target}',i,'Title '||i,1,now()-i*interval '1 minute' from generate_series(1,{n}) i")
++    def test_social_sections_default_private_even_for_public_profile(self):
++        self.public(B); self.history_fixture()
++        d=self.details(A,B)
++        self.assertFalse(d['history_allowed']); self.assertEqual(d['history'],[])
++        self.assertFalse(d['friends_allowed']); self.assertIsNone(d['friends_count'])
++        self.assertFalse(d['library_allowed']); self.assertIsNone(d['stats'])
++    def test_social_history_only_for_accepted_friends(self):
++        self.public(B); self.history_fixture()
++        sql(f"update public.profiles set history_visibility='friends' where user_id='{B}'",B)
++        action(A,B,'send')
++        self.assertFalse(self.details(A,B)['history_allowed'])
++        action(B,A,'accept')
++        self.assertEqual(len(self.details(A,B)['history']),1)
++        action(A,B,'remove')
++        self.assertFalse(self.details(A,B)['history_allowed'])
++    def test_social_profile_itself_must_be_visible(self):
++        sql(f"update public.profiles set history_visibility='public' where user_id='{B}'",B)
++        self.assertNotEqual(sql(f"select public.anivibe_social_profile('{B}',0,0)",A,False).returncode,0)
++    def test_shared_friend_list_does_not_expose_private_peer(self):
++        self.public(B)
++        sql(f"update public.profiles set friends_visibility='public' where user_id='{B}'",B)
++        sql(f"insert into public.friendships(user_low,user_high,requester_id,status) values('{B}','{C}','{B}','accepted')")
++        d=self.details(A,B)
++        self.assertEqual(d['friends_count'],1); self.assertEqual(d['friends'],[])
++        self.public(C)
++        self.assertEqual(self.details(A,B)['friends'][0]['user_id'],C)
++    def test_history_paging_filters_tombstones_and_excludes_email(self):
++        self.public(B); self.history_fixture(n=45)
++        sql(f"update public.profiles set history_visibility='public' where user_id='{B}'",B)
++        sql(f"update public.watch_history set deleted_at=now(),updated_at=now()+interval '1 second' where user_id='{B}' and anime_id=1")
++        page=self.details(A,B); next_page=self.details(A,B,40)
++        self.assertEqual(len(page['history']),40); self.assertTrue(page['history_has_more'])
++        self.assertEqual(len(next_page['history']),4); self.assertFalse(next_page['history_has_more'])
++        self.assertNotIn('email',page['profile']); self.assertNotIn('position_seconds',json.dumps(page))
++    def folder_upsert(self, actor=A, owner=A, name='Folder', when='2020-10-13T10:00:00Z', mutation=1, deleted=False, ok=True):
++        folder=json.dumps({'id':uid(500),'name':name,'items':[],'createdAt':'2020-10-13T10:00:00Z'})
++        return sql(f"insert into public.account_collections(user_id,id,folder,sort_order,updated_at,mutation_id,is_deleted) values('{owner}','{uid(500)}','{folder}'::jsonb,0,'{when}','{uid(mutation)}',{str(deleted).lower()}) on conflict(user_id,id) do update set folder=excluded.folder,updated_at=excluded.updated_at,mutation_id=excluded.mutation_id,is_deleted=excluded.is_deleted",actor,ok)
++    def test_collections_owner_rls(self):
++        self.folder_upsert()
++        self.assertEqual(self.count('select count(*) from public.account_collections',A),'1')
++        self.assertEqual(self.count('select count(*) from public.account_collections',B),'0')
++        self.assertNotEqual(self.folder_upsert(actor=B,owner=A,ok=False).returncode,0)
++        self.assertNotEqual(sql('set role anon; select * from public.account_collections',ok=False).returncode,0)
++        self.assertNotEqual(sql('delete from public.account_collections',A,False).returncode,0)
++    def test_collections_stale_write_cannot_resurrect_deleted_folder(self):
++        self.folder_upsert(name='Deleted',when='2020-10-13T11:00:00Z',deleted=True,mutation=2)
++        self.folder_upsert(name='Stale',when='2020-10-13T10:00:00Z')
++        self.assertEqual(self.count('select is_deleted from public.account_collections',A),'t')
++        self.assertEqual(self.count("select folder->>'name' from public.account_collections",A),'Deleted')
++    def test_collections_equal_timestamp_uuid_tie_break(self):
++        self.folder_upsert(name='Newer',mutation=3)
++        self.folder_upsert(name='Older',mutation=1)
++        self.assertEqual(self.count("select folder->>'name' from public.account_collections",A),'Newer')
++    def test_anon_cannot_call_social_rpc(self):
++        self.assertNotEqual(sql(f"set role anon; select public.anivibe_social_profile('{B}',0,0)",ok=False).returncode,0)
+ if __name__=='__main__': unittest.main(verbosity=2)
