@@ -29,5 +29,5 @@ background = (ROOT / 'Anivibe/Features/Settings/BackgroundSettings.swift').read_
 check('catch { if !Task.isCancelled { self.error =' in background, 'Unqualified error assignment in catch')
 auth = (ROOT / 'Packages/AnivibeCore/Sources/AnivibeCore/Sync/SupabaseAuthClient.swift').read_text()
 check('bearer ?? config.anonKey' not in auth, 'API key must not be used as user Bearer')
-check(len(list((ROOT / 'supabase/migrations').glob('*.sql'))) == 3, 'Expected all three migrations')
+check(len(list((ROOT / 'supabase/migrations').glob('*.sql'))) >= 4, 'Expected library and profile/friend migrations')
 print('Static project checks passed. Swift compilation and device checks are separate.')

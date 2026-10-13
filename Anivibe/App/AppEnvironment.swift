@@ -12,6 +12,7 @@ final class AppEnvironment {
     let session: SessionStore
     let settings: AppSettings
     let cache: MetadataCache
+    let socialService: SupabaseSocialService?
     /// Клиент Kodik (веб-плеер с озвучками). `nil`, если токен не задан в конфигурации.
     let kodik: KodikClient?
     /// Пользовательские папки с аниме на главной.
@@ -19,7 +20,7 @@ final class AppEnvironment {
     @ObservationIgnored private var started = false
 
     init(configuration: AppConfiguration, catalog: CatalogService, registry: ProviderRegistry, library: LibraryStore,
-         session: SessionStore, settings: AppSettings, cache: MetadataCache, kodik: KodikClient? = nil) {
+         session: SessionStore, settings: AppSettings, cache: MetadataCache, kodik: KodikClient? = nil, socialService: SupabaseSocialService? = nil) {
         self.configuration = configuration
         self.catalog = catalog
         self.registry = registry
@@ -28,6 +29,7 @@ final class AppEnvironment {
         self.settings = settings
         self.cache = cache
         self.kodik = kodik
+        self.socialService = socialService
     }
 
     static func live(bundle: Bundle = .main) -> AppEnvironment {
@@ -49,11 +51,10 @@ final class AppEnvironment {
         }
         // Kodik — основной источник (десятки озвучек, качество и скорость в плеере).
         // Anilibria остаётся запасным: только если у Kodik нет тайтла/серии.
-        var kodik: KodikClient?
-        if let token = config.kodikToken {
-            let client = KodikClient(token: token, transport: transport)
-            kodik = client
-            providers.insert(KodikProvider(client: client,
+        let kodik = config.kodikToken.map { KodikClient(token: $0, transport: transport) }
+        if let kodik {
+            providers.insert(KodikProvider(
+                client: kodik,
                 preferredVoice: { UserDefaults.standard.string(forKey: KodikPreferences.voiceKey) },
                 preferredQuality: {
                     let q = UserDefaults.standard.integer(forKey: KodikPreferences.qualityKey)
@@ -76,9 +77,11 @@ final class AppEnvironment {
 
         var auth: SupabaseAuthClient?
         var sync: SupabaseSyncService?
+        var socialService: SupabaseSocialService?
         if let supa = config.supabase {
             let client = SupabaseAuthClient(config: supa, transport: transport, store: KeychainTokenStore())
             auth = client
+            socialService = SupabaseSocialService(config: supa, auth: client, transport: transport)
             sync = SupabaseSyncService(config: supa, transport: transport, auth: client, library: repository)
         }
         let session = SessionStore(auth: auth, sync: sync, library: library)
@@ -86,7 +89,7 @@ final class AppEnvironment {
 
 
         return AppEnvironment(configuration: config, catalog: catalog, registry: registry, library: library,
-                              session: session, settings: settings, cache: cache, kodik: kodik)
+                              session: session, settings: settings, cache: cache, kodik: kodik, socialService: socialService)
     }
 
     func start() async {

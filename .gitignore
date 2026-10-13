@@ -17,7 +17,7 @@ supabase/.branches/
 
 .DS_Store
 
-# Simulator build and local validation logs
+# Local tests and simulator builds
 build-simulator/
 __pycache__/
 *.log

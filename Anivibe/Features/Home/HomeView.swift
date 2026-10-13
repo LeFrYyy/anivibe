@@ -1,6 +1,6 @@
 import SwiftUI
-import AnivibeCore
 import UniformTypeIdentifiers
+import AnivibeCore
 
 struct HomeView: View {
     let openCatalog: () -> Void
@@ -13,7 +13,7 @@ struct HomeView: View {
     @State private var newFolderName = ""
     @State private var editingFolders = false
     @State private var draggedFolder: String?
-    @State private var showLibrary = false
+    @State private var deleteFolderID: UUID?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -21,16 +21,6 @@ struct HomeView: View {
                 LazyVStack(alignment: .leading, spacing: Theme.Spacing.xl) {
                     if env.catalog.isDemo {
                         DemoBanner()
-                    }
-                    if env.settings.libraryPinned {
-                        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                            SectionHeader(title: "Библиотека")
-                            Button { showLibrary = true } label: {
-                                Label("Смотрю: \(library.snapshot.entries(in: .watching).count) · Открыть библиотеку", systemImage: "books.vertical")
-                                    .padding().frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
-                            }.padding(.horizontal, Theme.Spacing.l)
-                        }
                     }
                     foldersSection
                     continueSection
@@ -77,7 +67,6 @@ struct HomeView: View {
                 await model.loadRecommendations(catalog: env.catalog, basedOn: library.continueWatching.first)
             }
         }
-        .sheet(isPresented: $showLibrary) { LibraryView() }
         .overlay {
             if let id = openedFolder {
                 FolderOverlay(collectionID: id, close: closeFolder) { anime in
@@ -87,6 +76,9 @@ struct HomeView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.88)))
                 .zIndex(1)
             }
+        }
+        .confirmationDialog("Удалить папку?", isPresented: Binding(get: { deleteFolderID != nil }, set: { if !$0 { deleteFolderID = nil } }), titleVisibility: .visible) {
+            Button("Удалить", role: .destructive) { if let id = deleteFolderID { env.collections.delete(id) }; deleteFolderID = nil }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.82), value: openedFolder)
     }
@@ -102,6 +94,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
             HStack {
                 SectionHeader(title: "Мои папки")
+                Spacer()
                 if editingFolders { Button("Готово") { editingFolders = false; draggedFolder = nil }.padding(.trailing, Theme.Spacing.l) }
             }
             ScrollView(.horizontal, showsIndicators: false) {
@@ -114,19 +107,18 @@ struct HomeView: View {
                             FolderTile(collection: folder)
                         }
                         .buttonStyle(FolderPressStyle())
-                        .scaleEffect(draggedFolder == folder.id.uuidString ? 1.06 : 1)
+                        .scaleEffect(draggedFolder == folder.id.uuidString ? 1.05 : 1)
                         .onDrag {
                             editingFolders = true; draggedFolder = folder.id.uuidString
                             return NSItemProvider(object: folder.id.uuidString as NSString)
                         }
                         .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: folder.id.uuidString, draggedID: $draggedFolder) { from, to in
-                            guard let a = UUID(uuidString: from), let b = UUID(uuidString: to) else { return }
-                            env.collections.reorder(a, to: b)
+                            if let source = UUID(uuidString: from), let target = UUID(uuidString: to) { env.collections.reorder(source, to: target) }
                         })
                         .contextMenu {
-                            Button("Изменить порядок") { editingFolders = true }
+                            Button("Переставить папки") { editingFolders = true }
                             Button { openedFolder = folder.id } label: { Label("Открыть", systemImage: "folder") }
-                            Button(role: .destructive) { env.collections.delete(folder.id) } label: {
+                            Button(role: .destructive) { deleteFolderID = folder.id } label: {
                                 Label("Удалить папку", systemImage: "trash")
                             }
                         }
@@ -404,12 +396,20 @@ struct FolderTile: View {
 /// Фон папки: матовое стекло с лёгким фирменным переливом и бликом по краю.
 struct FolderBackground: View {
     var cornerRadius: CGFloat
+
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Theme.surfaceElevated)
-            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Theme.separator, lineWidth: 1))
-            .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        shape
+            .fill(.ultraThinMaterial)
+            .overlay(
+                shape.fill(LinearGradient(colors: [Theme.accent.opacity(0.35), Theme.secondaryAccent.opacity(0.18)],
+                                          startPoint: .topLeading, endPoint: .bottomTrailing))
+            )
+            .overlay(
+                shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.05)],
+                                                  startPoint: .top, endPoint: .bottom), lineWidth: 1)
+            )
+            .shadow(color: Theme.accent.opacity(0.25), radius: 10, y: 6)
     }
 }
 
@@ -460,7 +460,7 @@ struct FolderOverlay: View {
 
     @State private var name = ""
     @State private var editing = false
-    @State private var draggedAnime: String?
+    @State private var draggedItem: String?
     @State private var showSearch = false
     @State private var confirmDelete = false
     @FocusState private var nameFocused: Bool
@@ -544,12 +544,11 @@ struct FolderOverlay: View {
                         }
                     }
                     .onDrag {
-                        editing = true; draggedAnime = String(anime.id)
+                        editing = true; draggedItem = String(anime.id)
                         return NSItemProvider(object: String(anime.id) as NSString)
                     }
-                    .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: String(anime.id), draggedID: $draggedAnime) { from, to in
-                        guard let a = Int(from), let b = Int(to) else { return }
-                        env.collections.reorderItem(a, in: collectionID, to: b)
+                    .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: String(anime.id), draggedID: $draggedItem) { from, to in
+                        if let source = Int(from), let target = Int(to) { env.collections.reorderItem(source, in: collectionID, to: target) }
                     })
                 }
                 Button { showSearch = true } label: {
@@ -760,13 +759,45 @@ struct AddToFolderSheet: View {
 
 /// Долгое нажатие на любую обложку → «В папку» (добавить/убрать, создать новую).
 struct FolderMenuModifier: ViewModifier {
+    @Environment(AppEnvironment.self) private var env
     let anime: AnimeSnapshot
-    @State private var showFolders = false
+
+    @State private var askName = false
+    @State private var newName = ""
+
     func body(content: Content) -> some View {
-        content.contextMenu {
-            Button { showFolders = true } label: { Label("Добавить в папки", systemImage: "folder.badge.plus") }
-        }
-        .sheet(isPresented: $showFolders) { FolderSelectionSheet(anime: anime) }
+        content
+            .contextMenu {
+                Menu {
+                    ForEach(env.collections.collections) { folder in
+                        Button {
+                            env.collections.toggle(anime, in: folder.id)
+                        } label: {
+                            if folder.contains(anime.id) {
+                                Label(folder.name, systemImage: "checkmark")
+                            } else {
+                                Label(folder.name, systemImage: "folder")
+                            }
+                        }
+                    }
+                    if !env.collections.collections.isEmpty { Divider() }
+                    Button {
+                        newName = ""
+                        askName = true
+                    } label: {
+                        Label("Новая папка…", systemImage: "folder.badge.plus")
+                    }
+                } label: {
+                    Label("В папку", systemImage: "folder")
+                }
+            }
+            .alert("Новая папка", isPresented: $askName) {
+                TextField("Название", text: $newName)
+                Button("Создать") { _ = env.collections.create(name: newName, with: anime) }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("«\(anime.title)» сразу окажется в ней.")
+            }
     }
 }
 

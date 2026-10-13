@@ -230,7 +230,7 @@ struct KodikPlayerScreen: View {
                     .buttonStyle(.bordered)
                     .tint(.white)
                 Button("Веб-плеер Kodik") { phase = .web }
-                    .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+                    .buttonStyle(.borderedProminent)
             }
         }
         .padding(Theme.Spacing.xl)

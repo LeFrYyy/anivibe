@@ -2,6 +2,9 @@ import SwiftUI
 import AnivibeCore
 
 struct ProfileView: View {
+    @Environment(AppEnvironment.self) private var env
+    @State private var social = SocialStore()
+    @State private var editProfile = false
     @Environment(SessionStore.self) private var session
     @Environment(LibraryStore.self) private var library
 
@@ -28,6 +31,10 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle("Профиль")
+            .task(id: session.user?.id) { await social.load(service: env.socialService, userID: session.user?.id) }
+            .sheet(isPresented: $editProfile) {
+                if let profile = social.profile { ProfileEditorView(store: social, profile: profile) }
+            }
         }
     }
 
@@ -43,7 +50,23 @@ struct ProfileView: View {
 
     private func accountSection(_ user: AuthUser) -> some View {
         Section("Аккаунт") {
-            LabeledContent("Почта", value: user.email ?? "—")
+            if let profile = social.profile {
+                Text(profile.displayName).font(.title3.bold())
+                if let username = profile.username { Text("@" + username).foregroundStyle(Theme.textSecondary) }
+                else { Text("Выберите username в настройках профиля").font(.footnote) }
+                if !profile.bio.isEmpty { Text(verbatim: profile.bio) }
+                LabeledContent("ID пользователя", value: profile.userID).textSelection(.enabled)
+                LabeledContent("Дата регистрации", value: String(profile.createdAt.prefix(10)))
+                LabeledContent("Видимость", value: profile.visibility.title)
+                Button("Редактировать профиль") { editProfile = true }
+                NavigationLink { FriendsView(store: social, userID: user.id) } label: { Label("Друзья", systemImage: "person.2") }
+            }
+            if social.isLoading { ProgressView("Загружаем профиль…") }
+            if let error = social.errorMessage {
+                Text(error).font(.footnote).foregroundStyle(Theme.danger)
+                Button("Повторить загрузку профиля") { Task { await social.load(service: env.socialService, userID: user.id) } }
+            }
+            LabeledContent("Почта (только вам)", value: user.email ?? "—")
             HStack {
                 Button {
                     Task { await session.syncIfNeeded(reason: .manual) }
