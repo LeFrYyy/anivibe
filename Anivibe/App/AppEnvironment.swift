@@ -39,7 +39,8 @@ final class AppEnvironment {
 
         let catalog: CatalogService = config.demoCatalog
             ? DemoCatalogService()
-            : AniListCatalogService(transport: transport, cache: cache)
+            : RussianCatalogService(catalog: AniListCatalogService(transport: transport, cache: cache),
+                metadata: RussianMetadataService(transport: transport, cache: cache), cache: cache)
 
         // Видеопровайдеры: реальные (если настроены) + легальные тестовые потоки.
         var providers: [VideoSourceProvider] = []
@@ -48,15 +49,17 @@ final class AppEnvironment {
         }
         // Kodik — основной источник (десятки озвучек, качество и скорость в плеере).
         // Anilibria остаётся запасным: только если у Kodik нет тайтла/серии.
-        let kodikToken = config.kodikToken ?? KodikClient.defaultToken
-        let kodik = KodikClient(token: kodikToken, transport: transport)
-        providers.insert(KodikProvider(
-            client: kodik,
-            preferredVoice: { UserDefaults.standard.string(forKey: KodikPreferences.voiceKey) },
-            preferredQuality: {
-                let q = UserDefaults.standard.integer(forKey: KodikPreferences.qualityKey)
-                return q > 0 ? q : nil
-            }), at: 0)
+        var kodik: KodikClient?
+        if let token = config.kodikToken {
+            let client = KodikClient(token: token, transport: transport)
+            kodik = client
+            providers.insert(KodikProvider(client: client,
+                preferredVoice: { UserDefaults.standard.string(forKey: KodikPreferences.voiceKey) },
+                preferredQuality: {
+                    let q = UserDefaults.standard.integer(forKey: KodikPreferences.qualityKey)
+                    return q > 0 ? q : nil
+                }), at: 0)
+        }
         providers.append(AnilibriaProvider(transport: transport))
         providers.append(TestStreamProvider(transport: transport))
         // Kodik отвечает объёмными JSON (все серии всех озвучек) — даём больше времени.
@@ -137,6 +140,8 @@ enum KodikPreferences {
 final class CollectionsStore {
     private(set) var state: AnimeCollections
     @ObservationIgnored private let fileURL: URL?
+    private(set) var errorMessage: String?
+    @ObservationIgnored private var canSave = true
 
     var collections: [AnimeCollection] { state.collections }
 
@@ -150,6 +155,10 @@ final class CollectionsStore {
             state = decoded
         } else {
             state = AnimeCollections()
+            if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
+                canSave = false
+                errorMessage = "Файл папок повреждён. Он сохранён без изменений; восстановите его из резервной копии."
+            }
         }
     }
 
@@ -162,6 +171,9 @@ final class CollectionsStore {
         return id
     }
 
+    func reorder(_ id: UUID, to target: UUID) { state.moveCollection(id, to: target); save() }
+    func reorderItem(_ animeID: Int, in id: UUID, to target: Int) { state.moveItem(animeID, in: id, to: target); save() }
+
     func rename(_ id: UUID, to name: String) { state.rename(id, to: name); save() }
     func delete(_ id: UUID) { state.delete(id); save() }
     func add(_ anime: AnimeSnapshot, to id: UUID) { state.add(anime, to: id); save() }
@@ -172,7 +184,8 @@ final class CollectionsStore {
     }
 
     private func save() {
-        guard let fileURL, let data = try? JSONEncoder().encode(state) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        guard canSave, let fileURL else { return }
+        do { let data = try JSONEncoder().encode(state); try data.write(to: fileURL, options: .atomic); errorMessage = nil }
+        catch { errorMessage = "Не удалось сохранить папки: \(error.localizedDescription)" }
     }
 }

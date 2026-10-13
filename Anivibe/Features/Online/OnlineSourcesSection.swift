@@ -175,7 +175,7 @@ struct OnlineSourcesSection: View {
                             .font(.headline)
                             .frame(maxWidth: .infinity, minHeight: 30)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                     .padding(.horizontal, Theme.Spacing.l)
                 } else {
                     seasonPicker(voice: voice)

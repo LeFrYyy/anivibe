@@ -159,10 +159,13 @@ public enum EpisodeMatcher {
     ///   - number: номер серии внутри сезона.
     ///   - absoluteOffset: если провайдер нумерует сквозняком, сколько серий было в предыдущих сезонах.
     public static func match(season: Int, number: Int, in episodes: [ProviderEpisode], absoluteOffset: Int? = nil) -> ProviderEpisode? {
-        if let exact = episodes.first(where: { $0.season == season && $0.number == number }) { return exact }
+        let exact = episodes.filter { $0.season == season && $0.number == number }
+        if exact.count == 1 { return exact[0] }
+        if exact.count > 1 { return nil }
         let unseasoned = episodes.filter { $0.season == nil }
-        if let offset = absoluteOffset, let abs = unseasoned.first(where: { $0.number == offset + number }) { return abs }
-        if season == 1 || absoluteOffset == nil, let plain = unseasoned.first(where: { $0.number == number }) { return plain }
+        let wanted = absoluteOffset.map { $0 + number } ?? (season == 1 ? number : nil)
+        let matches = unseasoned.filter { $0.number == wanted }
+        if matches.count == 1 { return matches[0] }
         // Провайдер хранит только один сезон под номером 1, а каталог просит сезон 1.
         return nil
     }

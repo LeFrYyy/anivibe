@@ -64,8 +64,8 @@ public actor ProviderRegistry {
     /// Опрашивает все включённые провайдеры параллельно, с тайм-аутом на каждый.
     /// Доступным считается только источник, чья ссылка реально проверена.
     /// Реальные источники идут перед тестовыми.
-    public func candidates(for anime: Anime, season: Int = 1, episode number: Int) async -> [SourceCandidate] {
-        let active = providers.filter { !disabled.contains($0.id) }
+    public func candidates(for anime: Anime, season: Int = 1, episode number: Int, excluding: Set<ProviderID> = []) async -> [SourceCandidate] {
+        let active = providers.filter { !disabled.contains($0.id) && !excluding.contains($0.id) }
         let timeout = self.timeout
         let results = await withTaskGroup(of: (Int, SourceCandidate).self) { group -> [(Int, SourceCandidate)] in
             for (index, provider) in active.enumerated() {

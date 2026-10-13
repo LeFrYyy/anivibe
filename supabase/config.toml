@@ -16,8 +16,21 @@ enabled = true
 site_url = "http://127.0.0.1:3000"
 # Минимальная длина пароля совпадает с проверкой в приложении.
 minimum_password_length = 8
+additional_redirect_urls = ["anivibe://auth/callback**"]
 
 [auth.email]
 enable_signup = true
 # Для локальной разработки письма видны в Inbucket/Mailpit (http://127.0.0.1:54324).
-enable_confirmations = false
+enable_confirmations = true
+max_frequency = "60s"
+otp_length = 6
+otp_expiry = 600
+
+[auth.email.template.confirmation]
+subject = "Код подтверждения Anivibe"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.rate_limit]
+email_sent = 10
+sign_in_sign_ups = 30
+token_verifications = 30

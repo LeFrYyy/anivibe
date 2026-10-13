@@ -2,19 +2,27 @@ import SwiftUI
 import AnivibeCore
 
 struct AnimeDetailsView: View {
+    let history: HistoryItem?
     @Environment(AppEnvironment.self) private var env
     @Environment(LibraryStore.self) private var library
     @Environment(\.openURL) private var openURL
     @State private var model: AnimeDetailsViewModel
     @State private var playback: PlaybackRequest?
+    @State private var pendingPlayback: PlaybackRequest?
+    @State private var webPlayback: WebPlaybackRequest?
+    @State private var pendingWebPlayback: WebPlaybackRequest?
     @State private var descriptionExpanded = false
+    @State private var showEpisodePicker = false
+    @State private var showFolders = false
     @State private var kodikModel = KodikOnlineViewModel()
 
     init(anime: Anime) {
+        history = nil
         _model = State(initialValue: AnimeDetailsViewModel(anime: anime))
     }
 
-    init(snapshot: AnimeSnapshot) {
+    init(snapshot: AnimeSnapshot, history: HistoryItem? = nil) {
+        self.history = history
         let placeholder = Anime(id: snapshot.id, title: AnimeTitle(english: snapshot.title), coverURL: snapshot.coverURL,
                                 episodeCount: snapshot.episodeCount)
         _model = State(initialValue: AnimeDetailsViewModel(anime: placeholder))
@@ -47,8 +55,58 @@ struct AnimeDetailsView: View {
         .navigationTitle(anime.title.preferred)
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load(catalog: env.catalog) }
+        .sheet(isPresented: $showFolders) { FolderSelectionSheet(anime: anime.snapshot) }
+        .sheet(isPresented: $showEpisodePicker, onDismiss: {
+            if let pendingPlayback { playback = pendingPlayback; self.pendingPlayback = nil }
+            if let pendingWebPlayback { webPlayback = pendingWebPlayback; self.pendingWebPlayback = nil }
+        }) {
+            NavigationStack {
+                List {
+                    if let voice = kodikModel.selectedVoice {
+                        Section("Kodik · \(voice.translation.title)") {
+                            Text("Нумерация источника. Соответствие сериям AniList не подтверждено; прогресс хранится отдельно для этой озвучки.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            ForEach(voice.isSingleVideo ? [1] : kodikModel.availableSeasons, id: \.self) { season in
+                                let list = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id, season: season)
+                                ForEach(list) { ep in
+                                    Button(ep.displayTitle) {
+                                        showEpisodePicker = false
+                                        let p = library.progress(anime.id, episode: ep.progressNumber, sourceKey: ep.sourceKey)
+                                        pendingPlayback = PlaybackRequest(anime: anime, episodes: list, episode: ep.number,
+                                            startPosition: (p?.isFinished ?? true) ? 0 : p?.position ?? 0)
+                                    }
+                                    if let source = ep.sourceEpisode,
+                                       let url = voice.isSingleVideo ? voice.playerURL : voice.episodes.first(where: { $0.season == source.season && $0.number == source.number })?.playerURL {
+                                        Button("Альтернативный плеер Kodik") {
+                                            pendingWebPlayback = WebPlaybackRequest(url: url, title: anime.title.preferred,
+                                                subtitle: "\(ep.displayTitle) · \(voice.translation.title)")
+                                            showEpisodePicker = false
+                                        }.font(.caption)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Section("Каталог AniList") {
+                        if let note = model.episodeList?.note { Text(note).font(.footnote) }
+                        ForEach(episodes) { ep in
+                            Button(ep.displayTitle) {
+                                showEpisodePicker = false
+                                let p = library.progress(anime.id, episode: ep.number)
+                                pendingPlayback = PlaybackRequest(anime: anime, episodes: episodes, episode: ep.number, startPosition: (p?.isFinished ?? true) ? 0 : p?.position ?? 0)
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("Выбор серии")
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Готово") { showEpisodePicker = false } } }
+            }
+        }
         .fullScreenCover(item: $playback) { request in
             PlayerScreen(request: request)
+        }
+        .fullScreenCover(item: $webPlayback) { request in
+            if let client = env.kodik { KodikPlayerScreen(request: request, client: client) }
         }
     }
 
@@ -89,6 +147,9 @@ struct AnimeDetailsView: View {
 
     private var resume: ResumePoint? { library.resumePoint(for: anime) }
     private var episodes: [Episode] { model.episodeList?.episodes ?? [] }
+    private var sourceEpisodes: [Episode] {
+        kodikModel.selectedVoice.map { KodikProvider.sourceEpisodes(for: $0, animeID: anime.id) } ?? []
+    }
 
     private var actions: some View {
         VStack(spacing: Theme.Spacing.m) {
@@ -97,14 +158,16 @@ struct AnimeDetailsView: View {
                 KodikVoicePicker(anime: anime, client: kodik, model: kodikModel)
             }
             Button {
-                startPlayback(episode: resume?.episode ?? 1, position: resume?.position ?? 0)
+                playPreferredEpisode()
             } label: {
                 Label(resumeTitle, systemImage: "play.fill")
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 30)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(episodes.isEmpty)
+            .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+            .disabled(episodes.isEmpty && sourceEpisodes.isEmpty)
+            Button("Выбрать серию", systemImage: "list.bullet") { showEpisodePicker = true }
+                .disabled(episodes.isEmpty && sourceEpisodes.isEmpty)
 
             HStack(spacing: Theme.Spacing.m) {
                 Button {
@@ -138,6 +201,8 @@ struct AnimeDetailsView: View {
                 .buttonStyle(.bordered)
             }
 
+            Button("Добавить в папки", systemImage: "folder.badge.plus") { showFolders = true }.buttonStyle(.bordered)
+
             if library.status(of: anime.id) != .completed {
                 Button {
                     Task { await library.markCompleted(anime.snapshot) }
@@ -151,13 +216,32 @@ struct AnimeDetailsView: View {
         .padding(.horizontal, Theme.Spacing.l)
     }
 
+    private func playPreferredEpisode() {
+        if let sourceKey = history?.sourceKey ?? resume?.sourceKey {
+            for voice in kodikModel.voices {
+                let list = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id)
+                if let ep = list.first(where: { $0.sourceKey == sourceKey }) {
+                    let p = library.progress(anime.id, episode: ep.progressNumber, sourceKey: sourceKey)
+                    playback = PlaybackRequest(anime: anime, episodes: list, episode: ep.number,
+                        startPosition: (p?.isFinished ?? true) ? 0 : p?.position ?? 0)
+                    return
+                }
+            }
+            showEpisodePicker = true
+        } else if let history {
+            let p = library.progress(anime.id, episode: history.episode)
+            startPlayback(episode: history.episode, position: (p?.isFinished ?? true) ? 0 : p?.position ?? 0)
+        } else if !sourceEpisodes.isEmpty { showEpisodePicker = true }
+        else { startPlayback(episode: resume?.episode ?? 1, position: resume?.position ?? 0) }
+    }
+
     private var resumeTitle: String {
         guard let resume else { return episodes.isEmpty ? "Нет серий" : "Смотреть" }
         return resume.isNextEpisode ? "Смотреть серию \(resume.episode)" : "Продолжить: серия \(resume.episode)"
     }
 
     private func startPlayback(episode: Int, position: Double) {
-        guard !episodes.isEmpty else { return }
+        guard episodes.contains(where: { $0.number == episode }) else { showEpisodePicker = true; return }
         playback = PlaybackRequest(anime: anime, episodes: episodes, episode: episode, startPosition: position)
     }
 
@@ -167,7 +251,7 @@ struct AnimeDetailsView: View {
         info
         if let synopsis = anime.synopsis {
             VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                SectionHeader(title: "Описание")
+                SectionHeader(title: anime.synopsisSource == nil ? "Описание · оригинал" : "Описание · \(anime.synopsisSource!)")
                 Text(synopsis)
                     .font(.body)
                     .foregroundStyle(Theme.textPrimary.opacity(0.9))
@@ -181,16 +265,11 @@ struct AnimeDetailsView: View {
             }
         }
         seasons
-        episodesSection
-        // Все озвучки Kodik списком (основной просмотр — кнопкой «Смотреть»).
-        if let kodik = env.kodik {
-            OnlineSourcesSection(anime: anime, client: kodik, model: kodikModel)
-        }
         officialLinks
         if let recs = model.details?.recommendations, !recs.isEmpty {
             PosterRow(title: "Похожие", items: recs)
         }
-        Text("Метаданные: AniList. Наличие тайтла в каталоге не означает наличие видео.")
+        Text("Метаданные: AniList; русские названия и описания: Shikimori, при наличии.  Наличие тайтла в каталоге не означает наличие видео.")
             .font(.caption2)
             .foregroundStyle(Theme.textSecondary)
             .padding(.horizontal, Theme.Spacing.l)
@@ -212,7 +291,7 @@ struct AnimeDetailsView: View {
                 Chip(text: "\(count) эп." + (anime.episodeDurationMinutes.map { " по \($0) мин" } ?? ""), systemImage: "list.number")
             }
             ForEach(model.details?.studios ?? [], id: \.self) { Chip(text: $0, systemImage: "building.2") }
-            ForEach(anime.genres, id: \.self) { Chip(text: $0) }
+            ForEach(anime.genres, id: \.self) { Chip(text: CatalogLocalization.genre($0)) }
         }
         .padding(.horizontal, Theme.Spacing.l)
     }
@@ -236,34 +315,6 @@ struct AnimeDetailsView: View {
                     }
                     .padding(.horizontal, Theme.Spacing.l)
                 }
-            }
-        }
-    }
-
-    @ViewBuilder private var episodesSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            SectionHeader(title: anime.airedEpisodesText.map { "Серии · \($0)" } ?? "Серии")
-            if let note = model.episodeList?.note {
-                Label(note, systemImage: "info.circle")
-                    .font(.footnote).foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, Theme.Spacing.l)
-            }
-            if episodes.isEmpty {
-                Text("Список серий недоступен.").foregroundStyle(Theme.textSecondary).padding(.horizontal, Theme.Spacing.l)
-            } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(episodes) { ep in
-                        EpisodeRow(episode: ep, progress: library.progress(anime.id, episode: ep.number)) {
-                            let p = library.progress(anime.id, episode: ep.number)
-                            startPlayback(episode: ep.number, position: (p?.isFinished ?? true) ? 0 : p?.position ?? 0)
-                        } toggleWatched: { watched in
-                            Task { await library.setEpisodeWatched(anime.snapshot, episode: ep.number, watched: watched) }
-                        }
-                        Divider().padding(.leading, Theme.Spacing.l)
-                    }
-                }
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
-                .padding(.horizontal, Theme.Spacing.l)
             }
         }
     }

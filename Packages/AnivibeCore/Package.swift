@@ -13,7 +13,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "AnivibeCore", path: "Sources/AnivibeCore"),
-        .testTarget(name: "AnivibeCoreTests", dependencies: ["AnivibeCore"], path: "Tests/AnivibeCoreTests")
+        .testTarget(name: "AnivibeCoreTests", dependencies: ["AnivibeCore"], path: "Tests/AnivibeCoreTests", resources: [.copy("Fixtures")])
     ],
     swiftLanguageVersions: [.v5]
 )

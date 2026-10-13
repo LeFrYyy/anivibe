@@ -150,6 +150,27 @@ public struct KodikProvider: VideoSourceProvider {
         }
     }
 
+    /// Exact provider list, preserving season 0, gaps, materials and translation identity.
+    /// This does not claim that provider episode 4 is catalogue episode 4.
+    public static func sourceEpisodes(for voice: KodikVoiceOption, animeID: Int, season: Int? = nil) -> [Episode] {
+        if voice.isSingleVideo {
+            let payload = Payload(selected: voice.translation.title, voices: [.init(title: voice.translation.title, url: voice.playerURL.absoluteString)])
+            let source = ProviderEpisode(providerID: providerID, titleID: voice.id, season: nil, number: 1, title: voice.title, payload: payload.encoded())
+            return [Episode(animeId: animeID, number: 1, title: voice.title, sourceEpisode: source)]
+        }
+        let original = voice.episodes.filter { season == nil || $0.season == season }
+            .sorted { ($0.season, $0.number) < ($1.season, $1.number) }
+        var seen = Set<String>()
+        return original.filter { seen.insert($0.id).inserted }.enumerated().map { index, ep in
+            let payload = Payload(selected: voice.translation.title,
+                                  voices: [.init(title: voice.translation.title, url: ep.playerURL.absoluteString)])
+            let source = ProviderEpisode(providerID: providerID, titleID: voice.id, season: ep.season,
+                                         number: ep.number, title: ep.title, payload: payload.encoded())
+            return Episode(animeId: animeID, season: ep.season, number: index + 1,
+                           title: ep.title, sourceEpisode: source)
+        }
+    }
+
     /// Озвучки в порядке «по умолчанию»: сначала озвучки (не субтитры), затем популярные студии,
     /// затем самые полные. Этот же порядок использует плеер, когда пользователь ещё ничего не выбрал.
     public static func rankedVoices(_ voices: [KodikVoiceOption]) -> [KodikVoiceOption] {

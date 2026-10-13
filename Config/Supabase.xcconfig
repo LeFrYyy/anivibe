@@ -1,0 +1,4 @@
+// Public client settings for this Supabase project. Not server secrets.
+// Keep RLS enabled. Never put service_role / sb_secret keys here.
+ANIVIBE_SUPABASE_URL = https:/$()/kdbkkigoefierimdzdrq.supabase.co
+ANIVIBE_SUPABASE_ANON_KEY = sb_publishable_pzwsSA68GTkcxR1hn2QxcA_DZ0UXwbO

@@ -22,7 +22,7 @@ struct PlayerScreen: View {
             if model == nil {
                 let settings = env.settings
                 let vm = PlayerViewModel(request: request, registry: env.registry, library: env.library,
-                                         autoplayNext: { settings.autoplayNextEpisode })
+                                         accountID: env.session.user?.id, autoplayNext: { settings.autoplayNextEpisode })
                 model = vm
                 vm.start()
             }
@@ -46,7 +46,12 @@ private struct PlayerContent: View {
     let pip: PictureInPictureModel
     let close: () -> Void
 
-    @State private var controlsVisible = true
+    @State private var controls = PlaybackControlsState()
+    @State private var showSettings = false
+    private var controlsVisible: Bool { controls.isVisible }
+    private var interactionBlocked: Bool {
+        showSettings || showSources || showEpisodes || model.isScrubbing || model.isBuffering || model.phase != .ready
+    }
     @State private var hideTask: Task<Void, Never>?
     @State private var showSources = false
     @State private var showEpisodes = false
@@ -65,6 +70,7 @@ private struct PlayerContent: View {
                 PlayerControlsView(model: model, pip: pip, close: close,
                                    showSources: { showSources = true },
                                    showEpisodes: { showEpisodes = true },
+                                   showSettings: { showSettings = true },
                                    interacted: scheduleHide)
                     .transition(.opacity)
             }
@@ -77,15 +83,18 @@ private struct PlayerContent: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: controlsVisible)
+        .sheet(isPresented: $showSettings) {
+            VideoSettingsSheet(model: model).presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $showSources) {
             SourcesSheet(model: model).presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showEpisodes) {
             EpisodesSheet(model: model).presentationDetents([.medium, .large])
         }
-        .onChange(of: model.isPlaying) { _, playing in
-            if playing { scheduleHide() } else { controlsVisible = true }
-        }
+        .onChange(of: model.isPlaying) { _, _ in scheduleHide() }
+        .onChange(of: interactionBlocked) { _, _ in scheduleHide() }
+        .onAppear { scheduleHide() }
         .onDisappear { hideTask?.cancel() }
     }
 
@@ -100,7 +109,7 @@ private struct PlayerContent: View {
         case .failed(let message):
             PlayerStatusView(systemImage: "exclamationmark.triangle", title: "Не удалось воспроизвести", message: message) {
                 HStack {
-                    Button("Повторить", action: model.retry).buttonStyle(.borderedProminent)
+                    Button("Повторить", action: model.retry).buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                     if !model.otherAvailableCandidates.isEmpty {
                         Button("Другой источник") { showSources = true }.buttonStyle(.bordered)
                     }
@@ -115,17 +124,19 @@ private struct PlayerContent: View {
     }
 
     private func toggleControls() {
-        controlsVisible.toggle()
+        hideTask?.cancel()
+        controls.toggle(at: Date(), blocked: interactionBlocked)
         if controlsVisible { scheduleHide() }
     }
 
     private func scheduleHide() {
         hideTask?.cancel()
-        controlsVisible = true
+        controls.interact(at: Date(), blocked: interactionBlocked || !model.isPlaying)
+        guard !interactionBlocked, model.isPlaying else { return }
         hideTask = Task {
             try? await Task.sleep(nanoseconds: 3_500_000_000)
-            guard !Task.isCancelled, model.isPlaying, !model.isScrubbing else { return }
-            controlsVisible = false
+            guard !Task.isCancelled else { return }
+            controls.tick(at: Date(), playing: model.isPlaying, blocked: interactionBlocked)
         }
     }
 }
@@ -181,7 +192,7 @@ private struct NoSourcesView: View {
                 }
             }
             HStack {
-                Button("Повторить", action: model.findSources).buttonStyle(.borderedProminent)
+                Button("Повторить", action: model.findSources).buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                 Button("Закрыть", action: close).buttonStyle(.bordered).tint(.white)
             }
         }
@@ -220,7 +231,7 @@ private struct NextEpisodeCard: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
             Text("Серия \(next) через \(countdown) с").font(.headline)
             HStack {
-                Button("Смотреть", action: playNow).buttonStyle(.borderedProminent)
+                Button("Смотреть", action: playNow).buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                 Button("Отмена", action: cancel).buttonStyle(.bordered)
             }
         }

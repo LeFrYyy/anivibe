@@ -6,18 +6,28 @@ public struct Episode: Identifiable, Hashable, Codable, Sendable {
     /// Сезон внутри записи каталога. В AniList каждый сезон — отдельный тайтл, поэтому обычно 1.
     public let season: Int
     public let number: Int
+    /// Exact source identity; nil for catalogue episodes. No inferred offset.
+    public var sourceEpisode: ProviderEpisode?
     public var title: String?
     public var thumbnailURL: URL?
 
-    public init(animeId: Int, season: Int = 1, number: Int, title: String? = nil, thumbnailURL: URL? = nil) {
+    public init(animeId: Int, season: Int = 1, number: Int, title: String? = nil, thumbnailURL: URL? = nil, sourceEpisode: ProviderEpisode? = nil) {
         self.animeId = animeId
         self.season = season
         self.number = number
         self.title = title
         self.thumbnailURL = thumbnailURL
+        self.sourceEpisode = sourceEpisode
     }
 
+    public var progressNumber: Int { sourceEpisode?.number ?? number }
+    public var sourceKey: String? { sourceEpisode?.id }
+
     public var displayTitle: String {
+        if let source = sourceEpisode {
+            let label = "Сезон \(source.season ?? season) · серия \(source.number)"
+            return source.title.map { "\(label) · \($0)" } ?? label
+        }
         if let title, !title.isEmpty { return "\(number). \(title)" }
         return "Серия \(number)"
     }

@@ -62,11 +62,25 @@ public struct AnimeCollections: Hashable, Codable, Sendable {
     public mutating func moveItems(in id: UUID, from source: IndexSet, to destination: Int) {
         guard let i = index(id) else { return }
         var items = collections[i].items
+        guard source.allSatisfy({ items.indices.contains($0) }), (0...items.count).contains(destination) else { return }
         let moving = source.sorted().map { items[$0] }
         for offset in source.sorted(by: >) { items.remove(at: offset) }
         let shift = source.filter { $0 < destination }.count
         items.insert(contentsOf: moving, at: max(0, min(items.count, destination - shift)))
         collections[i].items = items
+    }
+
+    public mutating func moveCollection(_ id: UUID, to targetID: UUID) {
+        guard id != targetID, let from = index(id), let to = index(targetID) else { return }
+        let folder = collections.remove(at: from)
+        collections.insert(folder, at: to)
+    }
+    public mutating func moveItem(_ animeID: Int, in id: UUID, to targetID: Int) {
+        guard let i = index(id), animeID != targetID,
+              let from = collections[i].items.firstIndex(where: { $0.id == animeID }),
+              let to = collections[i].items.firstIndex(where: { $0.id == targetID }) else { return }
+        let anime = collections[i].items.remove(at: from)
+        collections[i].items.insert(anime, at: to)
     }
 
     public func collection(_ id: UUID) -> AnimeCollection? { collections.first { $0.id == id } }

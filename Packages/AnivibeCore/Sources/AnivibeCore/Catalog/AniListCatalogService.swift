@@ -48,6 +48,15 @@ public final class AniListCatalogService: CatalogService, @unchecked Sendable {
         return CatalogPage(items: items, page: page?.pageInfo?.currentPage ?? q.page, hasNextPage: page?.pageInfo?.hasNextPage ?? false)
     }
 
+    public func anime(malIDs: [Int]) async throws -> [Anime] {
+        let ids = Array(Set(malIDs.filter { $0 > 0 })).sorted().prefix(50)
+        guard !ids.isEmpty else { return [] }
+        let aliases = ids.map { "m\($0): Media(idMal: \($0), type: ANIME) { ...card }" }.joined(separator: "\n")
+        let dto: [String: MediaDTO?] = try await perform(query: "query { \(aliases) }\n" + AniListQueries.mediaCard,
+                                                       variables: [:], cacheTTLKey: "mal-batch")
+        return dto.values.compactMap { $0 }.filter { $0.isAdult != true }.map(\.model)
+    }
+
     public func details(id: Int) async throws -> AnimeDetails {
         guard id > 0 else { throw APIError.badRequest("Некорректный идентификатор") }
         let dto: DetailsResponseDTO = try await perform(query: AniListQueries.details, variables: ["id": .int(id)], cacheTTLKey: "details")

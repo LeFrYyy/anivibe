@@ -1,0 +1,527 @@
+Building for debugging...
+[0/4] Write sources
+[2/4] Write swift-version--3FBFB4972F282617.txt
+[4/6] Compiling AnivibeCore LibraryRepository.swift
+[5/7] Compiling AnivibeCore SupabaseSyncService.swift
+[6/7] Emitting module AnivibeCore
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Config/AppConfiguration.swift:7:20: warning: stored property 'url' of 'Sendable'-conforming struct 'Supabase' has non-sendable type 'URL'
+        public let url: URL
+                   ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Config/AppConfiguration.swift:1:1: remark: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'Foundation'
+import Foundation
+^
+@preconcurrency 
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Config/AppConfiguration.swift:13:16: warning: stored property 'manifestURL' of 'Sendable'-conforming struct 'AppConfiguration' has non-sendable type 'URL?'
+    public var manifestURL: URL?
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryPersistence.swift:13:16: warning: stored property 'fileURL' of 'Sendable'-conforming struct 'FileLibraryPersistence' has non-sendable type 'URL'
+    public let fileURL: URL
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryPersistence.swift:1:1: remark: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'Foundation'
+import Foundation
+^
+@preconcurrency 
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Anime.swift:111:16: warning: stored property 'coverURL' of 'Sendable'-conforming struct 'Anime' has non-sendable type 'URL?'
+    public var coverURL: URL?
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Anime.swift:1:1: remark: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'Foundation'
+import Foundation
+^
+@preconcurrency 
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Anime.swift:112:16: warning: stored property 'bannerURL' of 'Sendable'-conforming struct 'Anime' has non-sendable type 'URL?'
+    public var bannerURL: URL?
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Anime.swift:187:16: warning: stored property 'coverURL' of 'Sendable'-conforming struct 'AnimeSnapshot' has non-sendable type 'URL?'
+    public var coverURL: URL?
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Anime.swift:233:16: warning: stored property 'url' of 'Sendable'-conforming struct 'ExternalLink' has non-sendable type 'URL'
+    public let url: URL
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Anime.swift:245:16: warning: stored property 'thumbnailURL' of 'Sendable'-conforming struct 'StreamingEpisodeInfo' has non-sendable type 'URL?'
+    public let thumbnailURL: URL?
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Anime.swift:246:16: warning: stored property 'url' of 'Sendable'-conforming struct 'StreamingEpisodeInfo' has non-sendable type 'URL?'
+    public let url: URL?
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Episode.swift:12:16: warning: stored property 'thumbnailURL' of 'Sendable'-conforming struct 'Episode' has non-sendable type 'URL?'
+    public var thumbnailURL: URL?
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Episode.swift:1:1: remark: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'Foundation'
+import Foundation
+^
+@preconcurrency 
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Playback.swift:32:16: warning: stored property 'url' of 'Sendable'-conforming struct 'PlaybackSource' has non-sendable type 'URL'
+    public let url: URL
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Playback.swift:1:1: remark: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'Foundation'
+import Foundation
+^
+@preconcurrency 
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Models/Playback.swift:82:16: warning: stored property 'url' of 'Sendable'-conforming struct 'PlaybackQuality' has non-sendable type 'URL'
+    public let url: URL
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikClient.swift:17:17: warning: stored property 'baseURL' of 'Sendable'-conforming struct 'KodikClient' has non-sendable type 'URL'
+    private let baseURL: URL
+                ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikClient.swift:1:1: remark: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'Foundation'
+import Foundation
+^
+@preconcurrency 
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikModels.swift:31:16: warning: stored property 'playerURL' of 'Sendable'-conforming struct 'KodikEpisode' has non-sendable type 'URL'
+    public let playerURL: URL
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikModels.swift:1:1: remark: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'Foundation'
+import Foundation
+^
+@preconcurrency 
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikModels.swift:52:16: warning: stored property 'playerURL' of 'Sendable'-conforming struct 'KodikVoiceOption' has non-sendable type 'URL'
+    public let playerURL: URL
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikModels.swift:56:16: warning: stored property 'seasonPlayerURLs' of 'Sendable'-conforming struct 'KodikVoiceOption' has non-sendable type '[Int : URL]'
+    public let seasonPlayerURLs: [Int: URL]
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikStreams.swift:11:16: warning: stored property 'url' of 'Sendable'-conforming struct 'KodikStream' has non-sendable type 'URL'
+    public let url: URL
+               ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikStreams.swift:1:1: remark: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'Foundation'
+import Foundation
+^
+@preconcurrency 
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Providers/ManifestProvider.swift:23:24: warning: stored property 'url' of 'Sendable'-conforming struct 'EpisodeEntry' has non-sendable type 'URL'
+            public let url: URL
+                       ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Providers/ManifestProvider.swift:1:1: remark: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'Foundation'
+import Foundation
+^
+@preconcurrency 
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Providers/TestStreamProvider.swift:16:20: warning: stored property 'url' of 'Sendable'-conforming struct 'Stream' has non-sendable type 'URL'
+        public let url: URL
+                   ^
+Foundation.URL:1:15: note: struct 'URL' does not conform to the 'Sendable' protocol
+public struct URL : ReferenceConvertible, Equatable {
+              ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Sources/AnivibeCore/Providers/TestStreamProvider.swift:1:1: remark: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'Foundation'
+import Foundation
+^
+@preconcurrency 
+[8/11] Emitting module AnivibeCoreTests
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Tests/AnivibeCoreTests/CatalogTests.swift:193:13: warning: main actor-isolated class 'LatestTaskRunnerTests' has different actor isolation from nonisolated superclass 'XCTestCase'; this is an error in Swift 6
+final class LatestTaskRunnerTests: XCTestCase {
+            ^
+[9/11] Compiling AnivibeCoreTests AccountAndHistoryTests.swift
+[10/11] Compiling AnivibeCoreTests ConfigAndSyncTests.swift
+[11/13] Compiling AnivibeCoreTests Regression20261013Tests.swift
+[12/14] Compiling AnivibeCoreTests LibraryTests.swift
+[13/14] Compiling AnivibeCoreTests SyncPaginationTests.swift
+[14/21] /vercel/sandbox/data/Anivibe/Packages/AnivibeCore/.build/x86_64-unknown-linux-gnu/debug/AnivibeCorePackageDiscoveredTests.derived/all-discovered-tests.swift
+[15/22] Write sources
+[16/22] Wrapping AST for AnivibeCore for debugging
+[18/24] Emitting module AnivibeCorePackageDiscoveredTests
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Tests/AnivibeCoreTests/CatalogTests.swift:193:13: warning: main actor-isolated class 'LatestTaskRunnerTests' has different actor isolation from nonisolated superclass 'XCTestCase'; this is an error in Swift 6
+final class LatestTaskRunnerTests: XCTestCase {
+            ^
+[19/24] Compiling AnivibeCorePackageDiscoveredTests AnivibeCoreTests.swift
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/Tests/AnivibeCoreTests/CatalogTests.swift:193:13: warning: main actor-isolated class 'LatestTaskRunnerTests' has different actor isolation from nonisolated superclass 'XCTestCase'; this is an error in Swift 6
+final class LatestTaskRunnerTests: XCTestCase {
+            ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/.build/x86_64-unknown-linux-gnu/debug/AnivibeCorePackageDiscoveredTests.derived/AnivibeCoreTests.swift:283:40: warning: main actor-isolated static property '__allTests__LatestTaskRunnerTests' can not be referenced from a non-isolated context; this is an error in Swift 6
+        testCase(LatestTaskRunnerTests.__allTests__LatestTaskRunnerTests),
+                                       ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/.build/x86_64-unknown-linux-gnu/debug/AnivibeCorePackageDiscoveredTests.derived/AnivibeCoreTests.swift:138:16: note: static property declared here
+    static let __allTests__LatestTaskRunnerTests = [
+               ^
+/vercel/sandbox/data/Anivibe/Packages/AnivibeCore/.build/x86_64-unknown-linux-gnu/debug/AnivibeCorePackageDiscoveredTests.derived/AnivibeCoreTests.swift:270:6: note: add '@MainActor' to make global function '__AnivibeCoreTests__allTests()' part of global actor 'MainActor'
+func __AnivibeCoreTests__allTests() -> [XCTestCaseEntry] {
+     ^
+[20/25] Compiling AnivibeCorePackageDiscoveredTests all-discovered-tests.swift
+[21/23] Write Objects.LinkFileList
+[22/23] Linking AnivibeCorePackageTests.xctest
+Build complete! (4.27s)
+Test Suite 'All tests' started at 2026-10-13 09:25:12.060
+Test Suite 'debug.xctest' started at 2026-10-13 09:25:12.064
+Test Suite 'AccountAndHistoryTests' started at 2026-10-13 09:25:12.064
+Test Case 'AccountAndHistoryTests.testAccountsAndGuestNeverShareUnsyncedPrivateLibrary' started at 2026-10-13 09:25:12.064
+Test Case 'AccountAndHistoryTests.testAccountsAndGuestNeverShareUnsyncedPrivateLibrary' passed (0.001 seconds)
+Test Case 'AccountAndHistoryTests.testCorruptLibraryDoesNotOverwriteOriginal' started at 2026-10-13 09:25:12.065
+Test Case 'AccountAndHistoryTests.testCorruptLibraryDoesNotOverwriteOriginal' passed (0.0 seconds)
+Test Case 'AccountAndHistoryTests.testHistoryDeletionSurvivesRemoteMergeAndPersistence' started at 2026-10-13 09:25:12.065
+Test Case 'AccountAndHistoryTests.testHistoryDeletionSurvivesRemoteMergeAndPersistence' passed (0.001 seconds)
+Test Suite 'AccountAndHistoryTests' passed at 2026-10-13 09:25:12.066
+Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'AnilibriaTests' started at 2026-10-13 09:25:12.066
+Test Case 'AnilibriaTests.testBlackCloverSeason2IsNotReplacedBySameYearTitle' started at 2026-10-13 09:25:12.066
+Test Case 'AnilibriaTests.testBlackCloverSeason2IsNotReplacedBySameYearTitle' passed (0.003 seconds)
+Test Case 'AnilibriaTests.testBlockedReleaseThrows' started at 2026-10-13 09:25:12.069
+Test Case 'AnilibriaTests.testBlockedReleaseThrows' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testConflictingMalIDIsRejectedEvenWithSameTitle' started at 2026-10-13 09:25:12.069
+Test Case 'AnilibriaTests.testConflictingMalIDIsRejectedEvenWithSameTitle' passed (0.001 seconds)
+Test Case 'AnilibriaTests.testEpisodesAreCached' started at 2026-10-13 09:25:12.070
+Test Case 'AnilibriaTests.testEpisodesAreCached' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testEpisodesSkipFractionalAndStreamless' started at 2026-10-13 09:25:12.071
+Test Case 'AnilibriaTests.testEpisodesSkipFractionalAndStreamless' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testExactMalIDWinsOverTitles' started at 2026-10-13 09:25:12.071
+Test Case 'AnilibriaTests.testExactMalIDWinsOverTitles' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testFallsBackToMirrorOnCloudflare520' started at 2026-10-13 09:25:12.071
+Test Case 'AnilibriaTests.testFallsBackToMirrorOnCloudflare520' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testHTTPErrorMapsToVideoSourceError' started at 2026-10-13 09:25:12.071
+Test Case 'AnilibriaTests.testHTTPErrorMapsToVideoSourceError' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testMatchCodeGeassSeason1' started at 2026-10-13 09:25:12.072
+Test Case 'AnilibriaTests.testMatchCodeGeassSeason1' passed (0.002 seconds)
+Test Case 'AnilibriaTests.testMatchCodeGeassSeason2' started at 2026-10-13 09:25:12.074
+Test Case 'AnilibriaTests.testMatchCodeGeassSeason2' passed (0.002 seconds)
+Test Case 'AnilibriaTests.testMatchFindsAnimeByEnglishTitle' started at 2026-10-13 09:25:12.075
+Test Case 'AnilibriaTests.testMatchFindsAnimeByEnglishTitle' passed (0.001 seconds)
+Test Case 'AnilibriaTests.testResolveFailsOnDeadPlaylist' started at 2026-10-13 09:25:12.076
+Test Case 'AnilibriaTests.testResolveFailsOnDeadPlaylist' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testResolveReturnsHLSWithRussianTrack' started at 2026-10-13 09:25:12.077
+Test Case 'AnilibriaTests.testResolveReturnsHLSWithRussianTrack' passed (0.001 seconds)
+Test Case 'AnilibriaTests.testSearchDecodesMalID' started at 2026-10-13 09:25:12.078
+Test Case 'AnilibriaTests.testSearchDecodesMalID' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testSearchMapsReleases' started at 2026-10-13 09:25:12.078
+Test Case 'AnilibriaTests.testSearchMapsReleases' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testSeasonNumberRSuffix' started at 2026-10-13 09:25:12.079
+Test Case 'AnilibriaTests.testSeasonNumberRSuffix' passed (0.001 seconds)
+Test Suite 'AnilibriaTests' passed at 2026-10-13 09:25:12.079
+Executed 16 tests, with 0 failures (0 unexpected) in 0.013 (0.013) seconds
+Test Suite 'AuthRaceTests' started at 2026-10-13 09:25:12.079
+Test Case 'AuthRaceTests.testLateRefreshCannotUndoLogout' started at 2026-10-13 09:25:12.079
+Test Case 'AuthRaceTests.testLateRefreshCannotUndoLogout' passed (0.081 seconds)
+Test Suite 'AuthRaceTests' passed at 2026-10-13 09:25:12.160
+Executed 1 test, with 0 failures (0 unexpected) in 0.081 (0.081) seconds
+Test Suite 'AuthTests' started at 2026-10-13 09:25:12.160
+Test Case 'AuthTests.testErrorMapping' started at 2026-10-13 09:25:12.160
+Test Case 'AuthTests.testErrorMapping' passed (0.001 seconds)
+Test Case 'AuthTests.testExpiredRefreshTokenClearsSession' started at 2026-10-13 09:25:12.161
+Test Case 'AuthTests.testExpiredRefreshTokenClearsSession' passed (0.0 seconds)
+Test Case 'AuthTests.testInputValidationHappensBeforeNetwork' started at 2026-10-13 09:25:12.161
+Test Case 'AuthTests.testInputValidationHappensBeforeNetwork' passed (0.0 seconds)
+Test Case 'AuthTests.testRefreshWhenExpiringAndSignOut' started at 2026-10-13 09:25:12.161
+Test Case 'AuthTests.testRefreshWhenExpiringAndSignOut' passed (0.0 seconds)
+Test Case 'AuthTests.testSignInStoresSessionAndSendsHeaders' started at 2026-10-13 09:25:12.162
+Test Case 'AuthTests.testSignInStoresSessionAndSendsHeaders' passed (0.0 seconds)
+Test Case 'AuthTests.testSignUpRequiringConfirmation' started at 2026-10-13 09:25:12.162
+Test Case 'AuthTests.testSignUpRequiringConfirmation' passed (0.0 seconds)
+Test Suite 'AuthTests' passed at 2026-10-13 09:25:12.162
+Executed 6 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'CatalogTests' started at 2026-10-13 09:25:12.162
+Test Case 'CatalogTests.testCacheExpires' started at 2026-10-13 09:25:12.162
+Test Case 'CatalogTests.testCacheExpires' passed (0.001 seconds)
+Test Case 'CatalogTests.testDemoCatalogFilteringAndAlternativeTitles' started at 2026-10-13 09:25:12.163
+Test Case 'CatalogTests.testDemoCatalogFilteringAndAlternativeTitles' passed (0.002 seconds)
+Test Case 'CatalogTests.testDetailsMapping' started at 2026-10-13 09:25:12.165
+Test Case 'CatalogTests.testDetailsMapping' passed (0.002 seconds)
+Test Case 'CatalogTests.testDiskCacheSurvivesNewInstance' started at 2026-10-13 09:25:12.166
+Test Case 'CatalogTests.testDiskCacheSurvivesNewInstance' passed (0.002 seconds)
+Test Case 'CatalogTests.testHomeFeedUsesCurrentSeason' started at 2026-10-13 09:25:12.169
+Test Case 'CatalogTests.testHomeFeedUsesCurrentSeason' passed (0.001 seconds)
+Test Case 'CatalogTests.testNotFoundAndGraphQLErrors' started at 2026-10-13 09:25:12.170
+Test Case 'CatalogTests.testNotFoundAndGraphQLErrors' passed (0.001 seconds)
+Test Case 'CatalogTests.testRateLimitResponse' started at 2026-10-13 09:25:12.171
+Test Case 'CatalogTests.testRateLimitResponse' passed (0.0 seconds)
+Test Case 'CatalogTests.testResponsesAreCached' started at 2026-10-13 09:25:12.171
+Test Case 'CatalogTests.testResponsesAreCached' passed (0.0 seconds)
+Test Case 'CatalogTests.testSearchSendsFiltersAsGraphQLVariables' started at 2026-10-13 09:25:12.171
+Test Case 'CatalogTests.testSearchSendsFiltersAsGraphQLVariables' passed (0.001 seconds)
+Test Suite 'CatalogTests' passed at 2026-10-13 09:25:12.172
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.01 (0.01) seconds
+Test Suite 'CollectionOrderTests' started at 2026-10-13 09:25:12.172
+Test Case 'CollectionOrderTests.testMoveFoldersAndItemsPersistAndRejectInvalidOffsets' started at 2026-10-13 09:25:12.172
+Test Case 'CollectionOrderTests.testMoveFoldersAndItemsPersistAndRejectInvalidOffsets' passed (0.001 seconds)
+Test Suite 'CollectionOrderTests' passed at 2026-10-13 09:25:12.172
+Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'CollectionsTests' started at 2026-10-13 09:25:12.172
+Test Case 'CollectionsTests.testAddRemoveToggleNoDuplicates' started at 2026-10-13 09:25:12.172
+Test Case 'CollectionsTests.testAddRemoveToggleNoDuplicates' passed (0.0 seconds)
+Test Case 'CollectionsTests.testCreateUniqueNamesAndDefault' started at 2026-10-13 09:25:12.172
+Test Case 'CollectionsTests.testCreateUniqueNamesAndDefault' passed (0.0 seconds)
+Test Case 'CollectionsTests.testRenameDeleteMoveAndCodable' started at 2026-10-13 09:25:12.173
+Test Case 'CollectionsTests.testRenameDeleteMoveAndCodable' passed (0.0 seconds)
+Test Suite 'CollectionsTests' passed at 2026-10-13 09:25:12.173
+Executed 3 tests, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'ConfigurationTests' started at 2026-10-13 09:25:12.173
+Test Case 'ConfigurationTests.testEmptyAndPlaceholderValuesMeanLocalMode' started at 2026-10-13 09:25:12.173
+Test Case 'ConfigurationTests.testEmptyAndPlaceholderValuesMeanLocalMode' passed (0.0 seconds)
+Test Case 'ConfigurationTests.testRejectsInsecureAndPartialConfig' started at 2026-10-13 09:25:12.173
+Test Case 'ConfigurationTests.testRejectsInsecureAndPartialConfig' passed (0.0 seconds)
+Test Case 'ConfigurationTests.testRejectsServiceRoleKey' started at 2026-10-13 09:25:12.173
+Test Case 'ConfigurationTests.testRejectsServiceRoleKey' passed (0.0 seconds)
+Test Case 'ConfigurationTests.testValidSupabase' started at 2026-10-13 09:25:12.173
+Test Case 'ConfigurationTests.testValidSupabase' passed (0.0 seconds)
+Test Suite 'ConfigurationTests' passed at 2026-10-13 09:25:12.174
+Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'EmailCodeAndOAuthTests' started at 2026-10-13 09:25:12.174
+Test Case 'EmailCodeAndOAuthTests.testCodeIsVerifiedByServerAndSessionStored' started at 2026-10-13 09:25:12.174
+Test Case 'EmailCodeAndOAuthTests.testCodeIsVerifiedByServerAndSessionStored' passed (0.0 seconds)
+Test Case 'EmailCodeAndOAuthTests.testResendUsesServerAndGooglePKCEExchangesOnlyCode' started at 2026-10-13 09:25:12.174
+Test Case 'EmailCodeAndOAuthTests.testResendUsesServerAndGooglePKCEExchangesOnlyCode' passed (0.0 seconds)
+Test Suite 'EmailCodeAndOAuthTests' passed at 2026-10-13 09:25:12.174
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'EpisodeTests' started at 2026-10-13 09:25:12.174
+Test Case 'EpisodeTests.testBestMatchRespectsSeasonAndThreshold' started at 2026-10-13 09:25:12.174
+Test Case 'EpisodeTests.testBestMatchRespectsSeasonAndThreshold' passed (0.001 seconds)
+Test Case 'EpisodeTests.testEpisodeListForFinishedSeriesWithTitles' started at 2026-10-13 09:25:12.175
+Test Case 'EpisodeTests.testEpisodeListForFinishedSeriesWithTitles' passed (0.0 seconds)
+Test Case 'EpisodeTests.testEpisodeListNotYetReleased' started at 2026-10-13 09:25:12.175
+Test Case 'EpisodeTests.testEpisodeListNotYetReleased' passed (0.0 seconds)
+Test Case 'EpisodeTests.testEpisodeListOngoingUsesAiredCountOnly' started at 2026-10-13 09:25:12.176
+Test Case 'EpisodeTests.testEpisodeListOngoingUsesAiredCountOnly' passed (0.0 seconds)
+Test Case 'EpisodeTests.testEpisodeListUnknownCount' started at 2026-10-13 09:25:12.176
+Test Case 'EpisodeTests.testEpisodeListUnknownCount' passed (0.0 seconds)
+Test Case 'EpisodeTests.testEpisodeMatcher' started at 2026-10-13 09:25:12.176
+Test Case 'EpisodeTests.testEpisodeMatcher' passed (0.0 seconds)
+Test Case 'EpisodeTests.testEpisodeNumberParser' started at 2026-10-13 09:25:12.176
+Test Case 'EpisodeTests.testEpisodeNumberParser' passed (0.0 seconds)
+Test Case 'EpisodeTests.testTitleMatcher' started at 2026-10-13 09:25:12.176
+Test Case 'EpisodeTests.testTitleMatcher' passed (0.0 seconds)
+Test Suite 'EpisodeTests' passed at 2026-10-13 09:25:12.177
+Executed 8 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'KodikTests' started at 2026-10-13 09:25:12.177
+Test Case 'KodikTests.testDecodeLinksUsesRealQuality' started at 2026-10-13 09:25:12.177
+Test Case 'KodikTests.testDecodeLinksUsesRealQuality' passed (0.001 seconds)
+Test Case 'KodikTests.testErrorFieldMapsToUnauthorized' started at 2026-10-13 09:25:12.177
+Test Case 'KodikTests.testErrorFieldMapsToUnauthorized' passed (0.0 seconds)
+Test Case 'KodikTests.testHTTPErrorIsPropagated' started at 2026-10-13 09:25:12.178
+Test Case 'KodikTests.testHTTPErrorIsPropagated' passed (0.0 seconds)
+Test Case 'KodikTests.testParsePlayerPageAndEndpoint' started at 2026-10-13 09:25:12.178
+Test Case 'KodikTests.testParsePlayerPageAndEndpoint' passed (0.0 seconds)
+Test Case 'KodikTests.testPlayerURLNormalization' started at 2026-10-13 09:25:12.178
+Test Case 'KodikTests.testPlayerURLNormalization' passed (0.0 seconds)
+Test Case 'KodikTests.testProviderMergesVoicesPerEpisodeAndPrefersChosenVoice' started at 2026-10-13 09:25:12.178
+Test Case 'KodikTests.testProviderMergesVoicesPerEpisodeAndPrefersChosenVoice' passed (0.003 seconds)
+Test Case 'KodikTests.testSearchByShikimoriIDFirst' started at 2026-10-13 09:25:12.181
+Test Case 'KodikTests.testSearchByShikimoriIDFirst' passed (0.001 seconds)
+Test Case 'KodikTests.testSearchDoesNotGuessByYear' started at 2026-10-13 09:25:12.181
+Test Case 'KodikTests.testSearchDoesNotGuessByYear' passed (0.001 seconds)
+Test Case 'KodikTests.testSearchFallsBackToNextTitle' started at 2026-10-13 09:25:12.183
+Test Case 'KodikTests.testSearchFallsBackToNextTitle' passed (0.002 seconds)
+Test Case 'KodikTests.testSearchGroupsTranslationsAndEpisodes' started at 2026-10-13 09:25:12.185
+Test Case 'KodikTests.testSearchGroupsTranslationsAndEpisodes' passed (0.002 seconds)
+Test Case 'KodikTests.testSearchSendsTokenAndParameters' started at 2026-10-13 09:25:12.186
+Test Case 'KodikTests.testSearchSendsTokenAndParameters' passed (0.0 seconds)
+Test Case 'KodikTests.testStreamsFullFlow' started at 2026-10-13 09:25:12.187
+Test Case 'KodikTests.testStreamsFullFlow' passed (0.0 seconds)
+Test Case 'KodikTests.testTitleSearchRejectsDifferentShikimoriID' started at 2026-10-13 09:25:12.187
+Test Case 'KodikTests.testTitleSearchRejectsDifferentShikimoriID' passed (0.0 seconds)
+Test Suite 'KodikTests' passed at 2026-10-13 09:25:12.187
+Executed 13 tests, with 0 failures (0 unexpected) in 0.011 (0.011) seconds
+Test Suite 'LatestTaskRunnerTests' started at 2026-10-13 09:25:12.187
+Test Case 'LatestTaskRunnerTests.testOnlyLatestResultIsDelivered' started at 2026-10-13 09:25:12.187
+Test Case 'LatestTaskRunnerTests.testOnlyLatestResultIsDelivered' passed (0.321 seconds)
+Test Suite 'LatestTaskRunnerTests' passed at 2026-10-13 09:25:12.508
+Executed 1 test, with 0 failures (0 unexpected) in 0.321 (0.321) seconds
+Test Suite 'LibraryTests' started at 2026-10-13 09:25:12.508
+Test Case 'LibraryTests.testChangesSince' started at 2026-10-13 09:25:12.508
+Test Case 'LibraryTests.testChangesSince' passed (0.0 seconds)
+Test Case 'LibraryTests.testContinueWatchingOrderAndExclusions' started at 2026-10-13 09:25:12.508
+Test Case 'LibraryTests.testContinueWatchingOrderAndExclusions' passed (0.0 seconds)
+Test Case 'LibraryTests.testCorruptedFileDoesNotCrash' started at 2026-10-13 09:25:12.509
+Test Case 'LibraryTests.testCorruptedFileDoesNotCrash' passed (0.001 seconds)
+Test Case 'LibraryTests.testFilePersistenceRoundTrip' started at 2026-10-13 09:25:12.510
+Test Case 'LibraryTests.testFilePersistenceRoundTrip' passed (0.004 seconds)
+Test Case 'LibraryTests.testFinishingLastEpisodeCompletes' started at 2026-10-13 09:25:12.514
+Test Case 'LibraryTests.testFinishingLastEpisodeCompletes' passed (0.0 seconds)
+Test Case 'LibraryTests.testHistoryLimitAndClear' started at 2026-10-13 09:25:12.514
+Test Case 'LibraryTests.testHistoryLimitAndClear' passed (0.07 seconds)
+Test Case 'LibraryTests.testInvalidProgressIgnored' started at 2026-10-13 09:25:12.584
+Test Case 'LibraryTests.testInvalidProgressIgnored' passed (0.0 seconds)
+Test Case 'LibraryTests.testMarkCompletedAndEpisodeWatched' started at 2026-10-13 09:25:12.584
+Test Case 'LibraryTests.testMarkCompletedAndEpisodeWatched' passed (0.0 seconds)
+Test Case 'LibraryTests.testMergeLastWriteWins' started at 2026-10-13 09:25:12.585
+Test Case 'LibraryTests.testMergeLastWriteWins' passed (0.0 seconds)
+Test Case 'LibraryTests.testRecordProgressUpdatesStatusLastEpisodeAndHistory' started at 2026-10-13 09:25:12.585
+Test Case 'LibraryTests.testRecordProgressUpdatesStatusLastEpisodeAndHistory' passed (0.0 seconds)
+Test Case 'LibraryTests.testResumePoint' started at 2026-10-13 09:25:12.585
+Test Case 'LibraryTests.testResumePoint' passed (0.0 seconds)
+Test Case 'LibraryTests.testResumeRespectsReleasedEpisodesOfOngoing' started at 2026-10-13 09:25:12.585
+Test Case 'LibraryTests.testResumeRespectsReleasedEpisodesOfOngoing' passed (0.0 seconds)
+Test Case 'LibraryTests.testStatusFavoriteAndRemove' started at 2026-10-13 09:25:12.585
+Test Case 'LibraryTests.testStatusFavoriteAndRemove' passed (0.0 seconds)
+Test Suite 'LibraryTests' passed at 2026-10-13 09:25:12.585
+Executed 13 tests, with 0 failures (0 unexpected) in 0.077 (0.077) seconds
+Test Suite 'LiveIntegrationTests' started at 2026-10-13 09:25:12.585
+Test Case 'LiveIntegrationTests.testAniListAlternativeTitleSearch' started at 2026-10-13 09:25:12.585
+Test Case 'LiveIntegrationTests.testAniListAlternativeTitleSearch' passed (0.101 seconds)
+Test Case 'LiveIntegrationTests.testAniListDetailsHomeAndGenres' started at 2026-10-13 09:25:12.686
+Test Case 'LiveIntegrationTests.testAniListDetailsHomeAndGenres' passed (0.508 seconds)
+Test Case 'LiveIntegrationTests.testAniListSearchWithFilters' started at 2026-10-13 09:25:13.194
+Test Case 'LiveIntegrationTests.testAniListSearchWithFilters' passed (0.289 seconds)
+Test Case 'LiveIntegrationTests.testAnilibriaMatchesByMalIDLive' started at 2026-10-13 09:25:13.484
+LIVE R1: 406 ["Код Гиасс: Восставший Лелуш R1", "Code Geass: Hangyaku no Lelouch R1"]
+LIVE R2: 407 ["Код Гиасс: Восстание Лелуша R2", "Code Geass: Lelouch of the Rebellion R2"]
+LIVE Black Clover S2: mal=61967 aired=2/? match=nil []
+Test Case 'LiveIntegrationTests.testAnilibriaMatchesByMalIDLive' passed (1.064 seconds)
+Test Case 'LiveIntegrationTests.testTestStreamsAreReachableAndDeclareTracks' started at 2026-10-13 09:25:14.548
+Test Case 'LiveIntegrationTests.testTestStreamsAreReachableAndDeclareTracks' passed (0.123 seconds)
+Test Suite 'LiveIntegrationTests' passed at 2026-10-13 09:25:14.671
+Executed 5 tests, with 0 failures (0 unexpected) in 2.085 (2.085) seconds
+Test Suite 'ModelsTests' started at 2026-10-13 09:25:14.671
+Test Case 'ModelsTests.testAiredEpisodesText' started at 2026-10-13 09:25:14.671
+Test Case 'ModelsTests.testAiredEpisodesText' passed (0.0 seconds)
+Test Case 'ModelsTests.testAllTitlesIncludeSynonymsWithoutDuplicates' started at 2026-10-13 09:25:14.671
+Test Case 'ModelsTests.testAllTitlesIncludeSynonymsWithoutDuplicates' passed (0.0 seconds)
+Test Case 'ModelsTests.testAniListMediaDecodesMalID' started at 2026-10-13 09:25:14.671
+Test Case 'ModelsTests.testAniListMediaDecodesMalID' passed (0.0 seconds)
+Test Case 'ModelsTests.testCatalogQueryValidation' started at 2026-10-13 09:25:14.671
+Test Case 'ModelsTests.testCatalogQueryValidation' passed (0.0 seconds)
+Test Case 'ModelsTests.testCurrentSeason' started at 2026-10-13 09:25:14.671
+Test Case 'ModelsTests.testCurrentSeason' passed (0.0 seconds)
+Test Case 'ModelsTests.testHTMLToPlainText' started at 2026-10-13 09:25:14.672
+Test Case 'ModelsTests.testHTMLToPlainText' passed (0.0 seconds)
+Test Case 'ModelsTests.testPreferredTitleFallbacks' started at 2026-10-13 09:25:14.672
+Test Case 'ModelsTests.testPreferredTitleFallbacks' passed (0.0 seconds)
+Test Case 'ModelsTests.testRelationsSplitIntoSeasonsAndOther' started at 2026-10-13 09:25:14.672
+Test Case 'ModelsTests.testRelationsSplitIntoSeasonsAndOther' passed (0.0 seconds)
+Test Case 'ModelsTests.testReleasedEpisodeCountIsNotInvented' started at 2026-10-13 09:25:14.672
+Test Case 'ModelsTests.testReleasedEpisodeCountIsNotInvented' passed (0.0 seconds)
+Test Case 'ModelsTests.testWatchProgressFraction' started at 2026-10-13 09:25:14.672
+Test Case 'ModelsTests.testWatchProgressFraction' passed (0.0 seconds)
+Test Suite 'ModelsTests' passed at 2026-10-13 09:25:14.672
+Executed 10 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ProviderTests' started at 2026-10-13 09:25:14.672
+Test Case 'ProviderTests.testDefaultMatchUsesTitles' started at 2026-10-13 09:25:14.672
+Test Case 'ProviderTests.testDefaultMatchUsesTitles' passed (0.001 seconds)
+Test Case 'ProviderTests.testErrorMapping' started at 2026-10-13 09:25:14.673
+Test Case 'ProviderTests.testErrorMapping' passed (0.0 seconds)
+Test Case 'ProviderTests.testHLSInspector' started at 2026-10-13 09:25:14.673
+Test Case 'ProviderTests.testHLSInspector' passed (0.001 seconds)
+Test Case 'ProviderTests.testManifestCacheNeverOutlivesTemporaryLinks' started at 2026-10-13 09:25:14.674
+Test Case 'ProviderTests.testManifestCacheNeverOutlivesTemporaryLinks' passed (0.001 seconds)
+Test Case 'ProviderTests.testManifestErrors' started at 2026-10-13 09:25:14.675
+Test Case 'ProviderTests.testManifestErrors' passed (0.0 seconds)
+Test Case 'ProviderTests.testManifestProviderMatchesByAniListIDThenTitle' started at 2026-10-13 09:25:14.675
+Test Case 'ProviderTests.testManifestProviderMatchesByAniListIDThenTitle' passed (0.001 seconds)
+Test Case 'ProviderTests.testManifestProviderRejectsExpiredAndInsecureLinks' started at 2026-10-13 09:25:14.676
+Test Case 'ProviderTests.testManifestProviderRejectsExpiredAndInsecureLinks' passed (0.001 seconds)
+Test Case 'ProviderTests.testManifestProviderResolve' started at 2026-10-13 09:25:14.677
+Test Case 'ProviderTests.testManifestProviderResolve' passed (0.001 seconds)
+Test Case 'ProviderTests.testRegistryDisabledProvidersAndMissingEpisodes' started at 2026-10-13 09:25:14.678
+Test Case 'ProviderTests.testRegistryDisabledProvidersAndMissingEpisodes' passed (0.001 seconds)
+Test Case 'ProviderTests.testRegistryOrdersRealBeforeTestAndAvailableFirst' started at 2026-10-13 09:25:14.679
+Test Case 'ProviderTests.testRegistryOrdersRealBeforeTestAndAvailableFirst' passed (0.001 seconds)
+Test Case 'ProviderTests.testRegistryTimeout' started at 2026-10-13 09:25:14.680
+Test Case 'ProviderTests.testRegistryTimeout' passed (0.201 seconds)
+Test Case 'ProviderTests.testTestStreamProviderReportsUnavailable' started at 2026-10-13 09:25:14.881
+Test Case 'ProviderTests.testTestStreamProviderReportsUnavailable' passed (0.001 seconds)
+Test Case 'ProviderTests.testTestStreamProviderResolvesAndMarksAsTest' started at 2026-10-13 09:25:14.881
+Test Case 'ProviderTests.testTestStreamProviderResolvesAndMarksAsTest' passed (0.001 seconds)
+Test Suite 'ProviderTests' passed at 2026-10-13 09:25:14.883
+Executed 13 tests, with 0 failures (0 unexpected) in 0.211 (0.211) seconds
+Test Suite 'RateLimiterTests' started at 2026-10-13 09:25:14.883
+Test Case 'RateLimiterTests.testBlockAfter429AndMaxWait' started at 2026-10-13 09:25:14.883
+Test Case 'RateLimiterTests.testBlockAfter429AndMaxWait' passed (0.0 seconds)
+Test Case 'RateLimiterTests.testSlidingWindow' started at 2026-10-13 09:25:14.883
+Test Case 'RateLimiterTests.testSlidingWindow' passed (0.0 seconds)
+Test Suite 'RateLimiterTests' passed at 2026-10-13 09:25:14.883
+Executed 2 tests, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'RegistryInfoTests' started at 2026-10-13 09:25:14.883
+Test Case 'RegistryInfoTests.testProviderInfoReflectsEnabledState' started at 2026-10-13 09:25:14.883
+Test Case 'RegistryInfoTests.testProviderInfoReflectsEnabledState' passed (0.0 seconds)
+Test Suite 'RegistryInfoTests' passed at 2026-10-13 09:25:14.883
+Executed 1 test, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'Regression20261013Tests' started at 2026-10-13 09:25:14.883
+Test Case 'Regression20261013Tests.testBufferingSeekingAndPauseNeverAutoHideControls' started at 2026-10-13 09:25:14.883
+Test Case 'Regression20261013Tests.testBufferingSeekingAndPauseNeverAutoHideControls' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testControlMenuCanStayOpenForHoursAndDismissalStartsFreshTimer' started at 2026-10-13 09:25:14.883
+Test Case 'Regression20261013Tests.testControlMenuCanStayOpenForHoursAndDismissalStartsFreshTimer' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testLegacyEpisodeAndLibraryDecodeWithoutSourceOrRussianFields' started at 2026-10-13 09:25:14.883
+Test Case 'Regression20261013Tests.testLegacyEpisodeAndLibraryDecodeWithoutSourceOrRussianFields' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testNoSeasonTwoGuessWithoutVerifiedOffsetAndNoAmbiguousMatch' started at 2026-10-13 09:25:14.884
+Test Case 'Regression20261013Tests.testNoSeasonTwoGuessWithoutVerifiedOffsetAndNoAmbiguousMatch' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testObservedSteelBallRunCatalogueAndSourceStaySeparate' started at 2026-10-13 09:25:14.884
+Test Case 'Regression20261013Tests.testObservedSteelBallRunCatalogueAndSourceStaySeparate' passed (0.002 seconds)
+Test Case 'Regression20261013Tests.testRussianTitleAliasTransliterationTyposAndRanking' started at 2026-10-13 09:25:14.886
+Test Case 'Regression20261013Tests.testRussianTitleAliasTransliterationTyposAndRanking' passed (0.001 seconds)
+Test Case 'Regression20261013Tests.testSourceListPreservesSpecialsGapsAndIdenticalTitles' started at 2026-10-13 09:25:14.887
+Test Case 'Regression20261013Tests.testSourceListPreservesSpecialsGapsAndIdenticalTitles' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testSourceProgressDoesNotOverwriteCatalogueOrCompleteWrongTitle' started at 2026-10-13 09:25:14.887
+Test Case 'Regression20261013Tests.testSourceProgressDoesNotOverwriteCatalogueOrCompleteWrongTitle' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testSourceScopeSurvivesSyncDTOAndNoTitleBasedGuess' started at 2026-10-13 09:25:14.887
+Test Case 'Regression20261013Tests.testSourceScopeSurvivesSyncDTOAndNoTitleBasedGuess' passed (0.001 seconds)
+Test Suite 'Regression20261013Tests' passed at 2026-10-13 09:25:14.888
+Executed 9 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+Test Suite 'RussianCatalogLiveTests' started at 2026-10-13 09:25:14.888
+Test Case 'RussianCatalogLiveTests.testRussianTitleAndTensuraAliasAgainstPublicAPIs' started at 2026-10-13 09:25:14.888
+Test Case 'RussianCatalogLiveTests.testRussianTitleAndTensuraAliasAgainstPublicAPIs' passed (2.209 seconds)
+Test Suite 'RussianCatalogLiveTests' passed at 2026-10-13 09:25:17.097
+Executed 1 test, with 0 failures (0 unexpected) in 2.209 (2.209) seconds
+Test Suite 'RussianMetadataTests' started at 2026-10-13 09:25:17.097
+Test Case 'RussianMetadataTests.testFailureOfBothSourcesIsNotReportedAsEmptySearch' started at 2026-10-13 09:25:17.097
+Test Case 'RussianMetadataTests.testFailureOfBothSourcesIsNotReportedAsEmptySearch' passed (0.001 seconds)
+Test Case 'RussianMetadataTests.testMetadataIsCachedAndOfficialIDsMustAgree' started at 2026-10-13 09:25:17.098
+Test Case 'RussianMetadataTests.testMetadataIsCachedAndOfficialIDsMustAgree' passed (0.0 seconds)
+Test Case 'RussianMetadataTests.testUnavailableTranslationDoesNotBlockOriginalDetails' started at 2026-10-13 09:25:17.098
+Test Case 'RussianMetadataTests.testUnavailableTranslationDoesNotBlockOriginalDetails' passed (0.0 seconds)
+Test Suite 'RussianMetadataTests' passed at 2026-10-13 09:25:17.099
+Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'SyncPaginationTests' started at 2026-10-13 09:25:17.099
+Test Case 'SyncPaginationTests.testMoreThanFiveHundredRowsAreNotTruncated' started at 2026-10-13 09:25:17.099
+Test Case 'SyncPaginationTests.testMoreThanFiveHundredRowsAreNotTruncated' passed (0.158 seconds)
+Test Suite 'SyncPaginationTests' passed at 2026-10-13 09:25:17.257
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.158 (0.158) seconds
+Test Suite 'SyncTests' started at 2026-10-13 09:25:17.257
+Test Case 'SyncTests.testSyncPushesLocalChangesAndMergesRemote' started at 2026-10-13 09:25:17.257
+Test Case 'SyncTests.testSyncPushesLocalChangesAndMergesRemote' passed (0.003 seconds)
+Test Case 'SyncTests.testSyncRequiresSignIn' started at 2026-10-13 09:25:17.260
+Test Case 'SyncTests.testSyncRequiresSignIn' passed (0.0 seconds)
+Test Case 'SyncTests.testSyncSurfacesRLSForbidden' started at 2026-10-13 09:25:17.260
+Test Case 'SyncTests.testSyncSurfacesRLSForbidden' passed (0.0 seconds)
+Test Suite 'SyncTests' passed at 2026-10-13 09:25:17.260
+Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'debug.xctest' passed at 2026-10-13 09:25:17.260
+Executed 128 tests, with 0 failures (0 unexpected) in 5.195 (5.195) seconds
+Test Suite 'All tests' passed at 2026-10-13 09:25:17.260
+Executed 128 tests, with 0 failures (0 unexpected) in 5.195 (5.195) seconds

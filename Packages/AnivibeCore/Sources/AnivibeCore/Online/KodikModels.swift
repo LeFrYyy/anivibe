@@ -56,7 +56,8 @@ public struct KodikVoiceOption: Hashable, Sendable, Identifiable {
     public let seasonPlayerURLs: [Int: URL]
 
     public init(materialID: String, translation: KodikTranslation, title: String, year: Int?,
-                quality: String?, playerURL: URL, episodes: [KodikEpisode], seasonPlayerURLs: [Int: URL]) {
+                quality: String?, playerURL: URL, episodes: [KodikEpisode], seasonPlayerURLs: [Int: URL], isSingleVideo: Bool? = nil) {
+        self.isSingleVideo = isSingleVideo ?? (episodes.isEmpty && seasonPlayerURLs.isEmpty)
         self.materialID = materialID
         self.translation = translation
         self.title = title
@@ -68,7 +69,7 @@ public struct KodikVoiceOption: Hashable, Sendable, Identifiable {
     }
 
     /// Фильм/одиночное видео: серий нет, играем сам материал.
-    public var isSingleVideo: Bool { episodes.isEmpty }
+    public let isSingleVideo: Bool
 
     public var seasons: [Int] { seasonPlayerURLs.keys.sorted() }
 

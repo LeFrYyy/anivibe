@@ -26,6 +26,7 @@ enum LibrarySection: Hashable, CaseIterable, Identifiable {
 }
 
 struct LibraryView: View {
+    @Environment(AppSettings.self) private var settings
     @Environment(LibraryStore.self) private var library
     @State private var section: LibrarySection = .list(.watching)
     @State private var confirmClear = false
@@ -41,7 +42,7 @@ struct LibraryView: View {
                                     .font(.subheadline.weight(.medium))
                                     .padding(.horizontal, 12).padding(.vertical, 7)
                                     .background(section == s ? Theme.accent : Theme.surfaceElevated, in: Capsule())
-                                    .foregroundStyle(section == s ? Color.white : Theme.textPrimary)
+                                    .foregroundStyle(section == s ? Theme.onAccent : Theme.textPrimary)
                             }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(section == s ? .isSelected : [])
@@ -54,11 +55,20 @@ struct LibraryView: View {
             }
             .screenBackground()
             .navigationTitle("Библиотека")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: HistoryItem.self) { AnimeDetailsView(snapshot: $0.anime, history: $0) }
             .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
             .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
             .toolbar {
-                if section == .history && !library.snapshot.history.isEmpty {
+                ToolbarItem(placement: .principal) {
+                    Text("Библиотека").font(.headline).contextMenu {
+                        Button(settings.libraryPinned ? "Открепить от главной" : "Закрепить на главной") { settings.libraryPinned.toggle() }
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if section == .history && !library.snapshot.history.isEmpty {
                     Button("Очистить") { confirmClear = true }
+                    }
                 }
             }
             .confirmationDialog("Очистить историю просмотров?", isPresented: $confirmClear, titleVisibility: .visible) {
@@ -121,14 +131,15 @@ struct LibraryView: View {
         } else {
             List {
                 ForEach(history) { item in
-                    NavigationLink(value: item.anime) {
+                    NavigationLink(value: item) {
                         HStack(spacing: Theme.Spacing.m) {
                             PosterImage(url: item.anime.coverURL).frame(width: 44, height: 66)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(item.anime.title).font(.subheadline.weight(.semibold)).lineLimit(2)
                                 Text("Серия \(item.episode) · \(item.watchedAt.formatted(.relative(presentation: .named)))")
                                     .font(.caption).foregroundStyle(Theme.textSecondary)
-                                if let p = library.progress(item.anime.id, episode: item.episode) {
+                                if item.sourceKey != nil { Text("Нумерация источника · выберите эту озвучку для продолжения").font(.caption2).foregroundStyle(Theme.textSecondary) }
+                                if let p = library.progress(item.anime.id, episode: item.episode, sourceKey: item.sourceKey) {
                                     Text(p.isFinished ? "Просмотрено" : "Просмотрено \(p.percent)%")
                                         .font(.caption2).foregroundStyle(p.isFinished ? Theme.success : Theme.textSecondary)
                                 }
@@ -148,6 +159,7 @@ struct LibraryView: View {
 
 private struct LibraryRow: View {
     let entry: LibraryEntry
+    @Environment(AppSettings.self) private var settings
     @Environment(LibraryStore.self) private var library
 
     var body: some View {

@@ -72,6 +72,24 @@ final class AuthTests: XCTestCase {
         XCTAssertEqual(req.bodyJSON["email"] as? String, "a@b.co")
     }
 
+    func testPublishableKeyIsNotSentAsBearer() async throws {
+        let key = "sb_publishable_test_key"
+        let t = StubTransport { request in
+            if request.url?.path == "/auth/v1/logout" { return (204, Data(), [:]) }
+            return (200, Data(Self.sessionJSON().utf8), [:])
+        }
+        let auth = SupabaseAuthClient(
+            config: .init(url: URL(string: "https://abc.supabase.co")!, anonKey: key),
+            transport: t, store: InMemoryTokenStore())
+        _ = try await auth.signIn(email: "a@b.co", password: "password1")
+        let login = try XCTUnwrap(t.requests.first)
+        XCTAssertEqual(login.value(forHTTPHeaderField: "apikey"), key)
+        XCTAssertNil(login.value(forHTTPHeaderField: "Authorization"))
+        await auth.signOut()
+        XCTAssertEqual(t.requests.last?.value(forHTTPHeaderField: "apikey"), key)
+        XCTAssertEqual(t.requests.last?.value(forHTTPHeaderField: "Authorization"), "Bearer access")
+    }
+
     func testErrorMapping() async {
         let t = StubTransport { _ in (400, Data(#"{"code": 400, "error_code": "invalid_credentials", "msg": "Invalid login credentials"}"#.utf8), [:]) }
         let auth = SupabaseAuthClient(config: config, transport: t, store: InMemoryTokenStore())
@@ -147,6 +165,7 @@ final class SyncTests: XCTestCase {
             return (200, Data("[]".utf8), [:])
         }
         let library = LibraryRepository(persistence: InMemoryLibraryPersistence(), now: { clock.now })
+        try await library.switchAccount(userID: "user-1")
         await library.recordProgress(anime: AnimeSnapshot(id: 1, title: "Local", episodeCount: 3), episode: 1, position: 10, duration: 100)
         let auth = SupabaseAuthClient(config: config, transport: t, store: InMemoryTokenStore(session), now: { clock.now })
         let sync = SupabaseSyncService(config: config, transport: t, auth: auth, library: library, now: { clock.now })
@@ -194,6 +213,7 @@ final class SyncTests: XCTestCase {
         let session = AuthSession(accessToken: "tok", refreshToken: "r", expiresAt: clock.now.addingTimeInterval(3600), user: AuthUser(id: "u", email: nil))
         let t = StubTransport { _ in (403, Data(#"{"code":"42501","message":"new row violates row-level security policy"}"#.utf8), [:]) }
         let library = LibraryRepository(persistence: InMemoryLibraryPersistence(), now: { clock.now })
+        try? await library.switchAccount(userID: "u")
         await library.setStatus(.watching, for: AnimeSnapshot(id: 1, title: "A"))
         let auth = SupabaseAuthClient(config: config, transport: t, store: InMemoryTokenStore(session), now: { clock.now })
         let sync = SupabaseSyncService(config: config, transport: t, auth: auth, library: library, now: { clock.now })

@@ -35,6 +35,7 @@ public actor SupabaseSyncService {
         defer { isRunning = false }
 
         let session = try await auth.validSession()
+        guard await library.activeAccountID == session.user.id else { throw AuthError.notSignedIn }
         let startedAt = now()
         let snapshot = await library.snapshot()
         let since = snapshot.lastSyncAt
@@ -47,7 +48,7 @@ public actor SupabaseSyncService {
                              rows: changes.entries.map { EntryRow(entry: $0, userID: userID) }, token: session.accessToken)
         }
         if !changes.progress.isEmpty {
-            try await upsert(table: "watch_progress", conflict: "user_id,anime_id,episode",
+            try await upsert(table: "watch_progress", conflict: "user_id,anime_id,episode,source_key",
                              rows: changes.progress.map { ProgressRow(progress: $0, userID: userID) }, token: session.accessToken)
         }
         if !changes.history.isEmpty {
@@ -59,10 +60,10 @@ public actor SupabaseSyncService {
         let pullSince = since?.addingTimeInterval(-120)
         let entries: [EntryRow] = try await fetch(table: "library_entries", timeColumn: "updated_at", since: pullSince, token: session.accessToken)
         let progress: [ProgressRow] = try await fetch(table: "watch_progress", timeColumn: "updated_at", since: pullSince, token: session.accessToken)
-        let history: [HistoryRow] = try await fetch(table: "watch_history", timeColumn: "watched_at", since: pullSince, token: session.accessToken)
+        let history: [HistoryRow] = try await fetch(table: "watch_history", timeColumn: "updated_at", since: pullSince, token: session.accessToken)
 
-        await library.merge(entries: entries.map(\.model), progress: progress.map(\.model), history: history.map(\.model))
-        await library.setLastSync(startedAt)
+        guard await library.applySync(entries: entries.map(\.model), progress: progress.map(\.model), history: history.map(\.model),
+                                      accountID: userID, startedAt: startedAt) else { throw APIError.badRequest("Аккаунт сменился или библиотека не сохранилась. Повторите синхронизацию.") }
         return Report(pushed: changes.entries.count + changes.progress.count + changes.history.count,
                       pulled: entries.count + progress.count + history.count, finishedAt: now())
     }
@@ -84,20 +85,28 @@ public actor SupabaseSyncService {
     }
 
     private func fetch<Row: Decodable>(table: String, timeColumn: String, since: Date?, token: String) async throws -> [Row] {
-        var comps = URLComponents(url: config.url.appendingPathComponent("rest/v1/\(table)"), resolvingAgainstBaseURL: false)!
-        var items = [URLQueryItem(name: "select", value: "*"), URLQueryItem(name: "order", value: "\(timeColumn).asc"),
-                     URLQueryItem(name: "limit", value: "1000")]
-        if let since { items.append(URLQueryItem(name: timeColumn, value: "gt.\(Self.iso.string(from: since))")) }
-        comps.queryItems = items
-        // `+` в дате нужно экранировать, иначе PostgREST примет его за пробел.
-        comps.percentEncodedQuery = comps.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-        let request = URLRequest.json(url: comps.url!, method: "GET", body: nil, headers: [
-            "apikey": config.anonKey, "Authorization": "Bearer \(token)"
-        ])
-        let (data, response) = try await transport.send(request)
-        if let error = APIError.from(status: response.statusCode, data: data, headers: response) { throw error }
-        do { return try Self.decoder.decode([Row].self, from: data) } catch {
-            throw APIError.decoding(String(describing: error))
+        var output: [Row] = []
+        var offset = 0
+        let tieBreaker = table == "watch_history" ? "id.asc" : (table == "watch_progress" ? "anime_id.asc,episode.asc,source_key.asc" : "anime_id.asc")
+        while true {
+            try Task.checkCancellation()
+            var comps = URLComponents(url: config.url.appendingPathComponent("rest/v1/\(table)"), resolvingAgainstBaseURL: false)!
+            var items = [URLQueryItem(name: "select", value: "*"), URLQueryItem(name: "order", value: "\(timeColumn).asc,\(tieBreaker)"),
+                         URLQueryItem(name: "limit", value: "500"), URLQueryItem(name: "offset", value: String(offset))]
+            if let since { items.append(URLQueryItem(name: timeColumn, value: "gt.\(Self.iso.string(from: since))")) }
+            comps.queryItems = items
+            comps.percentEncodedQuery = comps.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+            let request = URLRequest.json(url: comps.url!, method: "GET", body: nil, headers: [
+                "apikey": config.anonKey, "Authorization": "Bearer \(token)"
+            ])
+            let (data, response) = try await transport.send(request)
+            if let error = APIError.from(status: response.statusCode, data: data, headers: response) { throw error }
+            let rows: [Row]
+            do { rows = try Self.decoder.decode([Row].self, from: data) }
+            catch { throw APIError.decoding(String(describing: error)) }
+            output += rows
+            if rows.count < 500 { return output }
+            offset += rows.count
         }
     }
 
@@ -171,6 +180,7 @@ struct EntryRow: Codable {
 }
 
 struct ProgressRow: Codable {
+    let source_key: String?
     let user_id: String
     let anime_id: Int
     let episode: Int
@@ -180,6 +190,7 @@ struct ProgressRow: Codable {
 
     init(progress: WatchProgress, userID: String) {
         user_id = userID
+        source_key = progress.sourceKey ?? ""
         anime_id = progress.animeId
         episode = progress.episode
         position_seconds = progress.position
@@ -188,11 +199,14 @@ struct ProgressRow: Codable {
     }
 
     var model: WatchProgress {
-        WatchProgress(animeId: anime_id, episode: episode, position: position_seconds, duration: duration_seconds, updatedAt: updated_at)
+        WatchProgress(animeId: anime_id, episode: episode, position: position_seconds, duration: duration_seconds, updatedAt: updated_at, sourceKey: source_key?.nilIfBlank)
     }
 }
 
 struct HistoryRow: Codable {
+    let deleted_at: Date?
+    let updated_at: Date?
+    let source_key: String?
     let id: UUID
     let user_id: String
     let anime_id: Int
@@ -202,6 +216,9 @@ struct HistoryRow: Codable {
     let watched_at: Date
 
     init(item: HistoryItem, userID: String) {
+        deleted_at = item.deletedAt
+        updated_at = item.syncTimestamp
+        source_key = item.sourceKey ?? ""
         id = item.id
         user_id = userID
         anime_id = item.anime.id
@@ -213,6 +230,6 @@ struct HistoryRow: Codable {
 
     var model: HistoryItem {
         HistoryItem(id: id, anime: AnimeSnapshot(id: anime_id, title: title, coverURL: cover_url.flatMap(URL.init(string:))),
-                    episode: episode, watchedAt: watched_at)
+                    episode: episode, watchedAt: watched_at, sourceKey: source_key?.nilIfBlank, deletedAt: deleted_at)
     }
 }

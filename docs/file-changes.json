@@ -1,0 +1,382 @@
+[
+  {
+    "path": ".env.example",
+    "status": "modified",
+    "sha256": "bf73568897bd8949ae55c97e4838d73a9fd8d5c37eebebe19ab36dcde35e3cf8"
+  },
+  {
+    "path": ".github/workflows/ios.yml",
+    "status": "modified",
+    "sha256": "db218adf9ffbd40c7f11314a284330198ee049942faf6c711f80f0ec772309ea"
+  },
+  {
+    "path": "Anivibe/App/AppEnvironment.swift",
+    "status": "modified",
+    "sha256": "7f0492f2afa4156b5ce6f46fe43208e57f9387cde86eb7a8700799ca05392220"
+  },
+  {
+    "path": "Anivibe/App/AppSettings.swift",
+    "status": "modified",
+    "sha256": "2c1eb3641f2b4bae4edb6f6e2db08edff47a8b80a7c8ca7b429cc9d6cc3233c2"
+  },
+  {
+    "path": "Anivibe/Core/GoogleOAuthCoordinator.swift",
+    "status": "new",
+    "sha256": "8d7eaf847a2dd13170ad8f693bc2933226d34e01dea8c9a809d887b936269f5d"
+  },
+  {
+    "path": "Anivibe/Core/LibraryStore.swift",
+    "status": "modified",
+    "sha256": "a9add73850986d77fd8780e70eb5bbf115cd97429592b5a912a5918612299b2e"
+  },
+  {
+    "path": "Anivibe/Core/SessionStore.swift",
+    "status": "modified",
+    "sha256": "7a57cb35ffbdea13f5ddb6b25312099ee5d697ad303722e296040549c5b06f11"
+  },
+  {
+    "path": "Anivibe/DesignSystem/Components/StateViews.swift",
+    "status": "modified",
+    "sha256": "463299e64feaaa5b2bed713aa0ba38eae1af7d9dc4d36dc0bdd158363beaa19a"
+  },
+  {
+    "path": "Anivibe/DesignSystem/Theme.swift",
+    "status": "modified",
+    "sha256": "7cf813cba43eaa1f9a3700424ea9f0d1b24059fd3fe791f2e155f6fd19d84ea3"
+  },
+  {
+    "path": "Anivibe/Features/AnimeDetails/AnimeDetailsView.swift",
+    "status": "modified",
+    "sha256": "6792a502ff2bd2e8fac5b7a48eef88b551b58afd70fe1d79776595a14c2bef7f"
+  },
+  {
+    "path": "Anivibe/Features/Catalog/CatalogView.swift",
+    "status": "modified",
+    "sha256": "b078a1d2eaf7ead210210e5e8c6b358b35621085edbf7a725592c9600ad8ccea"
+  },
+  {
+    "path": "Anivibe/Features/Catalog/FilterSheet.swift",
+    "status": "modified",
+    "sha256": "d01cfd488c017bbc7da8b30a39142e99721b52ee21cbddb40e0c2eb7ea05bc65"
+  },
+  {
+    "path": "Anivibe/Features/Home/HomeView.swift",
+    "status": "modified",
+    "sha256": "19fa45f3b5b168c805be961c3203976b934b625955e3d644ac2f68c5a49c46a7"
+  },
+  {
+    "path": "Anivibe/Features/Library/CollectionDropDelegate.swift",
+    "status": "new",
+    "sha256": "0ac3042dd499663a6395f4633d7fb98639c5b74462449469f24e77d86dc1bb5d"
+  },
+  {
+    "path": "Anivibe/Features/Library/FolderSelectionSheet.swift",
+    "status": "new",
+    "sha256": "2de67caa58fb384985e4029c55326a36bdaaacb199824bcbb617c9c138d23434"
+  },
+  {
+    "path": "Anivibe/Features/Library/LibraryView.swift",
+    "status": "modified",
+    "sha256": "bd71909534cc5677ea8e5f59f42812d09bbb3962e83548c80a9291ebe8d1a8b1"
+  },
+  {
+    "path": "Anivibe/Features/Online/KodikPlayerView.swift",
+    "status": "modified",
+    "sha256": "1009f70986e2ae55db37710c6e60ba504f8378df9dc590038a62d6863b895434"
+  },
+  {
+    "path": "Anivibe/Features/Online/OnlineSourcesSection.swift",
+    "status": "modified",
+    "sha256": "4fac1706c4d77cfa19564ad1932153161aae80681717c2b9fe62b979d141efcf"
+  },
+  {
+    "path": "Anivibe/Features/Player/PlayerControlsView.swift",
+    "status": "modified",
+    "sha256": "baa161bbd1edde851b40870e3c7dd4ff16b794de186516fec7600b5ec2e5f60a"
+  },
+  {
+    "path": "Anivibe/Features/Player/PlayerScreen.swift",
+    "status": "modified",
+    "sha256": "db0b898c20b9adca39848551df76514e07196417139cf702f214d7b521307b29"
+  },
+  {
+    "path": "Anivibe/Features/Player/PlayerViewModel.swift",
+    "status": "modified",
+    "sha256": "99d44072a4cc725534e0f97b234657f5f58ff3df84386387588d0c689f3cc9a3"
+  },
+  {
+    "path": "Anivibe/Features/Player/VideoSettingsSheet.swift",
+    "status": "new",
+    "sha256": "4a9fc5b5ab7d54c273794fee85a5bbb9e9be5dc822829ee1966389d1b1eb1e71"
+  },
+  {
+    "path": "Anivibe/Features/Profile/ProfileView.swift",
+    "status": "modified",
+    "sha256": "edfefd62853fc7e8698f5a86564bb7aa94ff44af5666243d26bb8be6f9a0d041"
+  },
+  {
+    "path": "Anivibe/Features/Settings/BackgroundSettings.swift",
+    "status": "new",
+    "sha256": "ba7e7aebc08559f32725dd71fb3231865d221035050c51979631c973500428e5"
+  },
+  {
+    "path": "Anivibe/Features/Settings/SettingsView.swift",
+    "status": "modified",
+    "sha256": "d68cc30d509d563e6a0f38bd51cb6286ed4bc3da4a63a549183437b91f5a7888"
+  },
+  {
+    "path": "Config/Anivibe.xcconfig",
+    "status": "modified",
+    "sha256": "91eb51c522fbf01c0b021094b1bf0e6f24d2e0d2cce8d64f1b9a45356215aa12"
+  },
+  {
+    "path": "Config/Info.plist",
+    "status": "modified",
+    "sha256": "a23e1098bf22ecf7f0747cd73d9405b6a86a2e4e5753c19ac41406fd859dc2ef"
+  },
+  {
+    "path": "Packages/AnivibeCore/Package.swift",
+    "status": "modified",
+    "sha256": "57717aef23d398339e0cf315babb07e98dad0441851c5480e3e38552a2d4850e"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Catalog/AniListCatalogService.swift",
+    "status": "modified",
+    "sha256": "7e9a9f6b18b953e6c9ba3840356d6f8d9f82710b4d7def3f6b082500b50dcea6"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Catalog/CatalogLocalization.swift",
+    "status": "new",
+    "sha256": "a8f83341a1f11f8e0f1bbc192c4998f0e4f38dbdb28566fb462829db73ba5cd9"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Catalog/RussianCatalogService.swift",
+    "status": "new",
+    "sha256": "47956ffcb1789865bf71b0ffe60f8804917ab3000d75c471f605afa39b081929"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Catalog/RussianMetadataService.swift",
+    "status": "new",
+    "sha256": "9972457667fc1d2abeb415b48ad94bd093595e788e89de1216be688d5db7055d"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryRepository.swift",
+    "status": "modified",
+    "sha256": "209373972ec867e7acd8aef3b8a45ee5bc2ac5e4e43eb494e70d5992585148fb"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Models/Anime.swift",
+    "status": "modified",
+    "sha256": "684f8a952453c83107bc78e35ad77944d7d5e4bfc9aceff2db3844d19ecd9319"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Models/AnimeCollection.swift",
+    "status": "modified",
+    "sha256": "f98342001c962a15b8ae5f160978343a5f0e5373d7dfc5993d88dbd81f24bff3"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Models/Episode.swift",
+    "status": "modified",
+    "sha256": "c17068715a93f163147881ced785de7cb35b3e1e4e5aaec157eb87ecabc58093"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Models/Library.swift",
+    "status": "modified",
+    "sha256": "535b5ed93cb86dfeaf957544def0179169622f433394d46c7cbe6066f42dbdb5"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Models/PlaybackControlsState.swift",
+    "status": "new",
+    "sha256": "77f6f910311a3abcd2f5f1287dadcb8584ea8bcb3066ed28dad233a78afec605"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Networking/HTTPTransport.swift",
+    "status": "modified",
+    "sha256": "c75df116058579dc2f58f6e5180b0653b48aa10f460a251be48e5c2a49fd5ca8"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikClient.swift",
+    "status": "modified",
+    "sha256": "b63d080abc6b3842101a158bc29d19554ebc38fa982303b4cece14d6287f8d86"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Online/KodikModels.swift",
+    "status": "modified",
+    "sha256": "23287307a8936e16789725e3d731ad6868552097d0dcf50e077f8036a676fbb9"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Providers/KodikProvider.swift",
+    "status": "modified",
+    "sha256": "22f9b55598df1318b903f4782a5f2a9ba551eecc8fa6ebc55be8d151c00c961d"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Providers/ProviderRegistry.swift",
+    "status": "modified",
+    "sha256": "dd6e8f173179770b7046e90bfe9515bce33b6e5ac0add3392ddf266c98712159"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Providers/VideoSourceProvider.swift",
+    "status": "modified",
+    "sha256": "dde7be0de205d94e395c104e8a51f8a0cf054a70afb02a8d67b3e3b10196c808"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Sync/SupabaseAuthClient.swift",
+    "status": "modified",
+    "sha256": "ef311a40c2f065d340ed76ba7daa799cb95909f07b8ee7c23451d24b47611ce8"
+  },
+  {
+    "path": "Packages/AnivibeCore/Sources/AnivibeCore/Sync/SupabaseSyncService.swift",
+    "status": "modified",
+    "sha256": "051aae62f52f17f9ee15718dba01e2dd301aa8ff982d14aef748879b0723cb6e"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/AccountAndHistoryTests.swift",
+    "status": "new",
+    "sha256": "d3710a063f9c870ade08346c12184213d8844637e5e980a5e60949349d672bdd"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/AuthRaceTests.swift",
+    "status": "new",
+    "sha256": "ba38d692672c554c2b80e379db3357555e13e439e51ad9c210168323ddf78b6b"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/CollectionOrderTests.swift",
+    "status": "new",
+    "sha256": "2240a67808a1c160fc21fe71ae25a324651127832daea5cae45df06d84a18fe9"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/ConfigAndSyncTests.swift",
+    "status": "modified",
+    "sha256": "2ea2c9770e9c0af924487a7316989c0e8bd0146ee4c9fe4eb4436e68a6575b16"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/EmailCodeAndOAuthTests.swift",
+    "status": "new",
+    "sha256": "28e5598ed601945a349c71171e953e6d604d0b29e71635e47f2ae6d8998dedc2"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/Fixtures/steel-ball-run-anilist.json",
+    "status": "new",
+    "sha256": "715837f24062e1903754697278f22e62619feac6b36b6cfdc1cb579a19f6f9d5"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/Fixtures/steel-ball-run-kodik-metadata.json",
+    "status": "new",
+    "sha256": "b33422ea497af4f7b1c30d7a8a8d546e87404867c2518074dd662a00955dc0e4"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/Regression20261013Tests.swift",
+    "status": "new",
+    "sha256": "63b3f9308a6efd70ca72fc429f9bf8c0fe81b53ce9ac12f866b2e8ef73f19eec"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/RussianCatalogLiveTests.swift",
+    "status": "new",
+    "sha256": "66ed41cc37e47378ff8b6555438a0f4b43901409a004a2b58f855eb0fdac90ad"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/RussianMetadataTests.swift",
+    "status": "new",
+    "sha256": "874b7938d94c30daaf3493a4e93946ffc458b337c3b60f93610672053c24f088"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/SyncPaginationTests.swift",
+    "status": "new",
+    "sha256": "72decae35dab8f826a7327a306e7d78f0b3a15cd0241b32f1b0b49ae462074ad"
+  },
+  {
+    "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/TestSupport.swift",
+    "status": "modified",
+    "sha256": "2eaa208cf88cf08fadcf9b16da3499965bca5d2eacd2500d894db93f66458b4f"
+  },
+  {
+    "path": "README.md",
+    "status": "modified",
+    "sha256": "2d4fe0b3605556cf4451c42d83b9a1fda4e67346cddbb493de0ef872d042d00d"
+  },
+  {
+    "path": "docs/AUDIT.md",
+    "status": "new",
+    "sha256": "119d308d5691e68ae34ba0801eb1ad57d18278c45d82f33a290a3307cb03c94d"
+  },
+  {
+    "path": "docs/IMPLEMENTATION_REPORT.md",
+    "status": "new",
+    "sha256": "5de6f935244dd1eaac338e289f9fb1720e1c12b663c9b4e189065aaf558a4f8f"
+  },
+  {
+    "path": "docs/QA.md",
+    "status": "new",
+    "sha256": "aeb5d32600703ff67866efc683c093802e9b210d7dd344eb89b82def3ef75fcf"
+  },
+  {
+    "path": "docs/README-before-20261013.md",
+    "status": "new",
+    "sha256": "ad6eaa7918b5096df3915e30ae2e4bfb97c23f50a061eec5a263cf4bacd7f97b"
+  },
+  {
+    "path": "docs/SETUP.md",
+    "status": "new",
+    "sha256": "cf19ebc1349f04a8fbfae3e5f8cd3fdfb30969d1e8103ae81704a4c31db859e4"
+  },
+  {
+    "path": "docs/TECHNICAL_REQUIREMENTS.md",
+    "status": "new",
+    "sha256": "76a588b8a48e281a6620c773ed8d32c201e28281879eaa5058daa826a0efcee2"
+  },
+  {
+    "path": "docs/fixtures/steel-ball-run-anilist.json",
+    "status": "new",
+    "sha256": "715837f24062e1903754697278f22e62619feac6b36b6cfdc1cb579a19f6f9d5"
+  },
+  {
+    "path": "docs/fixtures/steel-ball-run-kodik-metadata.json",
+    "status": "new",
+    "sha256": "b33422ea497af4f7b1c30d7a8a8d546e87404867c2518074dd662a00955dc0e4"
+  },
+  {
+    "path": "docs/qa-results/ios-parse.txt",
+    "status": "new",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/qa-results/postgres-final.txt",
+    "status": "new",
+    "sha256": "36a3e04e49a30efe5cfd32857c334c7336accc51cbfbe0dd3df9f4d36b0fc249"
+  },
+  {
+    "path": "docs/qa-results/swift-final.txt",
+    "status": "new",
+    "sha256": "c23b3505bec3c79ca0d053281bbddc505f11baf6932429f90c7fff41b102819b"
+  },
+  {
+    "path": "supabase/config.toml",
+    "status": "modified",
+    "sha256": "8844e49938b70d61e3a552eaa03627716c2443142f0abd94425269a29f1ee58a"
+  },
+  {
+    "path": "supabase/migrations/20261013000000_source_episode_identity.sql",
+    "status": "new",
+    "sha256": "8c9dac0084e7738b944ab2bb947575a7505d9439e007c6725d78cdac59743a08"
+  },
+  {
+    "path": "supabase/migrations/20261013010000_history_tombstones_lww.sql",
+    "status": "new",
+    "sha256": "998421af8821cb2b15e9559eb777f1aaf29c5c6a50d18ad783ebe6a334976b95"
+  },
+  {
+    "path": "supabase/templates/confirmation.html",
+    "status": "new",
+    "sha256": "98e1e366a7c396a2cb711f01a70aabec7f22129b4e41b02d23dce6c1ff3c6e7e"
+  },
+  {
+    "path": "supabase/tests/local_auth_stub.sql",
+    "status": "modified",
+    "sha256": "40662709b728bb30792f08da71c2783d75850498d1501c3d423d6ecbd80ce337"
+  },
+  {
+    "path": "supabase/tests/rls_test.sh",
+    "status": "modified",
+    "sha256": "610d5d456ce603386a8c87da8ead2f0a0e69b6ba86fc0c2a3af98a5fd42f26fd"
+  }
+]

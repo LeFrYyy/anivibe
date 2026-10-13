@@ -25,6 +25,10 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 final class AppSettings {
     private let defaults: UserDefaults
 
+    var accentHex: String? {
+        didSet { defaults.set(accentHex, forKey: "settings.accentHex"); Theme.palette.hex = accentHex }
+    }
+    var libraryPinned: Bool { didSet { defaults.set(libraryPinned, forKey: "settings.libraryPinned") } }
     var appearance: AppearanceMode { didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) } }
     var autoplayNextEpisode: Bool { didSet { defaults.set(autoplayNextEpisode, forKey: Keys.autoplay) } }
     var testStreamsEnabled: Bool { didSet { defaults.set(testStreamsEnabled, forKey: Keys.testStreams) } }
@@ -39,6 +43,9 @@ final class AppSettings {
 
     init(defaults: UserDefaults = .standard, testStreamsDefault: Bool) {
         self.defaults = defaults
+        accentHex = defaults.string(forKey: "settings.accentHex")
+        Theme.palette.hex = accentHex
+        libraryPinned = defaults.bool(forKey: "settings.libraryPinned")
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .dark
         autoplayNextEpisode = defaults.object(forKey: Keys.autoplay) as? Bool ?? true
         testStreamsEnabled = defaults.object(forKey: Keys.testStreams) as? Bool ?? testStreamsDefault

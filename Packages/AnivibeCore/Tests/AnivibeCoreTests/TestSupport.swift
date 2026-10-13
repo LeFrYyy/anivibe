@@ -17,7 +17,7 @@ final class StubTransport: HTTPTransport, @unchecked Sendable {
         self.delay = delay
     }
 
-    private func record(_ r: URLRequest) { lock.withLock { _requests.append(r) } }
+    private func record(_ r: URLRequest) { lock.lock(); defer { lock.unlock() }; _requests.append(r) }
 
     var requests: [URLRequest] { lock.lock(); defer { lock.unlock() }; return _requests }
 

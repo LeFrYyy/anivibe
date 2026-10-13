@@ -8,23 +8,53 @@ public actor LibraryRepository {
     public static let historyMergeWindow: TimeInterval = 30 * 60
 
     private var state: LibrarySnapshot
-    private let persistence: LibraryPersistence
+    private var persistence: LibraryPersistence
+    private let guestPersistence: LibraryPersistence
+    private var accountStores: [String: LibraryPersistence] = [:]
+    public private(set) var activeAccountID: String?
+    private var canPersist = true
     private let now: @Sendable () -> Date
     public private(set) var lastSaveError: String?
 
     public init(persistence: LibraryPersistence, now: @escaping @Sendable () -> Date = { Date() }) {
         self.persistence = persistence
+        self.guestPersistence = persistence
         self.now = now
         do {
             state = try persistence.load()
         } catch {
             // Повреждённый файл не должен ронять приложение; начинаем с пустой библиотеки.
             state = .empty
+            canPersist = false
             lastSaveError = "Не удалось прочитать библиотеку: \(error.localizedDescription)"
         }
     }
 
     public func snapshot() -> LibrarySnapshot { state }
+
+    /// Separate local files per account. Legacy library.json is the guest library and is never auto-uploaded.
+    public func switchAccount(userID: String?) throws {
+        guard userID != activeAccountID else { return }
+        if let userID, userID.isEmpty || userID.utf8.count > 120 { throw APIError.badRequest("Некорректный ID аккаунта") }
+        let target: LibraryPersistence
+        if let userID {
+            if let known = accountStores[userID] { target = known }
+            else if let file = guestPersistence as? FileLibraryPersistence {
+                let safe = Data(userID.utf8).base64EncodedString().replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "+", with: "-")
+                let created = FileLibraryPersistence(fileURL: file.fileURL.deletingLastPathComponent().appendingPathComponent("library-user-\(safe).json"))
+                accountStores[userID] = created; target = created
+            } else {
+                let created = InMemoryLibraryPersistence(); accountStores[userID] = created; target = created
+            }
+        } else { target = guestPersistence }
+        // Loading first keeps the current library intact when a destination file is corrupt.
+        let next = try target.load()
+        persistence = target
+        state = next
+        activeAccountID = userID
+        canPersist = true
+        lastSaveError = nil
+    }
 
     // MARK: - Lists
 
@@ -63,12 +93,12 @@ public actor LibraryRepository {
     // MARK: - Progress
 
     /// Сохраняет позицию просмотра. Вызывается плеером периодически и при паузе/выходе.
-    public func recordProgress(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double) {
+    public func recordProgress(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double, sourceKey: String? = nil) {
         guard episode > 0, position.isFinite, position >= 0 else { return }
         let t = now()
         let safeDuration = duration.isFinite && duration > 0 ? duration : 0
         let progress = WatchProgress(animeId: anime.id, episode: episode, position: min(position, safeDuration > 0 ? safeDuration : position),
-                                     duration: safeDuration, updatedAt: t)
+                                     duration: safeDuration, updatedAt: t, sourceKey: sourceKey)
         if let i = state.progress.firstIndex(where: { $0.key == progress.key }) {
             state.progress[i] = progress
         } else {
@@ -78,10 +108,17 @@ public actor LibraryRepository {
         mutateEntry(anime, persistNow: false) { entry in
             entry.lastEpisode = episode
             if entry.status == nil || entry.status == .planned || entry.status == .onHold { entry.status = .watching }
-            if progress.isFinished, let total = anime.episodeCount, episode >= total { entry.status = .completed }
+            if sourceKey == nil, progress.isFinished, let total = anime.episodeCount, episode >= total { entry.status = .completed }
         }
-        appendHistory(anime: anime, episode: episode, at: t)
+        appendHistory(anime: anime, episode: episode, at: t, sourceKey: sourceKey)
         persist()
+    }
+
+    /// Reject late player events from a session that no longer owns the visible library.
+    public func recordProgressForAccount(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double,
+                                         sourceKey: String? = nil, accountID: String?) {
+        guard activeAccountID == accountID else { return }
+        recordProgress(anime: anime, episode: episode, position: position, duration: duration, sourceKey: sourceKey)
     }
 
     /// Отметить серию просмотренной без воспроизведения.
@@ -97,8 +134,8 @@ public actor LibraryRepository {
         }
     }
 
-    public func progress(animeId: Int, episode: Int) -> WatchProgress? {
-        state.progress(animeId: animeId, episode: episode)
+    public func progress(animeId: Int, episode: Int, sourceKey: String? = nil) -> WatchProgress? {
+        state.progress(animeId: animeId, episode: episode, sourceKey: sourceKey)
     }
 
     /// Точка продолжения: незавершённая серия или следующая после завершённой.
@@ -108,6 +145,11 @@ public actor LibraryRepository {
 
     public static func resumePoint(in state: LibrarySnapshot, animeId: Int, lastAvailableEpisode: Int?) -> ResumePoint? {
         guard let latest = state.progress.filter({ $0.animeId == animeId }).max(by: { $0.updatedAt < $1.updatedAt }) else { return nil }
+        if let sourceKey = latest.sourceKey {
+            guard !latest.isFinished else { return nil } // No guessed next episode/offset.
+            return ResumePoint(animeId: animeId, episode: latest.episode, position: latest.position,
+                               fraction: latest.fraction, isNextEpisode: false, sourceKey: sourceKey)
+        }
         if !latest.isFinished {
             return ResumePoint(animeId: animeId, episode: latest.episode, position: latest.position, fraction: latest.fraction, isNextEpisode: false)
         }
@@ -139,22 +181,28 @@ public actor LibraryRepository {
     // MARK: - History
 
     public func clearHistory() {
+        let t = now()
+        let removed = state.history.map { item -> HistoryItem in var item = item; item.deletedAt = t; return item }
+        state.historyTombstones = (state.historyTombstones ?? []) + removed
         state.history.removeAll()
         persist()
     }
 
     public func removeHistoryItem(id: UUID) {
+        guard var item = state.history.first(where: { $0.id == id }) else { return }
+        item.deletedAt = now()
+        state.historyTombstones = (state.historyTombstones ?? []) + [item]
         state.history.removeAll { $0.id == id }
         persist()
     }
 
-    private func appendHistory(anime: AnimeSnapshot, episode: Int, at t: Date) {
-        if let i = state.history.firstIndex(where: { $0.anime.id == anime.id && $0.episode == episode }),
+    private func appendHistory(anime: AnimeSnapshot, episode: Int, at t: Date, sourceKey: String? = nil) {
+        if let i = state.history.firstIndex(where: { $0.anime.id == anime.id && $0.episode == episode && $0.sourceKey == sourceKey }),
            t.timeIntervalSince(state.history[i].watchedAt) < Self.historyMergeWindow {
             state.history[i].watchedAt = t
             state.history[i].anime = anime
         } else {
-            state.history.append(HistoryItem(anime: anime, episode: episode, watchedAt: t))
+            state.history.append(HistoryItem(anime: anime, episode: episode, watchedAt: t, sourceKey: sourceKey))
         }
         state.history.sort { $0.watchedAt > $1.watchedAt }
         if state.history.count > Self.historyLimit { state.history.removeLast(state.history.count - Self.historyLimit) }
@@ -169,10 +217,23 @@ public actor LibraryRepository {
 
     /// Изменения после даты (для отправки на сервер).
     public func changes(since date: Date?) -> (entries: [LibraryEntry], progress: [WatchProgress], history: [HistoryItem]) {
-        guard let date else { return (state.entries, state.progress, state.history) }
+        let history = state.history + (state.historyTombstones ?? [])
+        guard let date else { return (state.entries, state.progress, history) }
         return (state.entries.filter { $0.updatedAt > date },
                 state.progress.filter { $0.updatedAt > date },
-                state.history.filter { $0.watchedAt > date })
+                history.filter { $0.syncTimestamp > date })
+    }
+
+    @discardableResult
+    public func applySync(entries: [LibraryEntry], progress: [WatchProgress], history: [HistoryItem],
+                          accountID: String, startedAt: Date) -> Bool {
+        guard activeAccountID == accountID else { return false }
+        let previousWatermark = state.lastSyncAt
+        state = Self.merged(state, entries: entries, progress: progress, history: history)
+        state.lastSyncAt = startedAt
+        persist()
+        if lastSaveError != nil { state.lastSyncAt = previousWatermark; return false }
+        return true
     }
 
     /// Слияние с данными сервера по правилу «последняя запись побеждает».
@@ -197,11 +258,14 @@ public actor LibraryRepository {
                 s.progress.append(r)
             }
         }
-        var known = Set(s.history.map(\.id))
-        for item in remoteHistory where known.insert(item.id).inserted {
-            s.history.append(item)
+        var byID = Dictionary((s.history + (s.historyTombstones ?? [])).map { ($0.id, $0) }, uniquingKeysWith: { a, b in a.syncTimestamp >= b.syncTimestamp ? a : b })
+        for item in remoteHistory {
+            if let existing = byID[item.id], existing.syncTimestamp >= item.syncTimestamp { continue }
+            byID[item.id] = item
         }
-        s.history.sort { $0.watchedAt > $1.watchedAt }
+        s.history = byID.values.filter { $0.deletedAt == nil }.sorted { $0.watchedAt > $1.watchedAt }
+        let tombstones = byID.values.filter { $0.deletedAt != nil }.sorted { $0.syncTimestamp > $1.syncTimestamp }
+        s.historyTombstones = tombstones.isEmpty ? nil : tombstones
         if s.history.count > historyLimit { s.history.removeLast(s.history.count - historyLimit) }
         return s
     }
@@ -226,7 +290,9 @@ public actor LibraryRepository {
     }
 
     private func persist() {
+        guard canPersist else { return } // Preserve the unreadable original file for recovery.
         do {
+            state.version = LibrarySnapshot.currentVersion
             try persistence.save(state)
             lastSaveError = nil
         } catch {

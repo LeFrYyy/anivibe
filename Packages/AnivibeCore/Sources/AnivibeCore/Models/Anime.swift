@@ -5,8 +5,10 @@ public struct AnimeTitle: Hashable, Codable, Sendable {
     public var romaji: String?
     public var english: String?
     public var native: String?
+    public var russian: String?
 
-    public init(romaji: String? = nil, english: String? = nil, native: String? = nil) {
+    public init(romaji: String? = nil, english: String? = nil, native: String? = nil, russian: String? = nil) {
+        self.russian = russian
         self.romaji = romaji
         self.english = english
         self.native = native
@@ -14,13 +16,13 @@ public struct AnimeTitle: Hashable, Codable, Sendable {
 
     /// Основное отображаемое название.
     public var preferred: String {
-        english?.nilIfBlank ?? romaji?.nilIfBlank ?? native?.nilIfBlank ?? "Без названия"
+        russian?.nilIfBlank ?? english?.nilIfBlank ?? romaji?.nilIfBlank ?? native?.nilIfBlank ?? "Без названия"
     }
 
     /// Все известные варианты названия без дублей (в порядке приоритета).
     public var all: [String] {
         var seen = Set<String>()
-        return [english, romaji, native].compactMap { $0?.nilIfBlank }.filter { seen.insert($0).inserted }
+        return [russian, english, romaji, native].compactMap { $0?.nilIfBlank }.filter { seen.insert($0).inserted }
     }
 }
 
@@ -104,6 +106,8 @@ public struct Anime: Identifiable, Hashable, Codable, Sendable {
     public var title: AnimeTitle
     public var synonyms: [String]
     public var synopsis: String?
+    public var synopsisOriginal: String?
+    public var synopsisSource: String?
     public var coverURL: URL?
     public var bannerURL: URL?
     public var coverColorHex: String?

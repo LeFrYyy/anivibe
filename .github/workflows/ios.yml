@@ -9,8 +9,8 @@
 # они подписывают его вашим Apple ID уже на своей стороне.
 #
 # ЧЕСТНОЕ ПРЕДУПРЕЖДЕНИЕ: этот workflow написан без доступа к macOS и ни разу
-# не выполнялся. Первая сборка почти наверняка упадёт (проект ранее не
-# компилировался под iOS). Откройте упавший запуск → логи шага и чините
+# не выполнялся в этой доработке. iOS-слой прошёл только проверку синтаксиса.
+# Откройте первый запуск → логи шага и при необходимости исправьте
 # по сообщениям об ошибках.
 #
 # Минуты: для публичных репозиториев macOS-раннеры бесплатны; в приватных
@@ -38,6 +38,7 @@ jobs:
         working-directory: Packages/AnivibeCore
 
   build:
+    needs: test
     name: Unsigned iPhone .ipa
     runs-on: macos-15
     steps:
@@ -65,13 +66,19 @@ jobs:
           ANIVIBE_KODIK_TOKEN: ${{ secrets.ANIVIBE_KODIK_TOKEN }}
           ANIVIBE_MANIFEST_URL: ${{ secrets.ANIVIBE_MANIFEST_URL }}
         run: |
-          {
-            [ -n "$ANIVIBE_SUPABASE_URL" ] && printf 'ANIVIBE_SUPABASE_URL = %s\n' "$ANIVIBE_SUPABASE_URL"
-            [ -n "$ANIVIBE_SUPABASE_ANON_KEY" ] && printf 'ANIVIBE_SUPABASE_ANON_KEY = %s\n' "$ANIVIBE_SUPABASE_ANON_KEY"
-            [ -n "$ANIVIBE_KODIK_TOKEN" ] && printf 'ANIVIBE_KODIK_TOKEN = %s\n' "$ANIVIBE_KODIK_TOKEN"
-            [ -n "$ANIVIBE_MANIFEST_URL" ] && printf 'ANIVIBE_MANIFEST_URL = %s\n' "$ANIVIBE_MANIFEST_URL"
-          } > Config/Secrets.xcconfig
-          echo "Secrets.xcconfig: $(wc -l < Config/Secrets.xcconfig) строк(и)"
+          python3 - <<'PYTHON'
+          import os, pathlib
+          keys = ['ANIVIBE_SUPABASE_URL', 'ANIVIBE_SUPABASE_ANON_KEY', 'ANIVIBE_KODIK_TOKEN', 'ANIVIBE_MANIFEST_URL']
+          lines = []
+          for key in keys:
+              value = os.environ.get(key, '')
+              if '\n' in value or '\r' in value:
+                  raise SystemExit('Invalid multiline configuration value: ' + key)
+              if value:
+                  lines.append(key + ' = ' + value.replace('//', '/$()/'))
+          pathlib.Path('Config/Secrets.xcconfig').write_text('\n'.join(lines) + '\n')
+          print('Secrets configuration prepared (values not logged).')
+          PYTHON
 
       - name: Build unsigned device app
         shell: bash

@@ -67,6 +67,7 @@ struct CatalogView: View {
                 ForEach(model.items) { anime in
                     NavigationLink(value: anime) { PosterCard(anime: anime) }
                         .buttonStyle(.plain)
+                        .folderMenu(anime.snapshot)
                         .onAppear { model.loadMoreIfNeeded(current: anime, catalog: env.catalog) }
                 }
             }
@@ -84,7 +85,7 @@ private struct ActiveFiltersSummary: View {
     let query: CatalogQuery
     var body: some View {
         FlowLayout {
-            ForEach(query.genres.sorted(), id: \.self) { Chip(text: $0, tint: Theme.accent) }
+            ForEach(query.genres.sorted(), id: \.self) { Chip(text: CatalogLocalization.genre($0), tint: Theme.accent) }
             if let y = query.year { Chip(text: String(y), tint: Theme.accent) }
             if let s = query.status { Chip(text: s.localizedName, tint: Theme.accent) }
             ForEach(query.formats.sorted { $0.rawValue < $1.rawValue }, id: \.self) { Chip(text: $0.localizedName, tint: Theme.accent) }

@@ -1,0 +1,817 @@
+{
+  "fetchedAt": "2026-10-13T08:50:14.438809+00:00",
+  "query": {
+    "shikimori_id": 61469
+  },
+  "total": 29,
+  "error": false,
+  "results": [
+    {
+      "id": "serial-73720",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 3957,
+        "title": "Flowers Media",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73721",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 1811,
+        "title": "OnWave",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73723",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 910,
+        "title": "AniStar",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73728",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 3673,
+        "title": "Студийный Огурчик",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73735",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 2491,
+        "title": "Kazoku Project",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73738",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 3861,
+        "title": "AniLiberty",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73739",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 609,
+        "title": "AniDUB",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73740",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 923,
+        "title": "AnimeVost",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73746",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 2046,
+        "title": "Youkai Studio",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73755",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 963,
+        "title": "Amazing Dubbing",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73761",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 2674,
+        "title": "AniDub Online",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-75144",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 4174,
+        "title": "ZXCDub",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-78237",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 767,
+        "title": "SHIZA Project",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-78319",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 1863,
+        "title": "КОМНАТА ДИДИ",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-78337",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 4227,
+        "title": "ПОЛ ВТОРОГО НОЧИ",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-78368",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 4228,
+        "title": "Bizarre Dubbing",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73722",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 2368,
+        "title": "КОМНАТА ДИДИ (Альтернативная)",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73741",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 2262,
+        "title": "Red Head Sound",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73762",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 2822,
+        "title": "AniBaza",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73807",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 3602,
+        "title": "AniCore",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73845",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 557,
+        "title": "JAM",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-78322",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 4225,
+        "title": "Mirano",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-78579",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 4188,
+        "title": "BebraDub",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-78598",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 3604,
+        "title": "Studii Net",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73743",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 3749,
+        "title": "Сергей Царёв",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73893",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 2700,
+        "title": "AniCosmic",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-74678",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 873,
+        "title": "AniPLague",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-74966",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 4168,
+        "title": "Nineteg Studio",
+        "type": "voice"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "serial-73718",
+      "type": "anime-serial",
+      "title": "Невероятное приключение ДжоДжо: Гонка «Стальной шар»",
+      "title_orig": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "shikimori_id": "61469",
+      "translation": {
+        "id": 1946,
+        "title": "Netflix.Subtitles",
+        "type": "subtitles"
+      },
+      "seasons": {
+        "6": {
+          "episodes": {
+            "1": {
+              "title": null
+            },
+            "2": {
+              "title": null
+            },
+            "3": {
+              "title": null
+            },
+            "4": {
+              "title": null
+            }
+          }
+        }
+      }
+    }
+  ]
+}

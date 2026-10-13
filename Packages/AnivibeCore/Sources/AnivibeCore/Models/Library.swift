@@ -50,15 +50,18 @@ public struct LibraryEntry: Identifiable, Hashable, Codable, Sendable {
 }
 
 public struct ProgressKey: Hashable, Codable, Sendable {
+    public let sourceKey: String?
     public let animeId: Int
     public let episode: Int
-    public init(animeId: Int, episode: Int) {
+    public init(animeId: Int, episode: Int, sourceKey: String? = nil) {
+        self.sourceKey = sourceKey
         self.animeId = animeId
         self.episode = episode
     }
 }
 
 public struct WatchProgress: Hashable, Codable, Sendable {
+    public let sourceKey: String?
     public let animeId: Int
     public let episode: Int
     /// Позиция в секундах.
@@ -67,7 +70,8 @@ public struct WatchProgress: Hashable, Codable, Sendable {
     public var duration: Double
     public var updatedAt: Date
 
-    public init(animeId: Int, episode: Int, position: Double, duration: Double, updatedAt: Date = Date()) {
+    public init(animeId: Int, episode: Int, position: Double, duration: Double, updatedAt: Date = Date(), sourceKey: String? = nil) {
+        self.sourceKey = sourceKey
         self.animeId = animeId
         self.episode = episode
         self.position = position
@@ -75,7 +79,7 @@ public struct WatchProgress: Hashable, Codable, Sendable {
         self.updatedAt = updatedAt
     }
 
-    public var key: ProgressKey { ProgressKey(animeId: animeId, episode: episode) }
+    public var key: ProgressKey { ProgressKey(animeId: animeId, episode: episode, sourceKey: sourceKey) }
 
     public var fraction: Double {
         guard duration > 0, position.isFinite else { return 0 }
@@ -91,12 +95,17 @@ public struct WatchProgress: Hashable, Codable, Sendable {
 }
 
 public struct HistoryItem: Identifiable, Hashable, Codable, Sendable {
+    public var sourceKey: String?
+    public var deletedAt: Date?
+    public var syncTimestamp: Date { deletedAt ?? watchedAt }
     public let id: UUID
     public var anime: AnimeSnapshot
     public var episode: Int
     public var watchedAt: Date
 
-    public init(id: UUID = UUID(), anime: AnimeSnapshot, episode: Int, watchedAt: Date = Date()) {
+    public init(id: UUID = UUID(), anime: AnimeSnapshot, episode: Int, watchedAt: Date = Date(), sourceKey: String? = nil, deletedAt: Date? = nil) {
+        self.deletedAt = deletedAt
+        self.sourceKey = sourceKey
         self.id = id
         self.anime = anime
         self.episode = episode
@@ -112,6 +121,7 @@ public struct ResumePoint: Hashable, Sendable {
     public let fraction: Double
     /// `true`, если это переход к следующей серии после завершённой.
     public let isNextEpisode: Bool
+    public var sourceKey: String? = nil
 }
 
 public struct ContinueWatchingItem: Identifiable, Hashable, Sendable {
@@ -123,15 +133,17 @@ public struct ContinueWatchingItem: Identifiable, Hashable, Sendable {
 
 /// Сохраняемое состояние библиотеки.
 public struct LibrarySnapshot: Codable, Hashable, Sendable {
-    public static let currentVersion = 1
+    public static let currentVersion = 2
     public var version: Int
     public var entries: [LibraryEntry]
     public var progress: [WatchProgress]
     public var history: [HistoryItem]
+    public var historyTombstones: [HistoryItem]?
     public var lastSyncAt: Date?
 
     public init(version: Int = LibrarySnapshot.currentVersion, entries: [LibraryEntry] = [],
-                progress: [WatchProgress] = [], history: [HistoryItem] = [], lastSyncAt: Date? = nil) {
+                progress: [WatchProgress] = [], history: [HistoryItem] = [], lastSyncAt: Date? = nil, historyTombstones: [HistoryItem]? = nil) {
+        self.historyTombstones = historyTombstones
         self.version = version
         self.entries = entries
         self.progress = progress
@@ -147,8 +159,8 @@ public struct LibrarySnapshot: Codable, Hashable, Sendable {
         entries.first { $0.anime.id == animeId && !$0.isDeleted }
     }
 
-    public func progress(animeId: Int, episode: Int) -> WatchProgress? {
-        progress.first { $0.animeId == animeId && $0.episode == episode }
+    public func progress(animeId: Int, episode: Int, sourceKey: String? = nil) -> WatchProgress? {
+        progress.first { $0.animeId == animeId && $0.episode == episode && $0.sourceKey == sourceKey }
     }
 
     public func entries(in status: LibraryStatus) -> [LibraryEntry] {

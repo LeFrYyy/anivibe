@@ -42,6 +42,7 @@ final class PlayerViewModel {
     let player = AVPlayer()
     private let registry: ProviderRegistry
     private let library: LibraryStore
+    private let progressAccountID: String?
     private let autoplayNext: () -> Bool
     @ObservationIgnored private var startPosition: Double
     @ObservationIgnored private var timeObserver: Any?
@@ -56,16 +57,20 @@ final class PlayerViewModel {
     @ObservationIgnored private var lastSaveDate = Date.distantPast
     @ObservationIgnored private var didStart = false
     @ObservationIgnored private var isTornDown = false
+    @ObservationIgnored private var restoringPosition = false
+    @ObservationIgnored private var resumeAfterLoad = true
+    @ObservationIgnored private var hasActuallyPlayed = false
 
     static let saveInterval: TimeInterval = 5
 
-    init(request: PlaybackRequest, registry: ProviderRegistry, library: LibraryStore, autoplayNext: @escaping () -> Bool) {
+    init(request: PlaybackRequest, registry: ProviderRegistry, library: LibraryStore, accountID: String?, autoplayNext: @escaping () -> Bool) {
         anime = request.anime
         episodes = request.episodes
         episodeNumber = request.episode
         startPosition = request.startPosition
         self.registry = registry
         self.library = library
+        progressAccountID = accountID
         self.autoplayNext = autoplayNext
     }
 
@@ -117,7 +122,14 @@ final class PlayerViewModel {
         let episode = episodeNumber
         loadTask = Task { [weak self] in
             guard let self else { return }
-            let found = await registry.candidates(for: anime, episode: episode)
+            let found: [SourceCandidate]
+            if let exact = self.currentEpisode?.sourceEpisode, let provider = await registry.provider(exact.providerID) {
+                let availability = await provider.checkAvailability(exact)
+                found = [SourceCandidate(providerID: provider.id, providerName: provider.displayName,
+                    isTestContent: provider.providesTestContent, episode: exact, availability: availability)]
+            } else {
+                found = await registry.candidates(for: anime, episode: episode, excluding: [KodikProvider.providerID])
+            }
             guard !Task.isCancelled, episode == self.episodeNumber else { return }
             self.candidates = found
             if let first = found.first(where: { $0.availability.isAvailable }) {
@@ -131,6 +143,7 @@ final class PlayerViewModel {
     func select(candidate: SourceCandidate) {
         guard candidate.availability.isAvailable else { return }
         saveProgress(force: true)
+        resumeAfterLoad = isPlaying || isBuffering
         startPosition = currentTime > 1 ? currentTime : startPosition
         loadTask?.cancel()
         loadTask = Task { [weak self] in await self?.play(candidate: candidate) }
@@ -173,6 +186,8 @@ final class PlayerViewModel {
         subtitleOptions = []
         duration = 0
         currentTime = startPosition
+        restoringPosition = true
+        phase = .preparing
         let item = AVPlayerItem(url: source.url)
         observe(item: item)
         player.replaceCurrentItem(with: item)
@@ -184,9 +199,10 @@ final class PlayerViewModel {
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             MainActor.assumeIsolated {
-                guard let self, !self.isScrubbing else { return }
+                guard let self, !self.isScrubbing, !self.restoringPosition, self.phase == .ready else { return }
                 let seconds = time.seconds
                 if seconds.isFinite { self.currentTime = seconds }
+                if self.isPlaying && seconds > 0 { self.hasActuallyPlayed = true }
                 self.saveProgress(force: false)
             }
         }
@@ -250,23 +266,31 @@ final class PlayerViewModel {
     }
 
     private func itemBecameReady(_ item: AVPlayerItem) async {
-        if let d = try? await item.asset.load(.duration), d.seconds.isFinite { duration = d.seconds }
+        let loadedDuration = try? await item.asset.load(.duration)
+        guard player.currentItem === item, !isTornDown else { return }
+        if let d = loadedDuration, d.seconds.isFinite { duration = d.seconds }
         await loadTracks(for: item)
-        // Восстанавливаем позицию, если она не у самого конца.
-        if startPosition > 5, duration == 0 || startPosition < duration - 10 {
-            await player.seek(to: CMTime(seconds: startPosition, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-            currentTime = startPosition
+        guard player.currentItem === item, !isTornDown else { return }
+        if startPosition > 0 {
+            let target = duration > 0 ? min(startPosition, max(0, duration - 0.1)) : startPosition
+            let succeeded = await player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+            guard player.currentItem === item, !isTornDown else { return }
+            guard succeeded else { phase = .failed("Не удалось восстановить позицию. Повторите загрузку."); return }
+            currentTime = target
         }
         startPosition = 0
+        restoringPosition = false
         phase = .ready
-        player.play()
+        if resumeAfterLoad { player.playImmediately(atRate: playbackSpeed) } else { player.pause() }
     }
 
     // MARK: - Tracks
 
     private func loadTracks(for item: AVPlayerItem) async {
         let asset = item.asset
-        if let group = try? await asset.loadMediaSelectionGroup(for: .audible), !group.options.isEmpty {
+        let loadedAudio = try? await asset.loadMediaSelectionGroup(for: .audible)
+        guard player.currentItem === item, !isTornDown else { return }
+        if let group = loadedAudio, !group.options.isEmpty {
             audioGroup = group
             audioOptions = group.options.enumerated().map { TrackOption(id: "audio-\($0.offset)", name: Self.trackName($0.element), index: $0.offset) }
             if let selected = item.currentMediaSelection.selectedMediaOption(in: group), let i = group.options.firstIndex(of: selected) {
@@ -275,7 +299,9 @@ final class PlayerViewModel {
         } else {
             audioGroup = nil
         }
-        if let group = try? await asset.loadMediaSelectionGroup(for: .legible), !group.options.isEmpty {
+        let loadedSubtitles = try? await asset.loadMediaSelectionGroup(for: .legible)
+        guard player.currentItem === item, !isTornDown else { return }
+        if let group = loadedSubtitles, !group.options.isEmpty {
             subtitleGroup = group
             var options = group.options.enumerated().map { TrackOption(id: "sub-\($0.offset)", name: Self.trackName($0.element), index: $0.offset) }
             if group.allowsEmptySelection { options.insert(TrackOption(id: "sub-off", name: "Выключены", index: nil), at: 0) }
@@ -332,6 +358,7 @@ final class PlayerViewModel {
         guard let current = source, quality.url != current.url else { return }
         UserDefaults.standard.set(quality.height, forKey: KodikPreferences.qualityKey)
         saveProgress(force: true)
+        resumeAfterLoad = isPlaying || isBuffering
         startPosition = currentTime
         let updated = current.with(url: quality.url)
         source = updated
@@ -396,8 +423,10 @@ final class PlayerViewModel {
         player.replaceCurrentItem(with: nil)
         clearItemObservers()
         source = nil
+        hasActuallyPlayed = false
+        resumeAfterLoad = true
         episodeNumber = number
-        let saved = library.progress(anime.id, episode: number)
+        let saved = library.progress(anime.id, episode: currentEpisode?.progressNumber ?? number, sourceKey: currentEpisode?.sourceKey)
         startPosition = (saved?.isFinished ?? true) ? 0 : saved?.position ?? 0
         currentTime = startPosition
         findSources()
@@ -435,14 +464,15 @@ final class PlayerViewModel {
     // MARK: - Progress
 
     private func saveProgress(force: Bool) {
-        guard source != nil, currentTime > 0 else { return }
+        guard source != nil, source?.isTestContent != true, hasActuallyPlayed, !restoringPosition, currentTime > 0 else { return }
         let now = Date()
         guard force || now.timeIntervalSince(lastSaveDate) >= Self.saveInterval else { return }
         guard force || isPlaying else { return }
         lastSaveDate = now
         let snapshot = anime.snapshot
-        let (episode, position, total) = (episodeNumber, currentTime, duration)
-        Task { await library.recordProgress(anime: snapshot, episode: episode, position: position, duration: total) }
+        let (episode, position, total) = (currentEpisode?.progressNumber ?? episodeNumber, currentTime, duration)
+        let key = currentEpisode?.sourceKey
+        Task { await library.recordProgress(anime: snapshot, episode: episode, position: position, duration: total, sourceKey: key, accountID: progressAccountID) }
     }
 
     // MARK: - Helpers

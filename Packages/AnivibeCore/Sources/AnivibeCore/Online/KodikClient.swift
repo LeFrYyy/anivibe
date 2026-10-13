@@ -12,15 +12,13 @@ import FoundationNetworking
 /// * Прямые HLS-потоки (для нативного плеера с выбором качества и скорости) — см. `KodikStreamResolver`.
 public struct KodikClient: Sendable {
     public static let defaultBaseURL = URL(string: "https://kodik-api.com")!
-    /// Общедоступный рабочий токен Kodik API по умолчанию
-    public static let defaultToken = "56a768d08f43091901c44b54fe970049"
 
     private let token: String
     private let baseURL: URL
     let transport: HTTPTransport
 
-    public init(token: String = KodikClient.defaultToken, baseURL: URL = KodikClient.defaultBaseURL, transport: HTTPTransport) {
-        self.token = token.isEmpty ? KodikClient.defaultToken : token
+    public init(token: String, baseURL: URL = KodikClient.defaultBaseURL, transport: HTTPTransport) {
+        self.token = token
         self.baseURL = baseURL
         self.transport = transport
     }
@@ -34,7 +32,7 @@ public struct KodikClient: Sendable {
         if let shikimoriID {
             let exact = try await requestMaterials([URLQueryItem(name: "shikimori_id", value: String(shikimoriID))])
                 .filter { $0.shikimoriID == nil || $0.shikimoriID == shikimoriID }
-            if let match = Self.exactGroup(among: exact) { return match }
+            if exact.contains(where: { $0.shikimoriID == shikimoriID }), let match = Self.exactGroup(among: exact) { return match }
         }
         for title in titles where !title.isEmpty {
             let groups = try await requestMaterials([URLQueryItem(name: "title", value: title)])
@@ -46,6 +44,7 @@ public struct KodikClient: Sendable {
     // MARK: - Запрос
 
     private func requestMaterials(_ criteria: [URLQueryItem]) async throws -> [KodikMaterialDTO] {
+        guard !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw APIError.notConfigured("Kodik token") }
         var components = URLComponents(url: baseURL.appendingPathComponent("search"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "token", value: token)] + criteria + [
             URLQueryItem(name: "types", value: "anime,anime-serial"),
@@ -100,7 +99,12 @@ public struct KodikClient: Sendable {
         }
         func union(_ a: Int, _ b: Int) {
             let ra = find(a), rb = find(b)
-            if ra != rb { parent[max(ra, rb)] = min(ra, rb) }
+            if ra != rb {
+                let aIDs = Set(results.indices.filter { find($0) == ra }.compactMap { results[$0].shikimoriID })
+                let bIDs = Set(results.indices.filter { find($0) == rb }.compactMap { results[$0].shikimoriID })
+                guard aIDs.isEmpty || bIDs.isEmpty || aIDs == bIDs else { return }
+                parent[max(ra, rb)] = min(ra, rb)
+            }
         }
         func names(_ m: KodikMaterialDTO) -> Set<String> {
             Set([m.title, m.titleOrig].compactMap { $0 }.map(TitleMatcher.normalize).filter { !$0.isEmpty })
@@ -181,7 +185,7 @@ public struct KodikClient: Sendable {
         var voices: [KodikVoiceOption] = []
         for voice in materials.compactMap(makeVoice(from:)) {
             // Одна и та же озвучка может прийти несколькими записями — оставляем самую полную.
-            if let index = voices.firstIndex(where: { $0.translation.id == voice.translation.id && $0.translation.title == voice.translation.title }) {
+            if let index = voices.firstIndex(where: { $0.id == voice.id }) {
                 if voice.episodes.count > voices[index].episodes.count { voices[index] = voice }
             } else {
                 voices.append(voice)
@@ -227,7 +231,7 @@ public struct KodikClient: Sendable {
         return KodikVoiceOption(materialID: dto.id, translation: translation,
                                 title: dto.title ?? dto.titleOrig ?? "Без названия",
                                 year: dto.year, quality: dto.quality,
-                                playerURL: playerURL, episodes: episodes, seasonPlayerURLs: seasonURLs)
+                                playerURL: playerURL, episodes: episodes, seasonPlayerURLs: seasonURLs, isSingleVideo: dto.type != "anime-serial" && episodes.isEmpty)
     }
 
     /// Kodik возвращает ссылки вида «//kodik.info/…» — приводим к https

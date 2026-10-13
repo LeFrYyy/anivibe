@@ -43,7 +43,7 @@ struct ProfileView: View {
 
     private func accountSection(_ user: AuthUser) -> some View {
         Section("Аккаунт") {
-            LabeledContent("Email", value: user.email ?? "—")
+            LabeledContent("Почта", value: user.email ?? "—")
             HStack {
                 Button {
                     Task { await session.syncIfNeeded(reason: .manual) }
@@ -84,6 +84,8 @@ struct AuthFormView: View {
     @State private var mode: Mode = .signIn
     @State private var email = ""
     @State private var password = ""
+    @State private var confirmationCode = ""
+    @State private var resendAfter = Date.distantPast
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
@@ -92,7 +94,7 @@ struct AuthFormView: View {
             }
             .pickerStyle(.segmented)
 
-            TextField("Email", text: $email)
+            TextField("Электронная почта", text: $email)
                 .textContentType(.username)
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
@@ -106,6 +108,21 @@ struct AuthFormView: View {
                     .padding(10)
                     .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 8))
             }
+
+            if let pending = session.pendingConfirmationEmail {
+                Text("Подтверждение: \(pending)").font(.footnote)
+                TextField("Код из письма (6 цифр)", text: $confirmationCode)
+                    .keyboardType(.numberPad).textContentType(.oneTimeCode)
+                Button("Подтвердить код") { Task { await session.verifySignupCode(code: confirmationCode); confirmationCode = "" } }
+                    .disabled(session.isBusy || confirmationCode.count != 6)
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Button(context.date < resendAfter ? "Повторить через \(max(1, Int(resendAfter.timeIntervalSince(context.date)))) с" : "Отправить код повторно") {
+                        resendAfter = Date().addingTimeInterval(60)
+                        Task { await session.resendSignupCode() }
+                    }.disabled(session.isBusy || context.date < resendAfter)
+                }
+            }
+            Button("Войти через Google") { Task { await session.signInGoogle() } }.disabled(session.isBusy)
 
             if let error = session.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(Theme.danger)
@@ -130,7 +147,7 @@ struct AuthFormView: View {
                     Spacer()
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
             .disabled(session.isBusy || email.isEmpty || (mode != .recover && password.isEmpty))
         }
         .padding(.vertical, Theme.Spacing.s)

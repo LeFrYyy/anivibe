@@ -29,7 +29,7 @@ final class LibraryStore {
     func entry(for id: Int) -> LibraryEntry? { snapshot.entry(for: id) }
     func isFavorite(_ id: Int) -> Bool { snapshot.entry(for: id)?.isFavorite ?? false }
     func status(of id: Int) -> LibraryStatus? { snapshot.entry(for: id)?.status }
-    func progress(_ id: Int, episode: Int) -> WatchProgress? { snapshot.progress(animeId: id, episode: episode) }
+    func progress(_ id: Int, episode: Int, sourceKey: String? = nil) -> WatchProgress? { snapshot.progress(animeId: id, episode: episode, sourceKey: sourceKey) }
 
     /// Логика продолжения — общая с ядром (`LibraryRepository`), без дублирования.
     func resumePoint(for anime: Anime) -> ResumePoint? {
@@ -63,8 +63,8 @@ final class LibraryStore {
         await changed()
     }
 
-    func recordProgress(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double) async {
-        await repository.recordProgress(anime: anime, episode: episode, position: position, duration: duration)
+    func recordProgress(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double, sourceKey: String? = nil, accountID: String?) async {
+        await repository.recordProgressForAccount(anime: anime, episode: episode, position: position, duration: duration, sourceKey: sourceKey, accountID: accountID)
         await changed()
     }
 

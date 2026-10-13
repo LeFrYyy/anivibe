@@ -15,6 +15,28 @@ struct SettingsView: View {
                     ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
                 }
             }
+            Section("Основной цвет") {
+                HStack {
+                    ForEach(["8467FF", "2563EB", "0F766E", "BE185D", "B45309"], id: \.self) { hex in
+                        Button { settings.accentHex = hex } label: {
+                            Circle().fill(Color(UIColor(hexString: hex)!)).frame(width: 36, height: 36)
+                                .overlay { if settings.accentHex == hex { Image(systemName: "checkmark").foregroundStyle(Theme.onAccent) } }
+                        }.buttonStyle(.plain).accessibilityLabel("Цвет \(hex)")
+                    }
+                }
+                ColorPicker("Свой цвет", selection: Binding(get: { Theme.accent }, set: { color in
+                    var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                    guard UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a) else { return }
+                    settings.accentHex = String(format: "%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
+                }), supportsOpacity: false)
+                Text("Предварительный просмотр").padding().frame(maxWidth: .infinity)
+                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(Theme.onAccent)
+                Button("Вернуть стандартный фиолетовый") { settings.accentHex = nil }
+                NavigationLink("Пользовательский фон") { BackgroundSettingsView() }
+                Toggle("Библиотека на главной", isOn: $settings.libraryPinned)
+                Text("Оформление и порядок папок сохраняются на этом устройстве; синхронизация этих настроек пока не поддерживается.")
+                    .font(.footnote).foregroundStyle(Theme.textSecondary)
+            }
             Section("Воспроизведение") {
                 Toggle("Автоматически включать следующую серию", isOn: $settings.autoplayNextEpisode)
             }

@@ -7,6 +7,7 @@ struct PlayerControlsView: View {
     let close: () -> Void
     let showSources: () -> Void
     let showEpisodes: () -> Void
+    let showSettings: () -> Void
     let interacted: () -> Void
 
     var body: some View {
@@ -126,34 +127,7 @@ struct PlayerControlsView: View {
 
     /// Озвучка (Kodik), качество и скорость воспроизведения.
     private var videoMenu: some View {
-        Menu {
-            if !model.voices.isEmpty {
-                Menu("Озвучка: \(model.selectedVoice ?? "—")") {
-                    ForEach(model.voices, id: \.self) { voice in
-                        Button { model.selectVoice(voice) } label: {
-                            if voice == model.selectedVoice { Label(voice, systemImage: "checkmark") } else { Text(voice) }
-                        }
-                    }
-                }
-            }
-            if !model.qualities.isEmpty {
-                Menu(model.qualityMenuTitle) {
-                    ForEach(model.qualities) { quality in
-                        Button { model.selectQuality(quality) } label: {
-                            if quality.height == model.currentQualityHeight { Label(quality.label, systemImage: "checkmark") } else { Text(quality.label) }
-                        }
-                    }
-                }
-            }
-            Menu("Скорость: \(KodikPlayerScreen.speedLabel(model.playbackSpeed))") {
-                ForEach(PlayerViewModel.speeds, id: \.self) { speed in
-                    Button { model.setSpeed(speed) } label: {
-                        let label = KodikPlayerScreen.speedLabel(speed)
-                        if speed == model.playbackSpeed { Label(label, systemImage: "checkmark") } else { Text(label) }
-                    }
-                }
-            }
-        } label: {
+        Button(action: showSettings) {
             HStack(spacing: 6) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.subheadline.weight(.bold))
@@ -172,7 +146,6 @@ struct PlayerControlsView: View {
             }
             .shadow(color: Theme.accent.opacity(0.4), radius: 8, y: 2)
         }
-        .menuOrder(.fixed)
         .accessibilityLabel("Настройки видео: озвучка, качество и скорость")
     }
 
@@ -184,30 +157,7 @@ struct PlayerControlsView: View {
     }
 
     private var tracksMenu: some View {
-        Menu {
-            Section("Аудио") {
-                if model.audioOptions.count > 1 {
-                    ForEach(model.audioOptions) { option in
-                        Button { model.selectAudio(option) } label: {
-                            if option.id == model.selectedAudioID { Label(option.name, systemImage: "checkmark") } else { Text(option.name) }
-                        }
-                    }
-                } else {
-                    Text(model.audioOptions.isEmpty ? "Поток не сообщает об аудиодорожках" : "Одна аудиодорожка: \(model.audioOptions[0].name)")
-                }
-            }
-            Section("Субтитры") {
-                if model.subtitleOptions.isEmpty {
-                    Text("В потоке нет субтитров")
-                } else {
-                    ForEach(model.subtitleOptions) { option in
-                        Button { model.selectSubtitle(option) } label: {
-                            if option.id == model.selectedSubtitleID { Label(option.name, systemImage: "checkmark") } else { Text(option.name) }
-                        }
-                    }
-                }
-            }
-        } label: {
+        Button(action: showSettings) {
             Label("Звук и субтитры", systemImage: "captions.bubble")
         }
     }
@@ -237,7 +187,7 @@ struct SourcesSheet: View {
                         .disabled(!candidate.availability.isAvailable)
                     }
                 } footer: {
-                    Text("Показаны только подключённые источники. Доступным считается источник, ссылка которого проверена.")
+                    Text("Подключённые источники. Доступность окончательно проверяется при загрузке видеопотока.")
                 }
             }
             .navigationTitle("Источники · серия \(model.episodeNumber)")
@@ -270,7 +220,7 @@ struct EpisodesSheet: View {
                                 .fontWeight(ep.number == model.episodeNumber ? .bold : .regular)
                                 .foregroundStyle(ep.number == model.episodeNumber ? Theme.accent : Theme.textPrimary)
                             Spacer()
-                            if let p = library.progress(model.anime.id, episode: ep.number) {
+                            if let p = library.progress(model.anime.id, episode: ep.progressNumber, sourceKey: ep.sourceKey) {
                                 if p.isFinished {
                                     Image(systemName: "checkmark").foregroundStyle(Theme.success)
                                 } else if p.percent > 0 {

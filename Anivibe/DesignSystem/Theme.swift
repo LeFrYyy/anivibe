@@ -2,7 +2,13 @@ import SwiftUI
 import UIKit
 
 /// Палитра и метрики Anivibe. Тёмная тема — основная; светлая поддерживается.
+@Observable
+final class AccentPalette {
+    var hex: String? = UserDefaults.standard.string(forKey: "settings.accentHex")
+}
+
 enum Theme {
+    static let palette = AccentPalette()
     // Графитовый фон, глубокий фиолетовый акцент, холодный голубой второстепенный акцент.
     static let background = Color(light: 0xF5F5F8, dark: 0x111114)
     static let surface = Color(light: 0xFFFFFF, dark: 0x1B1B20)
@@ -10,7 +16,18 @@ enum Theme {
     static let separator = Color(light: 0xDADAE2, dark: 0x2E2E36)
     static let textPrimary = Color(light: 0x15151A, dark: 0xF2F2F5)
     static let textSecondary = Color(light: 0x5E5E6B, dark: 0xA0A0AE)
-    static let accent = Color(light: 0x5B3FE0, dark: 0x8467FF)
+    static var accent: Color {
+        if let hex = palette.hex, let color = UIColor(hexString: hex) { return Color(color) }
+        return Color(light: 0x5B3FE0, dark: 0x8467FF)
+    }
+    static var onAccent: Color {
+        guard let hex = palette.hex, let color = UIColor(hexString: hex) else { return .white }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        func linear(_ v: CGFloat) -> Double { let x = Double(v); return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4) }
+        let luminance = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+        return luminance > 0.179 ? .black : .white
+    }
     static let secondaryAccent = Color(light: 0x0E8FC2, dark: 0x5CC8F2)
     static let danger = Color(light: 0xC62E3A, dark: 0xFF6B6B)
     static let success = Color(light: 0x1E8E5A, dark: 0x4CD18F)
@@ -59,6 +76,6 @@ extension UIColor {
 extension View {
     /// Стандартный фон экранов.
     func screenBackground() -> some View {
-        background(Theme.background.ignoresSafeArea())
+        background(AppScreenBackground().ignoresSafeArea())
     }
 }

@@ -11,6 +11,11 @@ DBURL="${PGURL%/*}/$DB"
 psql "$DBURL" -v ON_ERROR_STOP=1 -q -f supabase/tests/local_auth_stub.sql
 psql "$DBURL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261011000000_anivibe_init.sql
 
+# Seed a legacy row before schema changes, then verify it survives unchanged.
+psql "$DBURL" -v ON_ERROR_STOP=1 -q -c "insert into public.watch_progress(user_id,anime_id,episode,position_seconds,duration_seconds) values('00000000-0000-0000-0000-00000000000a',42,1,123,1000)"
+psql "$DBURL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261013000000_source_episode_identity.sql
+psql "$DBURL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261013010000_history_tombstones_lww.sql
+
 A=00000000-0000-0000-0000-00000000000a
 B=00000000-0000-0000-0000-00000000000b
 as_user() { # $1 = uuid, $2 = sql
@@ -37,13 +42,35 @@ expect_fail $A "insert into public.library_entries (anime_id, title, cover_url) 
 expect_fail $A "insert into public.watch_progress (anime_id, episode, position_seconds, duration_seconds) values (1, 0, 1, 1)" "серия 0"
 
 # upsert как у PostgREST (on_conflict + merge-duplicates)
-as_user $A "insert into public.watch_progress (user_id, anime_id, episode, position_seconds, duration_seconds, updated_at) values ('$A', 16498, 1, 10, 1440, now()) on conflict (user_id, anime_id, episode) do update set position_seconds = excluded.position_seconds" >/dev/null
-as_user $A "insert into public.watch_progress (user_id, anime_id, episode, position_seconds, duration_seconds, updated_at) values ('$A', 16498, 1, 600, 1440, now()) on conflict (user_id, anime_id, episode) do update set position_seconds = excluded.position_seconds" >/dev/null
+as_user $A "insert into public.watch_progress (user_id, anime_id, episode, position_seconds, duration_seconds, updated_at) values ('$A', 16498, 1, 10, 1440, now()) on conflict (user_id, anime_id, episode, source_key) do update set position_seconds = excluded.position_seconds, updated_at = excluded.updated_at" >/dev/null
+as_user $A "insert into public.watch_progress (user_id, anime_id, episode, position_seconds, duration_seconds, updated_at) values ('$A', 16498, 1, 600, 1440, now()) on conflict (user_id, anime_id, episode, source_key) do update set position_seconds = excluded.position_seconds, updated_at = excluded.updated_at" >/dev/null
 check $A "select position_seconds from public.watch_progress where anime_id = 16498 and episode = 1" 600 "upsert прогресса"
 check $A "with i as (insert into public.watch_history (id, anime_id, title, episode, watched_at) values (gen_random_uuid(), 1, 'X', 1, now() + interval '1 year') returning watched_at) select (watched_at < now() + interval '1 minute')::text from i" true "дата из будущего ограничивается"
 check $B "select count(*) from public.watch_progress" 0 "B не видит прогресс A"
 if psql "$DBURL" -qtA -c "begin; set local role anon; select count(*) from public.library_entries; commit;" >/dev/null 2>&1; then
   echo "FAIL: anon имеет доступ"; exit 1; else echo "ok  (отклонено) роль anon не имеет доступа к таблицам"; fi
+
+check $A "select position_seconds from public.watch_progress where anime_id=42 and source_key=''" 123 "миграция сохраняет старый прогресс"
+as_user $A "insert into public.watch_progress(anime_id,episode,source_key,position_seconds,duration_seconds) values(42,1,'kodik:voice:6:1',20,1000)" >/dev/null
+check $A "select count(*) from public.watch_progress where anime_id=42" 2 "каталог и источник не перезаписывают друг друга"
+expect_fail $B "insert into public.watch_progress(user_id,anime_id,episode,source_key,position_seconds,duration_seconds) values('$A',42,2,'kodik:x',20,1000)" "RLS источников"
+expect_fail $A "insert into public.watch_progress(anime_id,episode,source_key,position_seconds,duration_seconds) values(43,1,repeat('x',501),20,1000)" "ограничение длины source_key"
+as_user $A "update public.watch_progress set position_seconds=999,updated_at=now()-interval '1 day' where anime_id=42 and source_key=''" >/dev/null
+check $A "select position_seconds from public.watch_progress where anime_id=42 and source_key=''" 123 "старый запрос не затирает новый прогресс"
+as_user $A "insert into public.watch_history(id,anime_id,title,episode,source_key,watched_at,updated_at) values('00000000-0000-0000-0000-000000000123',42,'Test',1,'kodik:voice:6:1',now()-interval '2 minutes',now()-interval '2 minutes')" >/dev/null
+as_user $A "update public.watch_history set deleted_at=now(),updated_at=now() where id='00000000-0000-0000-0000-000000000123'" >/dev/null
+as_user $A "update public.watch_history set deleted_at=null,updated_at=now()-interval '1 minute' where id='00000000-0000-0000-0000-000000000123'" >/dev/null
+check $A "select (deleted_at is not null)::text from public.watch_history where id='00000000-0000-0000-0000-000000000123'" true "удалённая история не воскресает от старого запроса"
+
+# Concurrent writers race on the same key. Latest timestamp must win, regardless of lock order.
+base=$(psql "$DBURL" -qtA -c "select now()")
+pids=()
+for value in 10 20 30 40 50 60 70 80; do
+  as_user $A "update public.watch_progress set position_seconds=$value, updated_at=timestamptz '$base' + interval '$value milliseconds' where anime_id=42 and source_key=''" >/dev/null &
+  pids+=("$!")
+done
+for pid in "${pids[@]}"; do wait "$pid"; done
+check $A "select position_seconds from public.watch_progress where anime_id=42 and source_key=''" 80 "8 конкурентных запросов: побеждает последнее изменение"
 
 psql "$PGURL" -q -c "drop database $DB"
 echo "Все проверки RLS пройдены."

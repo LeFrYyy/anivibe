@@ -46,7 +46,7 @@ struct EmptyStateView: View {
             if let message { Text(message) }
         } actions: {
             if let actionTitle, let action {
-                Button(actionTitle, action: action).buttonStyle(.borderedProminent)
+                Button(actionTitle, action: action).buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
             }
         }
     }
@@ -62,7 +62,7 @@ struct ErrorStateView: View {
         } description: {
             Text(message)
         } actions: {
-            Button("Повторить", action: retry).buttonStyle(.borderedProminent)
+            Button("Повторить", action: retry).buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
         }
     }
 }

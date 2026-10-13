@@ -27,11 +27,21 @@
 	</dict>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<!-- Разрешает только http к localhost (локальный Supabase в симуляторе). ATS для интернета не ослабляется. -->
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Anivibe OAuth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>anivibe</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

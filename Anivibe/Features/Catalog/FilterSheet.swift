@@ -43,7 +43,7 @@ struct FilterSheet: View {
                         Text("Список жанров загружается…").foregroundStyle(Theme.textSecondary)
                     }
                     ForEach(genres, id: \.self) { g in
-                        Toggle(g, isOn: Binding(
+                        Toggle(CatalogLocalization.genre(g), isOn: Binding(
                             get: { draft.genres.contains(g) },
                             set: { on in if on { draft.genres.insert(g) } else { draft.genres.remove(g) } }))
                     }

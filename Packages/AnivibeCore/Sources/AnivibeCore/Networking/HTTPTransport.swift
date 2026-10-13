@@ -29,7 +29,21 @@ public struct URLSessionTransport: HTTPTransport, @unchecked Sendable {
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         do {
+            #if canImport(FoundationNetworking)
+            let holder = NetworkTaskHolder()
+            let (data, response): (Data, URLResponse) = try await withTaskCancellationHandler(operation: {
+                try await withCheckedThrowingContinuation { continuation in
+                    let task = session.dataTask(with: request) { data, response, error in
+                        if let error { continuation.resume(throwing: error) }
+                        else if let data, let response { continuation.resume(returning: (data, response)) }
+                        else { continuation.resume(throwing: APIError.invalidResponse("Пустой HTTP-ответ")) }
+                    }
+                    holder.start(task)
+                }
+            }, onCancel: { holder.cancel() })
+            #else
             let (data, response) = try await session.data(for: request)
+            #endif
             guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse("Нет HTTP-ответа") }
             return (data, http)
         } catch let error as APIError {
@@ -42,6 +56,24 @@ public struct URLSessionTransport: HTTPTransport, @unchecked Sendable {
         }
     }
 }
+
+#if canImport(FoundationNetworking)
+private final class NetworkTaskHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionDataTask?
+    private var cancelled = false
+    func start(_ task: URLSessionDataTask) {
+        lock.lock()
+        self.task = task
+        if cancelled { task.cancel() }
+        task.resume()
+        lock.unlock()
+    }
+    func cancel() {
+        lock.lock(); cancelled = true; task?.cancel(); lock.unlock()
+    }
+}
+#endif
 
 /// Единая система ошибок сетевых сервисов с понятными сообщениями.
 public enum APIError: Error, Equatable, Sendable {

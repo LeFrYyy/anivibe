@@ -34,6 +34,8 @@ public final class InMemoryTokenStore: TokenStore, @unchecked Sendable {
 }
 
 public enum AuthError: Error, Equatable, Sendable {
+    case invalidCode
+    case expiredCode
     case invalidCredentials
     case emailNotConfirmed
     case userAlreadyExists
@@ -48,16 +50,18 @@ public enum AuthError: Error, Equatable, Sendable {
 
     public var userMessage: String {
         switch self {
+        case .invalidCode: return "Неверный код подтверждения."
+        case .expiredCode: return "Код истёк. Запросите новый код."
         case .invalidCredentials: return "Неверный email или пароль."
         case .emailNotConfirmed: return "Email не подтверждён. Проверьте почту."
         case .userAlreadyExists: return "Пользователь с таким email уже зарегистрирован."
         case .weakPassword(let m): return "Слишком простой пароль. \(m)"
         case .invalidEmail: return "Введите корректный email."
-        case .confirmationRequired: return "Аккаунт создан. Подтвердите email по ссылке из письма, затем войдите."
+        case .confirmationRequired: return "Аккаунт создан. Введите код из письма для подтверждения email. Если письмо содержит только ссылку, откройте её и войдите с паролем."
         case .notSignedIn: return "Вы не вошли в аккаунт."
         case .sessionExpired: return "Сессия истекла. Войдите снова."
         case .rateLimited: return "Слишком много попыток. Подождите немного."
-        case .server(let m): return "Ошибка сервера авторизации: \(m)"
+        case .server: return "Сервис авторизации отклонил запрос. Повторите позже или проверьте настройки."
         case .network(let m): return m
         }
     }
@@ -71,6 +75,9 @@ public actor SupabaseAuthClient {
     private let store: TokenStore
     private let now: @Sendable () -> Date
     private var refreshTask: Task<AuthSession, Error>?
+    private var sessionEpoch: UInt = 0
+    private var refreshID: UUID?
+    private func saveSession(_ session: AuthSession?) { sessionEpoch &+= 1; store.save(session) }
 
     public init(config: AppConfiguration.Supabase, transport: HTTPTransport, store: TokenStore, now: @escaping @Sendable () -> Date = { Date() }) {
         self.config = config
@@ -94,7 +101,7 @@ public actor SupabaseAuthClient {
         try Self.validate(email: email, password: password)
         let data = try await post(path: "auth/v1/signup", body: ["email": email.trimmingCharacters(in: .whitespaces), "password": password])
         if let session = try? decodeSession(data) {
-            store.save(session)
+            saveSession(session)
             return session
         }
         throw AuthError.confirmationRequired
@@ -106,8 +113,33 @@ public actor SupabaseAuthClient {
         let data = try await post(path: "auth/v1/token", query: [URLQueryItem(name: "grant_type", value: "password")],
                                   body: ["email": email.trimmingCharacters(in: .whitespaces), "password": password])
         let session = try decodeSession(data)
-        store.save(session)
+        saveSession(session)
         return session
+    }
+
+    /// The server generates/verifies OTP, applies expiry/rate limits and sends via configured SMTP.
+    public func resendSignupCode(email: String) async throws {
+        try Self.validate(email: email, password: nil)
+        _ = try await post(path: "auth/v1/resend", body: ["type": "signup", "email": email.trimmingCharacters(in: .whitespacesAndNewlines)])
+    }
+    public func verifySignupCode(email: String, code: String) async throws -> AuthSession {
+        try Self.validate(email: email, password: nil)
+        let token = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard token.count == 6, token.allSatisfy({ $0.isASCII && $0.isNumber }) else { throw AuthError.invalidCode }
+        let data = try await post(path: "auth/v1/verify", body: ["type": "signup", "email": email.trimmingCharacters(in: .whitespacesAndNewlines), "token": token])
+        let session = try decodeSession(data); saveSession(session); return session
+    }
+    public func googleAuthorizationURL(redirectURL: URL, challenge: String) -> URL {
+        var url = URLComponents(url: config.url.appendingPathComponent("auth/v1/authorize"), resolvingAgainstBaseURL: false)!
+        url.queryItems = [URLQueryItem(name: "provider", value: "google"), URLQueryItem(name: "redirect_to", value: redirectURL.absoluteString),
+                         URLQueryItem(name: "code_challenge", value: challenge), URLQueryItem(name: "code_challenge_method", value: "s256")]
+        return url.url!
+    }
+    public func exchangeOAuthCode(_ code: String, verifier: String) async throws -> AuthSession {
+        guard !code.isEmpty, (43...128).contains(verifier.count) else { throw AuthError.invalidCredentials }
+        let data = try await post(path: "auth/v1/token", query: [URLQueryItem(name: "grant_type", value: "pkce")],
+                                  body: ["auth_code": code, "code_verifier": verifier])
+        let session = try decodeSession(data); saveSession(session); return session
     }
 
     /// Письмо для восстановления пароля.
@@ -117,10 +149,10 @@ public actor SupabaseAuthClient {
     }
 
     public func signOut() async {
-        if let session = store.load() {
-            _ = try? await post(path: "auth/v1/logout", body: [:], bearer: session.accessToken)
-        }
-        store.save(nil)
+        let session = store.load()
+        refreshTask?.cancel(); refreshTask = nil; refreshID = nil
+        saveSession(nil) // Clear immediately: a delayed refresh must never restore a logged-out session.
+        if let session { _ = try? await post(path: "auth/v1/logout", body: [:], bearer: session.accessToken) }
     }
 
     /// Действующий токен; при необходимости обновляет его (одновременные вызовы объединяются).
@@ -129,20 +161,23 @@ public actor SupabaseAuthClient {
         guard session.needsRefresh(now: now()) else { return session }
         if let refreshTask { return try await refreshTask.value }
         let task = Task { try await self.refresh(session) }
-        refreshTask = task
-        defer { refreshTask = nil }
+        let id = UUID()
+        refreshTask = task; refreshID = id
+        defer { if refreshID == id { refreshTask = nil; refreshID = nil } }
         return try await task.value
     }
 
     private func refresh(_ session: AuthSession) async throws -> AuthSession {
+        let epoch = sessionEpoch
         do {
             let data = try await post(path: "auth/v1/token", query: [URLQueryItem(name: "grant_type", value: "refresh_token")],
                                       body: ["refresh_token": session.refreshToken])
             let fresh = try decodeSession(data)
-            store.save(fresh)
+            guard epoch == sessionEpoch, store.load()?.refreshToken == session.refreshToken else { throw AuthError.notSignedIn }
+            saveSession(fresh)
             return fresh
         } catch AuthError.invalidCredentials {
-            store.save(nil)
+            if epoch == sessionEpoch { saveSession(nil) }
             throw AuthError.sessionExpired
         }
     }
@@ -153,7 +188,9 @@ public actor SupabaseAuthClient {
         var comps = URLComponents(url: config.url.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { comps.queryItems = query }
         var headers = ["apikey": config.anonKey]
-        headers["Authorization"] = "Bearer \(bearer ?? config.anonKey)"
+        // API keys identify the project; only a user's JWT belongs in Bearer.
+        // Works with both sb_publishable_* and legacy anon keys.
+        if let bearer { headers["Authorization"] = "Bearer \(bearer)" }
         let request = URLRequest.json(url: comps.url!, body: try JSONEncoder().encode(body), headers: headers)
         let data: Data, response: HTTPURLResponse
         do { (data, response) = try await transport.send(request) } catch let e as APIError {
@@ -170,6 +207,8 @@ public actor SupabaseAuthClient {
         if status == 429 || code == "over_request_rate_limit" || code == "over_email_send_rate_limit" { return .rateLimited }
         switch code {
         case "invalid_credentials", "invalid_grant", "refresh_token_not_found", "refresh_token_already_used": return .invalidCredentials
+        case "otp_expired": return .expiredCode
+        case "otp_disabled", "invalid_otp": return .invalidCode
         case "email_not_confirmed": return .emailNotConfirmed
         case "user_already_exists", "email_exists": return .userAlreadyExists
         case "weak_password": return .weakPassword(message)
