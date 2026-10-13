@@ -130,7 +130,7 @@ struct BackgroundSettingsView: View {
                 let image = await Task.detached(priority: .userInitiated) { BackgroundStore.thumbnail(url: photo.url) }.value
                 guard !Task.isCancelled, let image else { return }
                 draft = image; error = nil
-            } catch { if !Task.isCancelled { error = "Не удалось прочитать изображение. Попробуйте другой файл." } }
+            } catch { if !Task.isCancelled { self.error = "Не удалось прочитать изображение. Попробуйте другой файл." } }
         }
     }
 }

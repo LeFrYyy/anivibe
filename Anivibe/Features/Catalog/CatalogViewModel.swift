@@ -24,7 +24,8 @@ final class CatalogViewModel {
         // При вводе текста логичнее «по совпадению», если пользователь не выбрал иное.
         if !q.trimmedSearch.isEmpty && q.sort == .popularity { q.sort = .relevance }
         if phase != .loaded || items.isEmpty { phase = .loading }
-        runner.run(debounce: debounce, operation: { try await catalog.search(q) }) { [weak self] result in
+        let searchQuery = q
+        runner.run(debounce: debounce, operation: { try await catalog.search(searchQuery) }) { [weak self] result in
             guard let self else { return }
             switch result {
             case .success(let page):
