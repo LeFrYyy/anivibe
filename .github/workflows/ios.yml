@@ -1,90 +1,86 @@
-# Сборка Anivibe на облачном Mac-раннере GitHub Actions.
-#
-# Что делает:
-#   1. job "test"  — прогоняет `swift test` пакета AnivibeCore на macOS.
-#   2. job "build" — собирает НЕПОДПИСАННЫЙ .ipa для реального iPhone (arm64)
-#                    и выкладывает его в артефакты (Actions → запуск → Artifacts).
-#
-# Неподписанный .ipa нужен для Sideloadly / SideStore / AltStore / TrollStore:
-# они подписывают его вашим Apple ID уже на своей стороне.
-#
-# ЧЕСТНОЕ ПРЕДУПРЕЖДЕНИЕ: этот workflow написан без доступа к macOS и ни разу
-# не выполнялся в этой доработке. iOS-слой прошёл только проверку синтаксиса.
-# Откройте первый запуск → логи шага и при необходимости исправьте
-# по сообщениям об ошибках.
-#
-# Минуты: для публичных репозиториев macOS-раннеры бесплатны; в приватных
-# репозиториях минуты macOS тарифицируются с множителем ×10.
-
+# Tests, Debug simulator compilation, Release device compilation, unsigned IPA.
+# A green workflow verifies compilation, not real-device UI/auth/video behavior.
 name: iOS
 
 on:
-  workflow_dispatch:        # ручной запуск из вкладки Actions
+  workflow_dispatch:
   push:
-    branches: [main]        # и на каждый пуш в main
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     name: AnivibeCore tests
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-
-      - name: Select latest Xcode
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
-
-      - name: swift test (AnivibeCore)
-        run: swift test
-        working-directory: Packages/AnivibeCore
+      - name: Show runner toolchain
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          swift --version
+      - name: Static project checks
+        run: python3 scripts/check_project.py
+      - name: Test build configuration scripts
+        run: python3 scripts/test_build_scripts.py
+      - name: Run AnivibeCore tests
+        shell: bash
+        run: |
+          set -o pipefail
+          cd Packages/AnivibeCore
+          swift test 2>&1 | tee ../../swift-test.log
+      - name: Save test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-test-log
+          path: swift-test.log
+          if-no-files-found: warn
+          retention-days: 7
 
   build:
     needs: test
-    name: Unsigned iPhone .ipa
+    name: Compile iOS and package IPA
     runs-on: macos-15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-
-      - name: Select latest Xcode
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
-
-      - name: Show toolchain versions
+      - name: Show runner toolchain
         run: |
+          xcode-select -p
           xcodebuild -version
           swift --version
-
-      # Необязательно: если в репозитории заданы секреты (Settings → Secrets and
-      # variables → Actions), собираем с ними. Без секретов — локальный режим.
-      # Поддерживаются: ANIVIBE_SUPABASE_URL, ANIVIBE_SUPABASE_ANON_KEY,
-      # ANIVIBE_KODIK_TOKEN, ANIVIBE_MANIFEST_URL.
-      # ВНИМАНИЕ: зашитые в .ipa ключи видны всем, кто скачает артефакт сборки.
-      # Kodik-токен и anon-ключ Supabase — клиентские ключи, но всё же лучше
-      # держать репозиторий приватным, если вы их используете.
-      - name: Write Secrets.xcconfig (optional)
+      - name: Prepare optional CI overrides
         env:
           ANIVIBE_SUPABASE_URL: ${{ secrets.ANIVIBE_SUPABASE_URL }}
           ANIVIBE_SUPABASE_ANON_KEY: ${{ secrets.ANIVIBE_SUPABASE_ANON_KEY }}
           ANIVIBE_KODIK_TOKEN: ${{ secrets.ANIVIBE_KODIK_TOKEN }}
           ANIVIBE_MANIFEST_URL: ${{ secrets.ANIVIBE_MANIFEST_URL }}
-        run: |
-          python3 - <<'PYTHON'
-          import os, pathlib
-          keys = ['ANIVIBE_SUPABASE_URL', 'ANIVIBE_SUPABASE_ANON_KEY', 'ANIVIBE_KODIK_TOKEN', 'ANIVIBE_MANIFEST_URL']
-          lines = []
-          for key in keys:
-              value = os.environ.get(key, '')
-              if '\n' in value or '\r' in value:
-                  raise SystemExit('Invalid multiline configuration value: ' + key)
-              if value:
-                  lines.append(key + ' = ' + value.replace('//', '/$()/'))
-          pathlib.Path('Config/Secrets.xcconfig').write_text('\n'.join(lines) + '\n')
-          print('Secrets configuration prepared (values not logged).')
-          PYTHON
-
-      - name: Build unsigned device app
+        run: python3 scripts/write_ci_config.py
+      - name: Compile Debug for iOS Simulator
         shell: bash
         run: |
-          # pipefail: без него ошибка компиляции «терялась» за `| tee`, и шаг был зелёным
-          # с пустым Anivibe.app. Теперь шаг падает и выводит сами ошибки.
+          set -o pipefail
+          xcodebuild build \
+            -project Anivibe.xcodeproj \
+            -scheme Anivibe \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-simulator \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee simulator-build.log
+      - name: Compile Release for iPhone
+        shell: bash
+        run: |
           set -o pipefail
           xcodebuild build \
             -project Anivibe.xcodeproj \
@@ -96,35 +92,43 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            | tee xcodebuild.log \
-            || { echo "::group::Ошибки компиляции"; grep -E "error:|BUILD FAILED" xcodebuild.log | sort -u | head -60; echo "::endgroup::"; exit 1; }
-
-      - name: Package .ipa
+            2>&1 | tee xcodebuild.log
+      - name: Package unsigned IPA
+        shell: bash
         run: |
+          set -euo pipefail
           APP="build/Build/Products/Release-iphoneos/Anivibe.app"
-          test -d "$APP" || { echo "Не найдено $APP — смотрите xcodebuild.log"; exit 1; }
-          test -f "$APP/Info.plist" || { echo "В $APP нет Info.plist — сборка неполная"; ls -la "$APP"; exit 1; }
+          test -f "$APP/Info.plist"
+          test -f "$APP/Anivibe"
           rm -rf Payload Anivibe.ipa
           mkdir Payload
           ditto "$APP" "Payload/Anivibe.app"
-          # ditto — штатный упаковщик Apple: корректный zip, который читают Sideloadly/AltStore.
           ditto -c -k --norsrc --keepParent Payload Anivibe.ipa
-          echo "Содержимое .ipa (проверка):"
-          unzip -l Anivibe.ipa | grep -E "Payload/Anivibe.app/(Info.plist|Anivibe)$"
-          unzip -l Anivibe.ipa | grep -q "Payload/Anivibe.app/Info.plist" || { echo "В .ipa нет Info.plist"; exit 1; }
-          ls -lh Anivibe.ipa
-
-      - name: Upload artifact
+          unzip -t Anivibe.ipa
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('Anivibe.ipa') as archive:
+              names = set(archive.namelist())
+              for required in ['Payload/Anivibe.app/Info.plist', 'Payload/Anivibe.app/Anivibe']:
+                  if required not in names:
+                      raise SystemExit('Incomplete IPA: ' + required)
+          print('IPA structure verified')
+          PY
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: Anivibe-unsigned-ipa-r${{ github.run_number }}
           path: Anivibe.ipa
+          if-no-files-found: error
           retention-days: 14
           compression-level: 0
-
-      - name: Upload build log (при ошибке)
-        if: failure()
+      - name: Save build logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: xcodebuild-log
-          path: xcodebuild.log
+          name: ios-build-logs
+          path: |
+            simulator-build.log
+            xcodebuild.log
+          if-no-files-found: warn
+          retention-days: 7

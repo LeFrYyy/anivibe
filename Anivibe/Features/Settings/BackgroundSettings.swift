@@ -128,7 +128,8 @@ struct BackgroundSettingsView: View {
                 guard let photo = try await selected.loadTransferable(type: BackgroundPhoto.self) else { throw CocoaError(.fileReadCorruptFile) }
                 defer { try? FileManager.default.removeItem(at: photo.url) }
                 let image = await Task.detached(priority: .userInitiated) { BackgroundStore.thumbnail(url: photo.url) }.value
-                guard !Task.isCancelled, let image else { return }
+                guard !Task.isCancelled else { return }
+                guard let image else { throw CocoaError(.fileReadCorruptFile) }
                 draft = image; error = nil
             } catch { if !Task.isCancelled { self.error = "Не удалось прочитать изображение. Попробуйте другой файл." } }
         }

@@ -12,6 +12,7 @@ final class GoogleOAuthCoordinator: NSObject, ASWebAuthenticationPresentationCon
         let challenge = Self.base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
         let redirect = URL(string: "anivibe://auth/callback?state=\(state)")!
         let url = await makeURL(redirect, challenge)
+        defer { session = nil }
         let callback: URL = try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "anivibe") { callback, error in
                 if let callback { continuation.resume(returning: callback) }
@@ -22,7 +23,6 @@ final class GoogleOAuthCoordinator: NSObject, ASWebAuthenticationPresentationCon
             self.session = session
             if !session.start() { continuation.resume(throwing: CocoaError(.featureUnsupported)) }
         }
-        defer { session = nil }
         let components = URLComponents(url: callback, resolvingAgainstBaseURL: false)
         let query = components?.queryItems ?? []
         guard callback.scheme == "anivibe", callback.host == "auth", callback.path == "/callback",

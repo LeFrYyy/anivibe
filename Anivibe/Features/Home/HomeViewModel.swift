@@ -11,6 +11,7 @@ final class HomeViewModel {
     private(set) var recommendationsBasis: String?
     private(set) var recentEpisodes: [AiredEpisode] = []
     @ObservationIgnored private var lastRecommendationSource: Int?
+    @ObservationIgnored private var recommendationRequestID: UUID?
 
     func load(catalog: CatalogService, force: Bool = false) async {
         if case .loaded = state, !force { return }
@@ -35,11 +36,19 @@ final class HomeViewModel {
         guard let item else {
             recommendations = []
             recommendationsBasis = nil
+            lastRecommendationSource = nil
+            recommendationRequestID = nil
             return
         }
         guard item.anime.id != lastRecommendationSource else { return }
-        lastRecommendationSource = item.anime.id
+        let requestID = UUID()
+        recommendationRequestID = requestID
+        lastRecommendationSource = nil
+        recommendations = []
+        recommendationsBasis = nil
         if let details = try? await catalog.details(id: item.anime.id) {
+            guard recommendationRequestID == requestID, !Task.isCancelled else { return }
+            lastRecommendationSource = item.anime.id
             recommendations = details.recommendations
             recommendationsBasis = item.anime.title
         }

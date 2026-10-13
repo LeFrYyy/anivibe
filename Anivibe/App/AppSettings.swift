@@ -44,11 +44,12 @@ final class AppSettings {
     init(defaults: UserDefaults = .standard, testStreamsDefault: Bool) {
         self.defaults = defaults
         accentHex = defaults.string(forKey: "settings.accentHex")
-        Theme.palette.hex = accentHex
         libraryPinned = defaults.bool(forKey: "settings.libraryPinned")
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .dark
         autoplayNextEpisode = defaults.object(forKey: Keys.autoplay) as? Bool ?? true
         testStreamsEnabled = defaults.object(forKey: Keys.testStreams) as? Bool ?? testStreamsDefault
         anilibriaEnabled = defaults.object(forKey: Keys.anilibria) as? Bool ?? true
+        // Read observable properties only after all stored properties are initialized.
+        Theme.palette.hex = accentHex
     }
 }
