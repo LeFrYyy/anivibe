@@ -1,102 +1,273 @@
 import SwiftUI
 import AnivibeCore
 
+/// Reference-inspired profile. All counters come from real local/account data.
 struct ProfileView: View {
+    let openCollections: () -> Void
     @Environment(AppEnvironment.self) private var env
-    @State private var social = SocialStore()
-    @State private var editProfile = false
     @Environment(SessionStore.self) private var session
     @Environment(LibraryStore.self) private var library
+    @State private var social = SocialStore()
+    @State private var editProfile = false
+    @State private var confirmSignOut = false
+
+    private var currentProfile: UserProfile? {
+        guard let profile = social.profile, profile.userID == session.user?.id else { return nil }
+        return profile
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                if !session.isBackendConfigured {
-                    localModeSection
-                } else if let user = session.user {
-                    accountSection(user)
-                } else {
-                    Section {
-                        AuthFormView()
-                    } header: {
-                        Text("Аккаунт")
-                    } footer: {
-                        Text("Аккаунт нужен только для синхронизации списков, истории и прогресса между устройствами.")
+            ScrollView {
+                LazyVStack(spacing: Theme.Spacing.xl) {
+                    identity
+                    if session.user != nil { socialState }
+                    quickStats
+                    libraryStats
+                    if !session.isBackendConfigured { localMode }
+                    else if session.user == nil {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Ваш Anivibe — на всех устройствах").font(.headline)
+                            Text("Войдите, чтобы синхронизировать библиотеку и прогресс.")
+                                .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                            AuthFormView()
+                        }.profilePanel()
+                    } else { accountDetails }
+                    NavigationLink { AboutView() } label: {
+                        HStack {
+                            Label("О приложении", systemImage: "info.circle")
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
+                        }.foregroundStyle(Theme.textSecondary).frame(minHeight: 44)
+                    }.buttonStyle(.plain)
+                }
+                .padding(.horizontal, Theme.Spacing.l)
+                .padding(.top, Theme.Spacing.l)
+                .padding(.bottom, Theme.Spacing.xl)
+            }
+            .screenBackground()
+            .navigationTitle("Профиль")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if let user = session.user {
+                    ToolbarItem(placement: .topBarLeading) {
+                        NavigationLink { FriendsView(store: social, userID: user.id) } label: {
+                            Image(systemName: "person.crop.circle.badge.magnifyingglass")
+                        }.accessibilityLabel("Поиск пользователей и друзья")
                     }
                 }
-                statsSection
-                Section {
-                    NavigationLink { SettingsView() } label: { Label("Настройки", systemImage: "gearshape") }
-                    NavigationLink { AboutView() } label: { Label("О приложении", systemImage: "info.circle") }
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Настройки")
                 }
             }
-            .navigationTitle("Профиль")
-            .task(id: session.user?.id) { await social.load(service: env.socialService, userID: session.user?.id) }
+            .task(id: session.user?.id) { await reloadProfile() }
+            .refreshable { await reloadProfile() }
             .sheet(isPresented: $editProfile) {
-                if let profile = social.profile { ProfileEditorView(store: social, profile: profile) }
+                if let profile = currentProfile { ProfileEditorView(store: social, profile: profile) }
+            }
+            .onChange(of: session.user?.id) { _, _ in editProfile = false }
+            .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+                Button("Выйти", role: .destructive) { Task { await session.signOut() } }
+                Button("Отмена", role: .cancel) {}
             }
         }
     }
 
-    private var localModeSection: some View {
-        Section {
-            Label("Локальный режим", systemImage: "iphone")
-                .font(.headline)
-            Text("Списки, история и прогресс сохраняются на этом устройстве. Чтобы включить вход и синхронизацию, настройте Supabase (см. README, раздел «Настройка backend»).")
-                .font(.footnote)
-                .foregroundStyle(Theme.textSecondary)
-        }
+    private func reloadProfile() async {
+        await social.load(service: env.socialService, userID: session.user?.id)
     }
 
-    private func accountSection(_ user: AuthUser) -> some View {
-        Section("Аккаунт") {
-            if let profile = social.profile {
-                HStack { ProfileAvatarView(userID: profile.userID, revision: profile.updatedAt, size: 64); Text(profile.displayName).font(.title3.bold()) }
-                if let username = profile.username { Text("@" + username).foregroundStyle(Theme.textSecondary) }
-                else { Text("Выберите username в настройках профиля").font(.footnote) }
-                if !profile.bio.isEmpty { Text(verbatim: profile.bio) }
-                LabeledContent("ID пользователя", value: profile.userID).textSelection(.enabled)
-                LabeledContent("Дата регистрации", value: String(profile.createdAt.prefix(10)))
-                LabeledContent("Видимость", value: profile.visibility.title)
-                Button("Редактировать профиль") { editProfile = true }
-                NavigationLink { FriendsView(store: social, userID: user.id) } label: { Label("Друзья", systemImage: "person.2") }
-            }
-            if social.isLoading { ProgressView("Загружаем профиль…") }
-            if let error = social.errorMessage {
-                Text(error).font(.footnote).foregroundStyle(Theme.danger)
-                Button("Повторить загрузку профиля") { Task { await social.load(service: env.socialService, userID: user.id) } }
-            }
-            LabeledContent("Почта (только вам)", value: user.email ?? "—")
-            HStack {
-                Button {
-                    Task { await session.syncIfNeeded(reason: .manual) }
-                } label: {
-                    Label("Синхронизировать", systemImage: "arrow.triangle.2.circlepath")
+    private var identity: some View {
+        VStack(spacing: 20) {
+            ProfileIdentityView(profile: currentProfile,
+                fallbackName: session.user == nil ? "Мой Anivibe" : "Мой профиль",
+                fallbackSubtitle: session.user == nil ? "Ваша личная история аниме" : "Настройте профиль под себя")
+            if currentProfile != nil {
+                Button { editProfile = true } label: {
+                    Label("Редактировать профиль", systemImage: "pencil")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 48)
                 }
-                .disabled(session.isSyncing)
+                .buttonStyle(.bordered).tint(Theme.accent)
+                .clipShape(Capsule())
+            }
+        }.padding(.vertical, 8)
+    }
+
+    @ViewBuilder private var socialState: some View {
+        if social.isLoading { ProgressView("Обновляем профиль…").font(.subheadline) }
+        if let error = social.errorMessage {
+            VStack(alignment: .leading, spacing: 12) {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.subheadline).foregroundStyle(Theme.danger)
+                Button("Повторить") { Task { await reloadProfile() } }.frame(minHeight: 44)
+            }.profilePanel()
+        }
+    }
+
+    private var quickStats: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            NavigationLink { LibraryView(initialSection: .favorites, embedded: true) } label: {
+                ProfileMetric(value: library.snapshot.favorites.count, title: "Избранное", icon: "heart", tint: Theme.accent)
+            }.buttonStyle(.plain)
+            NavigationLink { LibraryView(initialSection: .history, embedded: true) } label: {
+                ProfileMetric(value: library.snapshot.history.count, title: "Серий в истории", icon: "play.rectangle", tint: Theme.secondaryAccent)
+            }.buttonStyle(.plain)
+            Button(action: openCollections) {
+                ProfileMetric(value: env.collections.collections.count, title: "Коллекции", icon: "square.stack", tint: Theme.accent)
+            }.buttonStyle(.plain)
+            if let user = session.user {
+                NavigationLink { FriendsView(store: social, userID: user.id) } label: {
+                    ProfileMetric(value: social.friendships.filter { $0.status == "accepted" }.count,
+                                  title: "Друзья", icon: "person.2", tint: Theme.secondaryAccent,
+                                  isLoading: social.isLoading || social.errorMessage != nil)
+                }.buttonStyle(.plain)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Image(systemName: "person.2").foregroundStyle(Theme.textSecondary)
+                    Text("После входа").font(.headline)
+                    Text("Друзья").font(.subheadline).foregroundStyle(Theme.textSecondary)
+                }.frame(maxWidth: .infinity, alignment: .leading).profilePanel()
+            }
+        }
+    }
+
+    private var libraryStats: some View {
+        // Single unsorted pass, rather than filtering and sorting for each counter.
+        let counts = library.snapshot.entries.reduce(into: [LibraryStatus: Int]()) { counts, entry in
+            if !entry.isDeleted, !entry.isEmpty, let status = entry.status { counts[status, default: 0] += 1 }
+        }
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Статистика").font(.title3.bold())
+                Spacer()
+                NavigationLink { LibraryView(embedded: true) } label: {
+                    Text("Все списки").font(.subheadline.weight(.semibold)).frame(minHeight: 44)
+                }
+            }
+            if counts.values.reduce(0, +) == 0 {
+                Text("Ваша история начинается здесь. Добавьте первый тайтл в библиотеку.")
+                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+            }
+            ForEach(LibraryStatus.allCases, id: \.self) { status in
+                NavigationLink { LibraryView(initialSection: .list(status), embedded: true) } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: status.systemImage).font(.title3)
+                            .foregroundStyle(statusColor(status)).frame(width: 28)
+                        Text(status.localizedName).foregroundStyle(Theme.textPrimary)
+                        Spacer(minLength: 8)
+                        Text((counts[status] ?? 0).formatted()).font(.headline).monospacedDigit()
+                            .foregroundStyle(Theme.textPrimary)
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                    }.frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+            }
+            if let error = library.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(Theme.danger)
+            }
+        }.profilePanel()
+    }
+
+    private func statusColor(_ status: LibraryStatus) -> Color {
+        switch status {
+        case .watching: return Theme.success
+        case .completed: return Theme.secondaryAccent
+        case .planned: return Theme.accent
+        case .onHold: return Theme.textSecondary
+        }
+    }
+
+    private var localMode: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("На этом устройстве", systemImage: "iphone").font(.headline)
+            Text("Библиотека, история и прогресс сохраняются локально. Вход и синхронизация появятся после настройки Supabase.")
+                .font(.subheadline).foregroundStyle(Theme.textSecondary)
+        }.profilePanel()
+    }
+
+    private var accountDetails: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Label("Синхронизация", systemImage: "arrow.triangle.2.circlepath").font(.headline)
                 Spacer()
                 if session.isSyncing { ProgressView() }
             }
             if let date = session.lastSync {
-                LabeledContent("Последняя синхронизация", value: date.formatted(date: .abbreviated, time: .shortened))
+                Text("Обновлено " + date.formatted(date: .abbreviated, time: .shortened))
+                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
             if let message = session.lastSyncMessage {
-                Text(message).font(.footnote).foregroundStyle(Theme.textSecondary)
+                Text(message).font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
-            Button("Выйти", role: .destructive) { Task { await session.signOut() } }
-        }
+            Button("Синхронизировать сейчас") { Task { await session.syncIfNeeded(reason: .manual) } }
+                .frame(minHeight: 44).disabled(session.isSyncing)
+            Divider()
+            DisclosureGroup("Данные аккаунта · только вам") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(session.user?.email ?? "Почта не указана").textSelection(.enabled)
+                    if let profile = currentProfile {
+                        Text("ID: " + profile.userID).textSelection(.enabled)
+                        Text("Регистрация: " + String(profile.createdAt.prefix(10)))
+                    }
+                    Button("Выйти из аккаунта", role: .destructive) { confirmSignOut = true }.frame(minHeight: 44)
+                }.font(.subheadline).padding(.top, 12)
+            }.font(.subheadline)
+        }.profilePanel()
     }
+}
 
-    private var statsSection: some View {
-        Section("Статистика") {
-            LabeledContent("Смотрю", value: "\(library.snapshot.entries(in: .watching).count)")
-            LabeledContent("Просмотрено", value: "\(library.snapshot.entries(in: .completed).count)")
-            LabeledContent("В избранном", value: "\(library.snapshot.favorites.count)")
-            LabeledContent("Серий в истории", value: "\(library.snapshot.history.count)")
-            if let error = library.errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(Theme.danger).font(.footnote)
+struct ProfileIdentityView: View {
+    let profile: UserProfile?
+    var fallbackName = "Мой профиль"
+    var fallbackSubtitle = "Ваша личная история аниме"
+    var body: some View {
+        VStack(spacing: 12) {
+            Group {
+                if let profile {
+                    ProfileAvatarView(userID: profile.userID, revision: profile.updatedAt, size: 112)
+                } else {
+                    Image(systemName: "person.crop.circle.fill").resizable().scaledToFit()
+                        .foregroundStyle(Theme.accent).frame(width: 112, height: 112)
+                }
             }
-        }
+            .padding(6)
+            .background(Theme.accent.opacity(0.12), in: Circle())
+            .overlay { Circle().strokeBorder(Theme.accent.opacity(0.25), lineWidth: 1) }
+            Text(profile?.displayName ?? fallbackName)
+                .font(.title.bold()).multilineTextAlignment(.center).textSelection(.enabled)
+            if let username = profile?.username {
+                Text("@" + username).font(.subheadline).foregroundStyle(Theme.textSecondary)
+            }
+            Text(profile.flatMap { $0.bio.isEmpty ? nil : $0.bio } ?? fallbackSubtitle)
+                .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            if let profile {
+                Label(profile.visibility.title,
+                      systemImage: profile.visibility == .publicProfile ? "globe" : "lock")
+                    .font(.caption.weight(.medium)).foregroundStyle(Theme.textSecondary)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Theme.surfaceElevated, in: Capsule())
+            }
+        }.frame(maxWidth: .infinity)
+    }
+}
+
+private struct ProfileMetric: View {
+    let value: Int
+    let title: String
+    let icon: String
+    let tint: Color
+    var isLoading = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: icon).font(.title3).foregroundStyle(tint).accessibilityHidden(true)
+            Text(isLoading ? "—" : value.formatted()).font(.title2.bold()).monospacedDigit()
+                .foregroundStyle(Theme.textPrimary)
+            Text(title).font(.subheadline).foregroundStyle(Theme.textSecondary)
+        }.frame(maxWidth: .infinity, alignment: .leading).profilePanel()
+            .accessibilityElement(children: .combine)
     }
 }
 

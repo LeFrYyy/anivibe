@@ -30,8 +30,20 @@ struct LibraryView: View {
     @State private var section: LibrarySection = .list(.watching)
     @State private var confirmClear = false
 
+    private let embedded: Bool
+
+    init(initialSection: LibrarySection = .list(.watching), embedded: Bool = false) {
+        _section = State(initialValue: initialSection)
+        self.embedded = embedded
+    }
+
     var body: some View {
-        NavigationStack {
+        if embedded { libraryContent }
+        else { NavigationStack { libraryContent } }
+    }
+
+    private var libraryContent: some View {
+        Group {
             VStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Theme.Spacing.s) {
@@ -39,9 +51,9 @@ struct LibraryView: View {
                             Button { withAnimation(.easeInOut(duration: 0.15)) { section = s } } label: {
                                 Text("\(s.title) \(count(s))")
                                     .font(.subheadline.weight(.medium))
-                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .padding(.horizontal, 14).frame(minHeight: 44)
                                     .background(section == s ? Theme.accent : Theme.surfaceElevated, in: Capsule())
-                                    .foregroundStyle(section == s ? Color.white : Theme.textPrimary)
+                                    .foregroundStyle(section == s ? Theme.onAccent : Theme.textPrimary)
                             }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(section == s ? .isSelected : [])

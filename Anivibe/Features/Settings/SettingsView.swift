@@ -21,7 +21,7 @@ struct SettingsView: View {
                         Button { settings.accentHex = hex } label: {
                             Circle().fill(Color(UIColor(hexString: hex)!)).frame(width: 36, height: 36)
                                 .overlay { if settings.accentHex == hex { Image(systemName: "checkmark").foregroundStyle(Theme.onAccent) } }
-                        }.buttonStyle(.plain).accessibilityLabel("Цвет \(hex)")
+                        }.frame(minWidth: 44, minHeight: 44).buttonStyle(.plain).accessibilityLabel("Цвет \(hex)")
                     }
                 }
                 ColorPicker("Свой цвет", selection: Binding(get: { Theme.accent }, set: { color in
@@ -70,6 +70,8 @@ struct SettingsView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .screenBackground()
         .navigationTitle("Настройки")
         .task { await reloadProviders() }
     }

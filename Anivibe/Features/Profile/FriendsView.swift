@@ -69,6 +69,8 @@ struct FriendsView: View {
             if store.isLoading || store.isSaving { ProgressView("Обновляем…") }
             if let error = store.errorMessage { Text(error).foregroundStyle(Theme.danger) }
         }
+        .scrollContentBackground(.hidden)
+        .screenBackground()
         .navigationTitle("Друзья")
         .onChange(of: session.user?.id) { _, id in if id != userID { dismiss() } }
         .toolbar { Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.disabled(store.isLoading || store.isSaving) }

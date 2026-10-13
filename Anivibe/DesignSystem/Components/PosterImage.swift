@@ -8,6 +8,7 @@ struct PosterImage: View {
 
     @State private var image: UIImage?
     @State private var failed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         // Размер задаёт только плейсхолдер (он ровно равен предложенному месту),
@@ -39,13 +40,15 @@ struct PosterImage: View {
     }
 
     private func load() async {
-        guard let url else { return }
-        if let hit = ImagePipeline.shared.cached(url) { image = hit; return }
         image = nil
         failed = false
+        guard let url else { return }
+        if let hit = ImagePipeline.shared.cached(url) { image = hit; return }
         do {
             let loaded = try await ImagePipeline.shared.image(for: url)
-            withAnimation(.easeOut(duration: 0.2)) { image = loaded }
+            try Task.checkCancellation()
+            guard self.url == url else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { image = loaded }
         } catch {
             if !Task.isCancelled { failed = true }
         }

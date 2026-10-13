@@ -21,7 +21,7 @@ enum Theme {
         return Color(light: 0x5B3FE0, dark: 0x8467FF)
     }
     static var onAccent: Color {
-        guard let hex = palette.hex, let color = UIColor(hexString: hex) else { return .white }
+        guard let hex = palette.hex, let color = UIColor(hexString: hex) else { return Color(light: 0xFFFFFF, dark: 0x000000) }
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         color.getRed(&r, green: &g, blue: &b, alpha: &a)
         func linear(_ v: CGFloat) -> Double { let x = Double(v); return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4) }
@@ -42,9 +42,9 @@ enum Theme {
     }
 
     enum Radius {
-        static let card: CGFloat = 10
-        static let panel: CGFloat = 14
-        static let chip: CGFloat = 8
+        static let card: CGFloat = 16
+        static let panel: CGFloat = 24
+        static let chip: CGFloat = 10
     }
 
     /// Пропорция постера (2:3).
@@ -78,4 +78,26 @@ extension View {
     func screenBackground() -> some View {
         background(AppScreenBackground().ignoresSafeArea())
     }
+}
+
+/// Material only on panels, never repeated across every scrolling poster.
+/// Opaque fallback respects Reduce Transparency and custom background readability.
+private struct ProfilePanelModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    func body(content: Content) -> some View {
+        content.padding(Theme.Spacing.l)
+            .background {
+                let shape = RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                if reduceTransparency { shape.fill(Theme.surface) }
+                else { shape.fill(.regularMaterial) }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                    .strokeBorder(Theme.separator.opacity(0.7), lineWidth: 0.5)
+            }
+    }
+}
+
+extension View {
+    func profilePanel() -> some View { modifier(ProfilePanelModifier()) }
 }

@@ -1,0 +1,710 @@
+--- a/Anivibe/App/RootView.swift
++++ b/Anivibe/App/RootView.swift
+@@ -5,6 +5,7 @@
+ struct RootView: View {
+     @State private var tab: AppTab = .home
+     @State private var showSplash = true
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+ 
+     var body: some View {
+         ZStack {
+@@ -18,7 +19,7 @@
+                 LibraryView()
+                     .tabItem { Label("Библиотека", systemImage: "books.vertical") }
+                     .tag(AppTab.library)
+-                ProfileView()
++                ProfileView(openCollections: { tab = .home })
+                     .tabItem { Label("Профиль", systemImage: "person.crop.circle") }
+                     .tag(AppTab.profile)
+             }
+@@ -31,7 +32,7 @@
+         }
+         .task {
+             try? await Task.sleep(nanoseconds: 700_000_000)
+-            withAnimation(.easeOut(duration: 0.35)) { showSplash = false }
++            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.35)) { showSplash = false }
+         }
+     }
+ }
+--- a/Anivibe/Core/ImagePipeline.swift
++++ b/Anivibe/Core/ImagePipeline.swift
+@@ -1,16 +1,24 @@
+ import UIKit
++import ImageIO
+ 
+-/// Загрузка постеров с кэшем в памяти (NSCache) и на диске (URLCache).
++/// Bounded decoded-image cache + HTTP disk cache. A shared task coalesces requests
++/// for the same URL; scrolling one cell away does not cancel other subscribers.
+ final class ImagePipeline: @unchecked Sendable {
+     static let shared = ImagePipeline()
+-
+     private let memory = NSCache<NSURL, UIImage>()
+     private let session: URLSession
++    private let lock = NSLock()
++    private struct Flight {
++        let id: UUID
++        let task: Task<UIImage, Error>
++    }
++    private var flights: [URL: Flight] = [:]
+ 
+     private init() {
+-        memory.countLimit = 300
++        memory.countLimit = 160
++        memory.totalCostLimit = 96 * 1024 * 1024
+         let config = URLSessionConfiguration.default
+-        config.urlCache = URLCache(memoryCapacity: 30 * 1024 * 1024, diskCapacity: 300 * 1024 * 1024)
++        config.urlCache = URLCache(memoryCapacity: 16 * 1024 * 1024, diskCapacity: 300 * 1024 * 1024)
+         config.requestCachePolicy = .returnCacheDataElseLoad
+         config.timeoutIntervalForRequest = 20
+         session = URLSession(configuration: config)
+@@ -19,12 +27,40 @@
+     func cached(_ url: URL) -> UIImage? { memory.object(forKey: url as NSURL) }
+ 
+     func image(for url: URL) async throws -> UIImage {
+-        if let hit = memory.object(forKey: url as NSURL) { return hit }
+-        let (data, response) = try await session.data(from: url)
+-        guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? false,
+-              let image = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
+-        let prepared = await image.byPreparingForDisplay() ?? image
+-        memory.setObject(prepared, forKey: url as NSURL)
+-        return prepared
++        try Task.checkCancellation()
++        if let hit = cached(url) { return hit }
++        let flight: Flight = lock.withLock {
++            if let existing = flights[url] { return existing }
++            let id = UUID()
++            let task = Task.detached(priority: .userInitiated) { [self] () throws -> UIImage in
++                // Another request may have completed between the first lookup and lock.
++                if let hit = cached(url) { return hit }
++                let (data, response) = try await session.data(from: url)
++                guard let response = response as? HTTPURLResponse,
++                      (200..<300).contains(response.statusCode) else { throw URLError(.badServerResponse) }
++                guard data.count <= 40 * 1024 * 1024,
++                      let source = CGImageSourceCreateWithData(data as CFData, nil),
++                      let bitmap = CGImageSourceCreateThumbnailAtIndex(source, 0, [
++                        kCGImageSourceCreateThumbnailFromImageAlways: true,
++                        kCGImageSourceThumbnailMaxPixelSize: 1600,
++                        kCGImageSourceCreateThumbnailWithTransform: true,
++                        kCGImageSourceShouldCacheImmediately: true
++                      ] as CFDictionary) else { throw URLError(.cannotDecodeContentData) }
++                let image = UIImage(cgImage: bitmap)
++                let prepared = await image.byPreparingForDisplay() ?? image
++                let cost = prepared.cgImage.map { $0.bytesPerRow * $0.height } ?? bitmap.bytesPerRow * bitmap.height
++                memory.setObject(prepared, forKey: url as NSURL, cost: cost)
++                return prepared
++            }
++            let created = Flight(id: id, task: task)
++            flights[url] = created
++            return created
++        }
++        defer {
++            lock.withLock { if flights[url]?.id == flight.id { flights[url] = nil } }
++        }
++        let image = try await flight.task.value
++        try Task.checkCancellation()
++        return image
+     }
+ }
+--- a/Anivibe/DesignSystem/Components/PosterCard.swift
++++ b/Anivibe/DesignSystem/Components/PosterCard.swift
+@@ -17,9 +17,9 @@
+                 .overlay(alignment: .topLeading) {
+                     if let badge {
+                         Text(badge)
+-                            .font(.caption2.weight(.semibold))
+-                            .padding(.horizontal, 6).padding(.vertical, 3)
+-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
++                            .font(.caption.weight(.semibold))
++                            .padding(.horizontal, 8).padding(.vertical, 5)
++                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                             .padding(6)
+                     }
+                 }
+@@ -80,14 +80,15 @@
+ 
+ struct ProgressBar: View {
+     let value: Double
++    private var safeValue: Double { value.isFinite ? min(1, max(0, value)) : 0 }
+     var body: some View {
+         GeometryReader { geo in
+             ZStack(alignment: .leading) {
+                 Capsule().fill(Color.black.opacity(0.45))
+                 Capsule().fill(Theme.secondaryAccent)
+-                    .frame(width: max(4, geo.size.width * min(1, max(0, value))))
++                    .frame(width: max(4, geo.size.width * safeValue))
+             }
+         }
+-        .accessibilityLabel("Просмотрено \(Int(value * 100))%")
++        .accessibilityLabel("Просмотрено \(Int(safeValue * 100))%")
+     }
+ }
+--- a/Anivibe/DesignSystem/Components/PosterImage.swift
++++ b/Anivibe/DesignSystem/Components/PosterImage.swift
+@@ -8,6 +8,7 @@
+ 
+     @State private var image: UIImage?
+     @State private var failed = false
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+ 
+     var body: some View {
+         // Размер задаёт только плейсхолдер (он ровно равен предложенному месту),
+@@ -39,13 +40,15 @@
+     }
+ 
+     private func load() async {
++        image = nil
++        failed = false
+         guard let url else { return }
+         if let hit = ImagePipeline.shared.cached(url) { image = hit; return }
+-        image = nil
+-        failed = false
+         do {
+             let loaded = try await ImagePipeline.shared.image(for: url)
+-            withAnimation(.easeOut(duration: 0.2)) { image = loaded }
++            try Task.checkCancellation()
++            guard self.url == url else { return }
++            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { image = loaded }
+         } catch {
+             if !Task.isCancelled { failed = true }
+         }
+--- a/Anivibe/DesignSystem/Theme.swift
++++ b/Anivibe/DesignSystem/Theme.swift
+@@ -21,7 +21,7 @@
+         return Color(light: 0x5B3FE0, dark: 0x8467FF)
+     }
+     static var onAccent: Color {
+-        guard let hex = palette.hex, let color = UIColor(hexString: hex) else { return .white }
++        guard let hex = palette.hex, let color = UIColor(hexString: hex) else { return Color(light: 0xFFFFFF, dark: 0x000000) }
+         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+         color.getRed(&r, green: &g, blue: &b, alpha: &a)
+         func linear(_ v: CGFloat) -> Double { let x = Double(v); return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4) }
+@@ -42,9 +42,9 @@
+     }
+ 
+     enum Radius {
+-        static let card: CGFloat = 10
+-        static let panel: CGFloat = 14
+-        static let chip: CGFloat = 8
++        static let card: CGFloat = 16
++        static let panel: CGFloat = 24
++        static let chip: CGFloat = 10
+     }
+ 
+     /// Пропорция постера (2:3).
+@@ -79,3 +79,25 @@
+         background(AppScreenBackground().ignoresSafeArea())
+     }
+ }
++
++/// Material only on panels, never repeated across every scrolling poster.
++/// Opaque fallback respects Reduce Transparency and custom background readability.
++private struct ProfilePanelModifier: ViewModifier {
++    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
++    func body(content: Content) -> some View {
++        content.padding(Theme.Spacing.l)
++            .background {
++                let shape = RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
++                if reduceTransparency { shape.fill(Theme.surface) }
++                else { shape.fill(.regularMaterial) }
++            }
++            .overlay {
++                RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
++                    .strokeBorder(Theme.separator.opacity(0.7), lineWidth: 0.5)
++            }
++    }
++}
++
++extension View {
++    func profilePanel() -> some View { modifier(ProfilePanelModifier()) }
++}
+--- a/Anivibe/Features/Library/LibraryView.swift
++++ b/Anivibe/Features/Library/LibraryView.swift
+@@ -30,8 +30,20 @@
+     @State private var section: LibrarySection = .list(.watching)
+     @State private var confirmClear = false
+ 
++    private let embedded: Bool
++
++    init(initialSection: LibrarySection = .list(.watching), embedded: Bool = false) {
++        _section = State(initialValue: initialSection)
++        self.embedded = embedded
++    }
++
+     var body: some View {
+-        NavigationStack {
++        if embedded { libraryContent }
++        else { NavigationStack { libraryContent } }
++    }
++
++    private var libraryContent: some View {
++        Group {
+             VStack(spacing: 0) {
+                 ScrollView(.horizontal, showsIndicators: false) {
+                     HStack(spacing: Theme.Spacing.s) {
+@@ -39,9 +51,9 @@
+                             Button { withAnimation(.easeInOut(duration: 0.15)) { section = s } } label: {
+                                 Text("\(s.title) \(count(s))")
+                                     .font(.subheadline.weight(.medium))
+-                                    .padding(.horizontal, 12).padding(.vertical, 7)
++                                    .padding(.horizontal, 14).frame(minHeight: 44)
+                                     .background(section == s ? Theme.accent : Theme.surfaceElevated, in: Capsule())
+-                                    .foregroundStyle(section == s ? Color.white : Theme.textPrimary)
++                                    .foregroundStyle(section == s ? Theme.onAccent : Theme.textPrimary)
+                             }
+                             .buttonStyle(.plain)
+                             .accessibilityAddTraits(section == s ? .isSelected : [])
+--- a/Anivibe/Features/Profile/FriendsView.swift
++++ b/Anivibe/Features/Profile/FriendsView.swift
+@@ -69,6 +69,8 @@
+             if store.isLoading || store.isSaving { ProgressView("Обновляем…") }
+             if let error = store.errorMessage { Text(error).foregroundStyle(Theme.danger) }
+         }
++        .scrollContentBackground(.hidden)
++        .screenBackground()
+         .navigationTitle("Друзья")
+         .onChange(of: session.user?.id) { _, id in if id != userID { dismiss() } }
+         .toolbar { Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.disabled(store.isLoading || store.isSaving) }
+--- a/Anivibe/Features/Profile/ProfileEditorView.swift
++++ b/Anivibe/Features/Profile/ProfileEditorView.swift
+@@ -23,11 +23,21 @@
+         _bio = State(initialValue: profile.bio)
+         _visibility = State(initialValue: profile.visibility)
+     }
++    private var validationMessage: String? {
++        do {
++            _ = try ProfileDraft(username: username, displayName: displayName, bio: bio, visibility: visibility).validated()
++            return nil
++        } catch let error as SocialError { return error.userMessage }
++        catch { return "Проверьте поля профиля." }
++    }
+     var body: some View {
+         NavigationStack {
+             Form {
+                 Section("Аватар") {
+-                    ProfileAvatarView(userID: profile.userID, revision: store.profile?.updatedAt ?? profile.updatedAt, size: 80)
++                    VStack(spacing: 12) {
++                        ProfileAvatarView(userID: profile.userID, revision: store.profile?.updatedAt ?? profile.updatedAt, size: 112)
++                        Text("Ваш образ в Anivibe").font(.headline)
++                    }.frame(maxWidth: .infinity).padding(.vertical, 16)
+                     PhotosPicker(selection: $photo, matching: .images) { Label("Выбрать из галереи", systemImage: "photo") }
+                         .disabled(store.isSaving || preparingPhoto)
+                     if store.profile?.avatarPath != nil {
+@@ -53,6 +63,7 @@
+                     Text("Публичный профиль доступен авторизованным пользователям и поиску по username. Приватный виден вам, вашим друзьям и адресатам ваших запросов в друзья. Почта, библиотека и история не публикуются.")
+                         .font(.footnote).foregroundStyle(Theme.textSecondary)
+                 }
++                if let validationMessage { Text(validationMessage).font(.footnote).foregroundStyle(Theme.danger) }
+                 if let error = store.errorMessage { Text(error).foregroundStyle(Theme.danger) }
+                 Section {
+                     Button {
+@@ -60,10 +71,14 @@
+                         Task { if await store.save(draft) { dismiss() } }
+                     } label: {
+                         HStack { Text("Сохранить"); Spacer(); if store.isSaving { ProgressView() } }
+-                    }.disabled(store.isSaving || store.isLoading || preparingPhoto)
++                    }.disabled(store.isSaving || store.isLoading || preparingPhoto || validationMessage != nil)
+                 }
+             }
++            .scrollContentBackground(.hidden)
++            .screenBackground()
+             .navigationTitle("Редактировать профиль")
++            .navigationBarTitleDisplayMode(.inline)
++            .interactiveDismissDisabled(store.isSaving || preparingPhoto)
+             .task(id: photo) {
+                 guard let photo else { return }
+                 preparingPhoto = true; photoError = nil
+@@ -92,12 +107,12 @@
+ struct PublicProfileView: View {
+     let profile: UserProfile
+     var body: some View {
+-        Form {
+-            Section {
+-                HStack { ProfileAvatarView(userID: profile.userID, revision: profile.updatedAt, size: 64); Text(profile.displayName) }
+-                if let username = profile.username { Text("@" + username).foregroundStyle(Theme.textSecondary) }
+-                if !profile.bio.isEmpty { Text(verbatim: profile.bio) }
+-            }
+-        }.navigationTitle("Профиль")
++        ScrollView {
++            ProfileIdentityView(profile: profile, fallbackSubtitle: "Пока ничего о себе")
++                .padding(24).profilePanel().padding(16)
++        }
++        .screenBackground()
++        .navigationTitle("Профиль")
++        .navigationBarTitleDisplayMode(.inline)
+     }
+ }
+--- a/Anivibe/Features/Profile/ProfileView.swift
++++ b/Anivibe/Features/Profile/ProfileView.swift
+@@ -1,102 +1,273 @@
+ import SwiftUI
+ import AnivibeCore
+ 
++/// Reference-inspired profile. All counters come from real local/account data.
+ struct ProfileView: View {
++    let openCollections: () -> Void
+     @Environment(AppEnvironment.self) private var env
++    @Environment(SessionStore.self) private var session
++    @Environment(LibraryStore.self) private var library
+     @State private var social = SocialStore()
+     @State private var editProfile = false
+-    @Environment(SessionStore.self) private var session
+-    @Environment(LibraryStore.self) private var library
++    @State private var confirmSignOut = false
++
++    private var currentProfile: UserProfile? {
++        guard let profile = social.profile, profile.userID == session.user?.id else { return nil }
++        return profile
++    }
+ 
+     var body: some View {
+         NavigationStack {
+-            List {
+-                if !session.isBackendConfigured {
+-                    localModeSection
+-                } else if let user = session.user {
+-                    accountSection(user)
+-                } else {
+-                    Section {
+-                        AuthFormView()
+-                    } header: {
+-                        Text("Аккаунт")
+-                    } footer: {
+-                        Text("Аккаунт нужен только для синхронизации списков, истории и прогресса между устройствами.")
++            ScrollView {
++                LazyVStack(spacing: Theme.Spacing.xl) {
++                    identity
++                    if session.user != nil { socialState }
++                    quickStats
++                    libraryStats
++                    if !session.isBackendConfigured { localMode }
++                    else if session.user == nil {
++                        VStack(alignment: .leading, spacing: 12) {
++                            Text("Ваш Anivibe — на всех устройствах").font(.headline)
++                            Text("Войдите, чтобы синхронизировать библиотеку и прогресс.")
++                                .font(.subheadline).foregroundStyle(Theme.textSecondary)
++                            AuthFormView()
++                        }.profilePanel()
++                    } else { accountDetails }
++                    NavigationLink { AboutView() } label: {
++                        HStack {
++                            Label("О приложении", systemImage: "info.circle")
++                            Spacer()
++                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
++                        }.foregroundStyle(Theme.textSecondary).frame(minHeight: 44)
++                    }.buttonStyle(.plain)
++                }
++                .padding(.horizontal, Theme.Spacing.l)
++                .padding(.top, Theme.Spacing.l)
++                .padding(.bottom, Theme.Spacing.xl)
++            }
++            .screenBackground()
++            .navigationTitle("Профиль")
++            .navigationBarTitleDisplayMode(.inline)
++            .toolbar {
++                if let user = session.user {
++                    ToolbarItem(placement: .topBarLeading) {
++                        NavigationLink { FriendsView(store: social, userID: user.id) } label: {
++                            Image(systemName: "person.crop.circle.badge.magnifyingglass")
++                        }.accessibilityLabel("Поиск пользователей и друзья")
+                     }
+                 }
+-                statsSection
+-                Section {
+-                    NavigationLink { SettingsView() } label: { Label("Настройки", systemImage: "gearshape") }
+-                    NavigationLink { AboutView() } label: { Label("О приложении", systemImage: "info.circle") }
+-                }
+-            }
+-            .navigationTitle("Профиль")
+-            .task(id: session.user?.id) { await social.load(service: env.socialService, userID: session.user?.id) }
++                ToolbarItem(placement: .topBarTrailing) {
++                    NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }
++                        .accessibilityLabel("Настройки")
++                }
++            }
++            .task(id: session.user?.id) { await reloadProfile() }
++            .refreshable { await reloadProfile() }
+             .sheet(isPresented: $editProfile) {
+-                if let profile = social.profile { ProfileEditorView(store: social, profile: profile) }
+-            }
+-        }
+-    }
+-
+-    private var localModeSection: some View {
+-        Section {
+-            Label("Локальный режим", systemImage: "iphone")
+-                .font(.headline)
+-            Text("Списки, история и прогресс сохраняются на этом устройстве. Чтобы включить вход и синхронизацию, настройте Supabase (см. README, раздел «Настройка backend»).")
+-                .font(.footnote)
+-                .foregroundStyle(Theme.textSecondary)
+-        }
+-    }
+-
+-    private func accountSection(_ user: AuthUser) -> some View {
+-        Section("Аккаунт") {
+-            if let profile = social.profile {
+-                HStack { ProfileAvatarView(userID: profile.userID, revision: profile.updatedAt, size: 64); Text(profile.displayName).font(.title3.bold()) }
+-                if let username = profile.username { Text("@" + username).foregroundStyle(Theme.textSecondary) }
+-                else { Text("Выберите username в настройках профиля").font(.footnote) }
+-                if !profile.bio.isEmpty { Text(verbatim: profile.bio) }
+-                LabeledContent("ID пользователя", value: profile.userID).textSelection(.enabled)
+-                LabeledContent("Дата регистрации", value: String(profile.createdAt.prefix(10)))
+-                LabeledContent("Видимость", value: profile.visibility.title)
+-                Button("Редактировать профиль") { editProfile = true }
+-                NavigationLink { FriendsView(store: social, userID: user.id) } label: { Label("Друзья", systemImage: "person.2") }
+-            }
+-            if social.isLoading { ProgressView("Загружаем профиль…") }
+-            if let error = social.errorMessage {
+-                Text(error).font(.footnote).foregroundStyle(Theme.danger)
+-                Button("Повторить загрузку профиля") { Task { await social.load(service: env.socialService, userID: user.id) } }
+-            }
+-            LabeledContent("Почта (только вам)", value: user.email ?? "—")
++                if let profile = currentProfile { ProfileEditorView(store: social, profile: profile) }
++            }
++            .onChange(of: session.user?.id) { _, _ in editProfile = false }
++            .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmSignOut, titleVisibility: .visible) {
++                Button("Выйти", role: .destructive) { Task { await session.signOut() } }
++                Button("Отмена", role: .cancel) {}
++            }
++        }
++    }
++
++    private func reloadProfile() async {
++        await social.load(service: env.socialService, userID: session.user?.id)
++    }
++
++    private var identity: some View {
++        VStack(spacing: 20) {
++            ProfileIdentityView(profile: currentProfile,
++                fallbackName: session.user == nil ? "Мой Anivibe" : "Мой профиль",
++                fallbackSubtitle: session.user == nil ? "Ваша личная история аниме" : "Настройте профиль под себя")
++            if currentProfile != nil {
++                Button { editProfile = true } label: {
++                    Label("Редактировать профиль", systemImage: "pencil")
++                        .font(.subheadline.weight(.semibold))
++                        .frame(maxWidth: .infinity, minHeight: 48)
++                }
++                .buttonStyle(.bordered).tint(Theme.accent)
++                .clipShape(Capsule())
++            }
++        }.padding(.vertical, 8)
++    }
++
++    @ViewBuilder private var socialState: some View {
++        if social.isLoading { ProgressView("Обновляем профиль…").font(.subheadline) }
++        if let error = social.errorMessage {
++            VStack(alignment: .leading, spacing: 12) {
++                Label(error, systemImage: "exclamationmark.triangle")
++                    .font(.subheadline).foregroundStyle(Theme.danger)
++                Button("Повторить") { Task { await reloadProfile() } }.frame(minHeight: 44)
++            }.profilePanel()
++        }
++    }
++
++    private var quickStats: some View {
++        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
++            NavigationLink { LibraryView(initialSection: .favorites, embedded: true) } label: {
++                ProfileMetric(value: library.snapshot.favorites.count, title: "Избранное", icon: "heart", tint: Theme.accent)
++            }.buttonStyle(.plain)
++            NavigationLink { LibraryView(initialSection: .history, embedded: true) } label: {
++                ProfileMetric(value: library.snapshot.history.count, title: "Серий в истории", icon: "play.rectangle", tint: Theme.secondaryAccent)
++            }.buttonStyle(.plain)
++            Button(action: openCollections) {
++                ProfileMetric(value: env.collections.collections.count, title: "Коллекции", icon: "square.stack", tint: Theme.accent)
++            }.buttonStyle(.plain)
++            if let user = session.user {
++                NavigationLink { FriendsView(store: social, userID: user.id) } label: {
++                    ProfileMetric(value: social.friendships.filter { $0.status == "accepted" }.count,
++                                  title: "Друзья", icon: "person.2", tint: Theme.secondaryAccent,
++                                  isLoading: social.isLoading || social.errorMessage != nil)
++                }.buttonStyle(.plain)
++            } else {
++                VStack(alignment: .leading, spacing: 8) {
++                    Image(systemName: "person.2").foregroundStyle(Theme.textSecondary)
++                    Text("После входа").font(.headline)
++                    Text("Друзья").font(.subheadline).foregroundStyle(Theme.textSecondary)
++                }.frame(maxWidth: .infinity, alignment: .leading).profilePanel()
++            }
++        }
++    }
++
++    private var libraryStats: some View {
++        // Single unsorted pass, rather than filtering and sorting for each counter.
++        let counts = library.snapshot.entries.reduce(into: [LibraryStatus: Int]()) { counts, entry in
++            if !entry.isDeleted, !entry.isEmpty, let status = entry.status { counts[status, default: 0] += 1 }
++        }
++        return VStack(alignment: .leading, spacing: 16) {
+             HStack {
+-                Button {
+-                    Task { await session.syncIfNeeded(reason: .manual) }
+-                } label: {
+-                    Label("Синхронизировать", systemImage: "arrow.triangle.2.circlepath")
+-                }
+-                .disabled(session.isSyncing)
++                Text("Статистика").font(.title3.bold())
++                Spacer()
++                NavigationLink { LibraryView(embedded: true) } label: {
++                    Text("Все списки").font(.subheadline.weight(.semibold)).frame(minHeight: 44)
++                }
++            }
++            if counts.values.reduce(0, +) == 0 {
++                Text("Ваша история начинается здесь. Добавьте первый тайтл в библиотеку.")
++                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
++            }
++            ForEach(LibraryStatus.allCases, id: \.self) { status in
++                NavigationLink { LibraryView(initialSection: .list(status), embedded: true) } label: {
++                    HStack(spacing: 12) {
++                        Image(systemName: status.systemImage).font(.title3)
++                            .foregroundStyle(statusColor(status)).frame(width: 28)
++                        Text(status.localizedName).foregroundStyle(Theme.textPrimary)
++                        Spacer(minLength: 8)
++                        Text((counts[status] ?? 0).formatted()).font(.headline).monospacedDigit()
++                            .foregroundStyle(Theme.textPrimary)
++                        Image(systemName: "chevron.right").font(.caption.weight(.semibold))
++                            .foregroundStyle(Theme.textSecondary)
++                    }.frame(minHeight: 44).contentShape(Rectangle())
++                }.buttonStyle(.plain)
++            }
++            if let error = library.errorMessage {
++                Label(error, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(Theme.danger)
++            }
++        }.profilePanel()
++    }
++
++    private func statusColor(_ status: LibraryStatus) -> Color {
++        switch status {
++        case .watching: return Theme.success
++        case .completed: return Theme.secondaryAccent
++        case .planned: return Theme.accent
++        case .onHold: return Theme.textSecondary
++        }
++    }
++
++    private var localMode: some View {
++        VStack(alignment: .leading, spacing: 12) {
++            Label("На этом устройстве", systemImage: "iphone").font(.headline)
++            Text("Библиотека, история и прогресс сохраняются локально. Вход и синхронизация появятся после настройки Supabase.")
++                .font(.subheadline).foregroundStyle(Theme.textSecondary)
++        }.profilePanel()
++    }
++
++    private var accountDetails: some View {
++        VStack(alignment: .leading, spacing: 16) {
++            HStack {
++                Label("Синхронизация", systemImage: "arrow.triangle.2.circlepath").font(.headline)
+                 Spacer()
+                 if session.isSyncing { ProgressView() }
+             }
+             if let date = session.lastSync {
+-                LabeledContent("Последняя синхронизация", value: date.formatted(date: .abbreviated, time: .shortened))
++                Text("Обновлено " + date.formatted(date: .abbreviated, time: .shortened))
++                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+             }
+             if let message = session.lastSyncMessage {
+-                Text(message).font(.footnote).foregroundStyle(Theme.textSecondary)
+-            }
+-            Button("Выйти", role: .destructive) { Task { await session.signOut() } }
+-        }
+-    }
+-
+-    private var statsSection: some View {
+-        Section("Статистика") {
+-            LabeledContent("Смотрю", value: "\(library.snapshot.entries(in: .watching).count)")
+-            LabeledContent("Просмотрено", value: "\(library.snapshot.entries(in: .completed).count)")
+-            LabeledContent("В избранном", value: "\(library.snapshot.favorites.count)")
+-            LabeledContent("Серий в истории", value: "\(library.snapshot.history.count)")
+-            if let error = library.errorMessage {
+-                Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(Theme.danger).font(.footnote)
+-            }
+-        }
++                Text(message).font(.subheadline).foregroundStyle(Theme.textSecondary)
++            }
++            Button("Синхронизировать сейчас") { Task { await session.syncIfNeeded(reason: .manual) } }
++                .frame(minHeight: 44).disabled(session.isSyncing)
++            Divider()
++            DisclosureGroup("Данные аккаунта · только вам") {
++                VStack(alignment: .leading, spacing: 12) {
++                    Text(session.user?.email ?? "Почта не указана").textSelection(.enabled)
++                    if let profile = currentProfile {
++                        Text("ID: " + profile.userID).textSelection(.enabled)
++                        Text("Регистрация: " + String(profile.createdAt.prefix(10)))
++                    }
++                    Button("Выйти из аккаунта", role: .destructive) { confirmSignOut = true }.frame(minHeight: 44)
++                }.font(.subheadline).padding(.top, 12)
++            }.font(.subheadline)
++        }.profilePanel()
++    }
++}
++
++struct ProfileIdentityView: View {
++    let profile: UserProfile?
++    var fallbackName = "Мой профиль"
++    var fallbackSubtitle = "Ваша личная история аниме"
++    var body: some View {
++        VStack(spacing: 12) {
++            Group {
++                if let profile {
++                    ProfileAvatarView(userID: profile.userID, revision: profile.updatedAt, size: 112)
++                } else {
++                    Image(systemName: "person.crop.circle.fill").resizable().scaledToFit()
++                        .foregroundStyle(Theme.accent).frame(width: 112, height: 112)
++                }
++            }
++            .padding(6)
++            .background(Theme.accent.opacity(0.12), in: Circle())
++            .overlay { Circle().strokeBorder(Theme.accent.opacity(0.25), lineWidth: 1) }
++            Text(profile?.displayName ?? fallbackName)
++                .font(.title.bold()).multilineTextAlignment(.center).textSelection(.enabled)
++            if let username = profile?.username {
++                Text("@" + username).font(.subheadline).foregroundStyle(Theme.textSecondary)
++            }
++            Text(profile.flatMap { $0.bio.isEmpty ? nil : $0.bio } ?? fallbackSubtitle)
++                .font(.subheadline).foregroundStyle(Theme.textSecondary)
++                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
++            if let profile {
++                Label(profile.visibility.title,
++                      systemImage: profile.visibility == .publicProfile ? "globe" : "lock")
++                    .font(.caption.weight(.medium)).foregroundStyle(Theme.textSecondary)
++                    .padding(.horizontal, 12).padding(.vertical, 6)
++                    .background(Theme.surfaceElevated, in: Capsule())
++            }
++        }.frame(maxWidth: .infinity)
++    }
++}
++
++private struct ProfileMetric: View {
++    let value: Int
++    let title: String
++    let icon: String
++    let tint: Color
++    var isLoading = false
++    var body: some View {
++        VStack(alignment: .leading, spacing: 8) {
++            Image(systemName: icon).font(.title3).foregroundStyle(tint).accessibilityHidden(true)
++            Text(isLoading ? "—" : value.formatted()).font(.title2.bold()).monospacedDigit()
++                .foregroundStyle(Theme.textPrimary)
++            Text(title).font(.subheadline).foregroundStyle(Theme.textSecondary)
++        }.frame(maxWidth: .infinity, alignment: .leading).profilePanel()
++            .accessibilityElement(children: .combine)
+     }
+ }
+ 
+--- a/Anivibe/Features/Settings/SettingsView.swift
++++ b/Anivibe/Features/Settings/SettingsView.swift
+@@ -21,7 +21,7 @@
+                         Button { settings.accentHex = hex } label: {
+                             Circle().fill(Color(UIColor(hexString: hex)!)).frame(width: 36, height: 36)
+                                 .overlay { if settings.accentHex == hex { Image(systemName: "checkmark").foregroundStyle(Theme.onAccent) } }
+-                        }.buttonStyle(.plain).accessibilityLabel("Цвет \(hex)")
++                        }.frame(minWidth: 44, minHeight: 44).buttonStyle(.plain).accessibilityLabel("Цвет \(hex)")
+                     }
+                 }
+                 ColorPicker("Свой цвет", selection: Binding(get: { Theme.accent }, set: { color in
+@@ -70,6 +70,8 @@
+                 }
+             }
+         }
++        .scrollContentBackground(.hidden)
++        .screenBackground()
+         .navigationTitle("Настройки")
+         .task { await reloadProviders() }
+     }

@@ -23,11 +23,21 @@ struct ProfileEditorView: View {
         _bio = State(initialValue: profile.bio)
         _visibility = State(initialValue: profile.visibility)
     }
+    private var validationMessage: String? {
+        do {
+            _ = try ProfileDraft(username: username, displayName: displayName, bio: bio, visibility: visibility).validated()
+            return nil
+        } catch let error as SocialError { return error.userMessage }
+        catch { return "Проверьте поля профиля." }
+    }
     var body: some View {
         NavigationStack {
             Form {
                 Section("Аватар") {
-                    ProfileAvatarView(userID: profile.userID, revision: store.profile?.updatedAt ?? profile.updatedAt, size: 80)
+                    VStack(spacing: 12) {
+                        ProfileAvatarView(userID: profile.userID, revision: store.profile?.updatedAt ?? profile.updatedAt, size: 112)
+                        Text("Ваш образ в Anivibe").font(.headline)
+                    }.frame(maxWidth: .infinity).padding(.vertical, 16)
                     PhotosPicker(selection: $photo, matching: .images) { Label("Выбрать из галереи", systemImage: "photo") }
                         .disabled(store.isSaving || preparingPhoto)
                     if store.profile?.avatarPath != nil {
@@ -53,6 +63,7 @@ struct ProfileEditorView: View {
                     Text("Публичный профиль доступен авторизованным пользователям и поиску по username. Приватный виден вам, вашим друзьям и адресатам ваших запросов в друзья. Почта, библиотека и история не публикуются.")
                         .font(.footnote).foregroundStyle(Theme.textSecondary)
                 }
+                if let validationMessage { Text(validationMessage).font(.footnote).foregroundStyle(Theme.danger) }
                 if let error = store.errorMessage { Text(error).foregroundStyle(Theme.danger) }
                 Section {
                     Button {
@@ -60,10 +71,14 @@ struct ProfileEditorView: View {
                         Task { if await store.save(draft) { dismiss() } }
                     } label: {
                         HStack { Text("Сохранить"); Spacer(); if store.isSaving { ProgressView() } }
-                    }.disabled(store.isSaving || store.isLoading || preparingPhoto)
+                    }.disabled(store.isSaving || store.isLoading || preparingPhoto || validationMessage != nil)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .screenBackground()
             .navigationTitle("Редактировать профиль")
+            .navigationBarTitleDisplayMode(.inline)
+            .interactiveDismissDisabled(store.isSaving || preparingPhoto)
             .task(id: photo) {
                 guard let photo else { return }
                 preparingPhoto = true; photoError = nil
@@ -92,12 +107,12 @@ struct ProfileEditorView: View {
 struct PublicProfileView: View {
     let profile: UserProfile
     var body: some View {
-        Form {
-            Section {
-                HStack { ProfileAvatarView(userID: profile.userID, revision: profile.updatedAt, size: 64); Text(profile.displayName) }
-                if let username = profile.username { Text("@" + username).foregroundStyle(Theme.textSecondary) }
-                if !profile.bio.isEmpty { Text(verbatim: profile.bio) }
-            }
-        }.navigationTitle("Профиль")
+        ScrollView {
+            ProfileIdentityView(profile: profile, fallbackSubtitle: "Пока ничего о себе")
+                .padding(24).profilePanel().padding(16)
+        }
+        .screenBackground()
+        .navigationTitle("Профиль")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

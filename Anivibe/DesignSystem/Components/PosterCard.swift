@@ -17,9 +17,9 @@ struct PosterCard: View {
                 .overlay(alignment: .topLeading) {
                     if let badge {
                         Text(badge)
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
                             .padding(6)
                     }
                 }
@@ -80,14 +80,15 @@ extension Anime {
 
 struct ProgressBar: View {
     let value: Double
+    private var safeValue: Double { value.isFinite ? min(1, max(0, value)) : 0 }
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.black.opacity(0.45))
                 Capsule().fill(Theme.secondaryAccent)
-                    .frame(width: max(4, geo.size.width * min(1, max(0, value))))
+                    .frame(width: max(4, geo.size.width * safeValue))
             }
         }
-        .accessibilityLabel("Просмотрено \(Int(value * 100))%")
+        .accessibilityLabel("Просмотрено \(Int(safeValue * 100))%")
     }
 }

@@ -5,6 +5,7 @@ enum AppTab: Hashable { case home, catalog, library, profile }
 struct RootView: View {
     @State private var tab: AppTab = .home
     @State private var showSplash = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -18,7 +19,7 @@ struct RootView: View {
                 LibraryView()
                     .tabItem { Label("Библиотека", systemImage: "books.vertical") }
                     .tag(AppTab.library)
-                ProfileView()
+                ProfileView(openCollections: { tab = .home })
                     .tabItem { Label("Профиль", systemImage: "person.crop.circle") }
                     .tag(AppTab.profile)
             }
@@ -31,7 +32,7 @@ struct RootView: View {
         }
         .task {
             try? await Task.sleep(nanoseconds: 700_000_000)
-            withAnimation(.easeOut(duration: 0.35)) { showSplash = false }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.35)) { showSplash = false }
         }
     }
 }
