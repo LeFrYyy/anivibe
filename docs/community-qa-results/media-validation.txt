@@ -1,0 +1,5 @@
+orbit: actual MIME, bytes, dimensions, duration, codec and SHA-256 verified
+duet: actual MIME, bytes, dimensions, duration, codec and SHA-256 verified
+horizon: actual MIME, bytes, dimensions, duration, codec and SHA-256 verified
+afterglow: actual MIME, bytes, dimensions, duration, codec and SHA-256 verified
+4 curated items verified. No arbitrary media upload endpoint exists.

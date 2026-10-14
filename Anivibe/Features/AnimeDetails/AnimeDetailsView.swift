@@ -12,6 +12,7 @@ struct AnimeDetailsView: View {
     @State private var showEpisodes = false
     @State private var showFolders = false
     @State private var showSources = false
+    @State private var showSharedWatch = false
     @State private var pendingPlayback: PlaybackRequest?
     @State private var kodikModel = KodikOnlineViewModel()
     @State private var startingPlayback = false
@@ -81,6 +82,7 @@ struct AnimeDetailsView: View {
                 }
             }
         }
+        .sheet(isPresented: $showSharedWatch) { NavigationStack { WatchInviteView(anilistId: anime.id).toolbar { Button("Закрыть") { showSharedWatch = false } } } }
         .sheet(isPresented: $showFolders) { FolderSelectionSheet(anime: anime.snapshot) }
         .screenBackground()
         .navigationTitle(anime.title.preferred)
@@ -145,6 +147,11 @@ struct AnimeDetailsView: View {
             }
             .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
             .disabled(startingPlayback || !detailsLoaded || (episodes.isEmpty && env.kodik == nil))
+
+            if env.session.user != nil {
+                Button { showSharedWatch = true } label: { Label("Смотреть вместе", systemImage: "play.rectangle.on.rectangle").frame(maxWidth: .infinity, minHeight: 44) }
+                    .buttonStyle(.bordered).tint(Theme.accent)
+            }
 
             HStack(spacing: Theme.Spacing.m) {
                 Button {

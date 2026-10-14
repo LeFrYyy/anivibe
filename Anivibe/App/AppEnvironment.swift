@@ -13,6 +13,8 @@ final class AppEnvironment {
     let settings: AppSettings
     let cache: MetadataCache
     let socialService: SupabaseSocialService?
+    let communityService: SupabaseCommunityService?
+    let community = CommunityStore()
     /// Клиент Kodik (веб-плеер с озвучками). `nil`, если токен не задан в конфигурации.
     let kodik: KodikClient?
     /// Пользовательские папки с аниме на главной.
@@ -20,7 +22,7 @@ final class AppEnvironment {
     @ObservationIgnored private var started = false
 
     init(configuration: AppConfiguration, catalog: CatalogService, registry: ProviderRegistry, library: LibraryStore,
-         session: SessionStore, settings: AppSettings, cache: MetadataCache, kodik: KodikClient? = nil, socialService: SupabaseSocialService? = nil) {
+         session: SessionStore, settings: AppSettings, cache: MetadataCache, kodik: KodikClient? = nil, socialService: SupabaseSocialService? = nil, communityService: SupabaseCommunityService? = nil) {
         self.configuration = configuration
         self.catalog = catalog
         self.registry = registry
@@ -31,6 +33,7 @@ final class AppEnvironment {
         self.cache = cache
         self.kodik = kodik
         self.socialService = socialService
+        self.communityService = communityService
     }
 
     static func live(bundle: Bundle = .main) -> AppEnvironment {
@@ -79,10 +82,12 @@ final class AppEnvironment {
         var auth: SupabaseAuthClient?
         var sync: SupabaseSyncService?
         var socialService: SupabaseSocialService?
+        var communityService: SupabaseCommunityService?
         if let supa = config.supabase {
             let client = SupabaseAuthClient(config: supa, transport: transport, store: KeychainTokenStore())
             auth = client
             socialService = SupabaseSocialService(config: supa, auth: client, transport: transport)
+            communityService = SupabaseCommunityService(config: supa, auth: client, transport: transport)
             sync = SupabaseSyncService(config: supa, transport: transport, auth: client, library: repository)
         }
         let session = SessionStore(auth: auth, sync: sync, library: library, collections: CollectionsStore())
@@ -90,7 +95,7 @@ final class AppEnvironment {
 
 
         return AppEnvironment(configuration: config, catalog: catalog, registry: registry, library: library,
-                              session: session, settings: settings, cache: cache, kodik: kodik, socialService: socialService)
+                              session: session, settings: settings, cache: cache, kodik: kodik, socialService: socialService, communityService: communityService)
     }
 
     func start() async {

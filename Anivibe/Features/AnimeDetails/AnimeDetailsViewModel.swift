@@ -50,4 +50,5 @@ struct PlaybackRequest: Identifiable {
     let episodes: [Episode]
     let episode: Int
     let startPosition: Double
+    var sharedWatch: SharedWatchPlayback? = nil
 }

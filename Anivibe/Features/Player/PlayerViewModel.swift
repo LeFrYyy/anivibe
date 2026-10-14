@@ -22,7 +22,7 @@ final class PlayerViewModel {
     }
 
     let anime: Anime
-    let episodes: [Episode]
+    private(set) var episodes: [Episode]
     private(set) var episodeNumber: Int
     private(set) var phase: Phase = .searchingSources
     private(set) var candidates: [SourceCandidate] = []
@@ -45,6 +45,7 @@ final class PlayerViewModel {
     private(set) var selectedSubtitleID: String?
     private(set) var nextEpisodeCountdown: Int?
 
+    var sharedWatch: SharedWatchCoordinator?
     let player = AVPlayer()
     private let registry: ProviderRegistry
     private let library: LibraryStore
@@ -92,7 +93,7 @@ final class PlayerViewModel {
     }
 
     var currentEpisode: Episode? { episodes.first { $0.number == episodeNumber } }
-    var hasNextEpisode: Bool { episodes.contains { $0.number == episodeNumber + 1 } }
+    var hasNextEpisode: Bool { sharedWatch != nil || episodes.contains { $0.number == episodeNumber + 1 } }
     var hasPreviousEpisode: Bool { episodes.contains { $0.number == episodeNumber - 1 } }
     var otherAvailableCandidates: [SourceCandidate] {
         candidates.filter { $0.availability.isAvailable && $0.providerID != activeCandidate?.providerID }
@@ -114,6 +115,7 @@ final class PlayerViewModel {
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
+        sharedWatch?.stop()
         saveProgress(force: true)
         loadTask?.cancel()
         countdownTask?.cancel()
@@ -133,7 +135,7 @@ final class PlayerViewModel {
         guard let episode = activeCandidate?.episode else { return nil }
         return KodikProvider.playerURL(for: episode)
     }
-    func pauseForWebPlayer() { saveProgress(force: true); player.pause() }
+    func pauseForWebPlayer() { saveProgress(force: true); sharedWatch?.setActive(false); player.pause() }
 
     // MARK: - Sources
 
@@ -404,7 +406,8 @@ final class PlayerViewModel {
         preparationTask?.cancel()
         preparationTask = nil
         phase = .ready
-        if resumeAfterLoad { player.playImmediately(atRate: playbackSpeed) } else { player.pause() }
+        if sharedWatch != nil { player.pause(); sharedWatch?.playerStateChanged() }
+        else if resumeAfterLoad { player.playImmediately(atRate: playbackSpeed) } else { player.pause() }
     }
 
     // MARK: - Tracks
@@ -489,6 +492,7 @@ final class PlayerViewModel {
     }
 
     func setSpeed(_ speed: Float) {
+        guard sharedWatch == nil else { return }
         playbackSpeed = speed
         UserDefaults.standard.set(Double(speed), forKey: KodikPreferences.speedKey)
         player.defaultRate = speed
@@ -496,6 +500,7 @@ final class PlayerViewModel {
     }
 
     func selectVoice(_ voice: String) {
+        guard sharedWatch == nil else { return }
         guard voice != selectedVoice, let candidate = activeCandidate, let episode = candidate.episode,
               candidate.providerID == KodikProvider.providerID else { return }
         UserDefaults.standard.set(voice, forKey: KodikPreferences.voiceKey)
@@ -518,6 +523,7 @@ final class PlayerViewModel {
     // MARK: - Transport
 
     func togglePlay() {
+        if let sharedWatch { sharedWatch.togglePlay(); return }
         if isPlaying { player.pause(); saveProgress(force: true) } else { cancelCountdown(); player.play() }
     }
 
@@ -526,6 +532,11 @@ final class PlayerViewModel {
     }
 
     func seek(to seconds: Double) {
+        if let sharedWatch { sharedWatch.seek(to: seconds); return }
+        performSeek(to: seconds)
+    }
+
+    private func performSeek(to seconds: Double) {
         guard !isTornDown, phase == .ready, seconds.isFinite, let item = player.currentItem else { return }
         let upper = duration > 0 ? duration : seconds
         let target = min(max(0, seconds), upper)
@@ -553,9 +564,31 @@ final class PlayerViewModel {
         }
     }
 
+    func sharedPause() { player.pause() }
+    func useSharedSpeed() { playbackSpeed = 1; player.defaultRate = 1 }
+
+    func applySharedPlayback(position: Double, playing: Bool) {
+        guard !isTornDown, phase == .ready, position.isFinite else { player.pause(); return }
+        if !isScrubbing, WatchReconciliation.needsSeek(local: currentTime, target: position) { performSeek(to: position) }
+        let atEnd = duration > 0 && currentTime >= duration - 0.3
+        if playing && !atEnd && !isBuffering && !isScrubbing { player.playImmediately(atRate: 1) }
+        else { player.pause() }
+    }
+
+    func configureSharedEpisode(_ episode: CanonicalWatchEpisode, mapping: WatchSourceMapping, position: Double) {
+        guard !isTornDown else { return }
+        saveProgress(force: true); player.pause(); clearItemObservers(); player.replaceCurrentItem(with: nil)
+        let sourceEpisode = mapping.sourceEpisode
+        episodes = [Episode(animeId: anime.id, season: sourceEpisode.season ?? 1, number: sourceEpisode.number,
+                            title: episode.label, sourceEpisode: sourceEpisode)]
+        episodeNumber = sourceEpisode.number; source = nil; hasActuallyPlayed = false; resumeAfterLoad = false
+        startPosition = max(0, position); currentTime = startPosition; findSources()
+    }
+
     // MARK: - Episodes
 
     func selectEpisode(_ number: Int) {
+        guard sharedWatch == nil else { return }
         guard !isTornDown, number != episodeNumber || phase != .ready,
               episodes.contains(where: { $0.number == number }) else { return }
         saveProgress(force: true)
@@ -573,6 +606,7 @@ final class PlayerViewModel {
     }
 
     func playNextEpisode() {
+        if let sharedWatch { sharedWatch.nextEpisode(); return }
         cancelCountdown()
         guard hasNextEpisode else { return }
         selectEpisode(episodeNumber + 1)

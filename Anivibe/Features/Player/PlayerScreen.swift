@@ -22,10 +22,19 @@ struct PlayerScreen: View {
             if model == nil {
                 let settings = env.settings
                 let vm = PlayerViewModel(request: request, registry: env.registry, library: env.library,
-                                         accountID: env.session.user?.id, autoplayNext: { settings.autoplayNextEpisode })
+                                         accountID: env.session.user?.id, autoplayNext: { request.sharedWatch == nil && settings.autoplayNextEpisode })
                 model = vm
+                if let context = request.sharedWatch, let service = env.communityService {
+                    let coordinator = SharedWatchCoordinator(model: vm, context: context, service: service, session: env.session)
+                    vm.useSharedSpeed()
+                    vm.sharedWatch = coordinator
+                    coordinator.start()
+                }
                 vm.start()
             }
+        }
+        .onChange(of: env.session.user?.id) { _, id in
+            if let expected = request.sharedWatch?.userId, id != expected { close() }
         }
         .onDisappear {
             model?.teardown()
@@ -69,6 +78,21 @@ private struct PlayerContent: View {
                 .accessibilityAddTraits(.allowsDirectInteraction)
 
             phaseOverlay
+            if let watch = model.sharedWatch {
+                VStack {
+                    Text(watch.message).font(.caption).foregroundStyle(.white)
+                        .padding(10).background(.black.opacity(0.7), in: Capsule()).padding(.horizontal, 12)
+                        .accessibilityLabel("Совместный просмотр: " + watch.message)
+                    Spacer()
+                    if let room = watch.room {
+                        HStack {
+                            Text("Участники: \(Int((room.member(room.hostId)?.watchedProgress ?? 0) * 100))% / \(Int((room.member(room.guestId)?.watchedProgress ?? 0) * 100))%")
+                            Spacer()
+                            Text("Вместе: \(Int(room.overlapProgress * 100))%")
+                        }.font(.caption.monospacedDigit()).foregroundStyle(.white).padding(12).background(.black.opacity(0.65))
+                    }
+                }.padding(.top, 12).allowsHitTesting(false)
+            }
 
             if controlsVisible || model.phase != .ready {
                 PlayerControlsView(model: model, pip: pip, close: close,
@@ -109,7 +133,13 @@ private struct PlayerContent: View {
         .sheet(isPresented: $showEpisodes) {
             EpisodesSheet(model: model).presentationDetents([.medium, .large])
         }
-        .onChange(of: model.isPlaying) { _, _ in scheduleHide() }
+        .onChange(of: model.isPlaying) { _, _ in scheduleHide(); model.sharedWatch?.playerStateChanged() }
+        .onChange(of: model.isBuffering) { _, _ in model.sharedWatch?.playerStateChanged() }
+        .onChange(of: model.isScrubbing) { _, _ in model.sharedWatch?.playerStateChanged() }
+        .onChange(of: scenePhase) { _, phase in
+            model.sharedWatch?.setActive(phase == .active && webPlayback == nil)
+        }
+        .onChange(of: webPlayback != nil) { _, open in model.sharedWatch?.setActive(!open && scenePhase == .active) }
         .onChange(of: interactionBlocked) { _, _ in scheduleHide() }
         .onAppear { scheduleHide() }
         .onDisappear { hideTask?.cancel() }

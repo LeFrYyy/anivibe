@@ -95,7 +95,7 @@ public enum SocialError: Error, Equatable, Sendable {
         case .profileMissing: return "Профиль не найден. Проверьте миграцию профилей на сервере."
         case .denied: return "Действие недоступно или запрос уже изменился. Обновите список."
         case .rateLimited: return "Слишком много запросов. Подождите и попробуйте позже."
-        case .friendLimit: return "Достигнут лимит друзей (10) у одного из участников."
+        case .friendLimit: return "Достигнут текущий лимит друзей у одного из участников."
         case .duplicate: return "Запрос уже существует или пользователь уже в друзьях."
         case .server: return "Не удалось выполнить действие на сервере. Попробуйте позже."
         }
@@ -130,8 +130,8 @@ public actor SupabaseSocialService {
     }
     public func searchProfiles(username: String) async throws -> [UserProfile] {
         let term = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard (3...24).contains(term.count), term.range(of: "^[a-z0-9_]+$", options: .regularExpression) != nil else {
-            throw SocialError.validation("Для поиска введите минимум 3 символа username: латиница, цифры или _.")
+        guard (3...100).contains(term.count) else {
+            throw SocialError.validation("Введите имя, username или полный ID: от 3 до 100 символов.")
         }
         let session = try await auth.validSession()
         let data = try await request(path: "rpc/anivibe_search_profiles", method: "POST", body: try JSONEncoder().encode(["p_username": term]), session: session)

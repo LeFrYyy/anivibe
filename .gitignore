@@ -21,3 +21,6 @@ supabase/.branches/
 build-simulator/
 __pycache__/
 *.log
+
+# Disposable integration-test restart checkpoint
+supabase/tests/community-persistence-checkpoint.json

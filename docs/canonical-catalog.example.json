@@ -1,0 +1,39 @@
+{
+  "anime": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "anilist_id": 1,
+      "title": "ЗАМЕНИТЬ: реальное название и AniList ID",
+      "episodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000101",
+          "catalog_key": "season:1:episode:1",
+          "label": "Серия 1",
+          "kind": "episode",
+          "sort_order": 1,
+          "duration": null,
+          "duration_verified": false,
+          "sources": [
+            {
+              "id": "00000000-0000-4000-8000-000000001001",
+              "provider_id": "kodik",
+              "source_identity": "ЗАМЕНИТЬ: точный ID источника/сезона/элемента",
+              "voice": "ЗАМЕНИТЬ: название озвучки",
+              "source_offset": 0,
+              "source_duration": null,
+              "verified": false,
+              "source_episode": {
+                "providerID": "kodik",
+                "titleID": "ЗАМЕНИТЬ",
+                "season": 1,
+                "number": 1,
+                "title": "Серия 1",
+                "payload": "ЗАМЕНИТЬ: точный payload ProviderEpisode из разрешённого источника"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

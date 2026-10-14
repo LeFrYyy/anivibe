@@ -31,9 +31,9 @@ struct FriendsView: View {
                 }
                 switch tab {
                 case .friends:
-                    Text("Друзья · \(accepted.count)/10").font(.headline)
+                    Text("Друзья · \(accepted.count)/\(env.community.hub?.friendCap.description ?? "—")").font(.headline)
                     if accepted.isEmpty && !store.isLoading {
-                        SocialEmptyPanel(icon: "person.2", title: "Хорошие истории лучше вместе", message: "Найдите друга по username и отправьте приглашение.")
+                        SocialEmptyPanel(icon: "person.2", title: "Хорошие истории лучше вместе", message: "Найдите друга по имени, username или ID и отправьте приглашение.")
                         Button("Найти друзей") { tab = .search }.buttonStyle(.borderedProminent).controlSize(.large).foregroundStyle(Theme.onAccent)
                     }
                     ForEach(accepted) { edge in friendCard(edge) }
@@ -48,7 +48,7 @@ struct FriendsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 12) {
                             Image(systemName: "magnifyingglass").foregroundStyle(Theme.textSecondary)
-                            TextField("Username друга", text: $username)
+                            TextField("Имя, username или ID", text: $username)
                                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                                 .submitLabel(.search).onSubmit { Task { await runSearch() } }
                             if store.isSearching { ProgressView() }
@@ -66,7 +66,7 @@ struct FriendsView: View {
                     if store.searchResults.isEmpty && !store.isSearching {
                         SocialEmptyPanel(icon: "person.crop.circle.badge.magnifyingglass",
                             title: lastSearch.isEmpty ? "Найдите своих" : "Ничего не найдено",
-                            message: "Введите username без @. Приватные профили могут быть недоступны в поиске.")
+                            message: "Введите имя, username или полный ID. Приватные профили могут быть недоступны в поиске.")
                     }
                 }
             }.padding(16).padding(.bottom, 16)
@@ -100,6 +100,7 @@ struct FriendsView: View {
     private func reload() async {
         guard session.user?.id == userID else { return }
         await store.load(service: env.socialService, userID: userID)
+        await env.community.refresh(service: env.communityService, userId: userID)
     }
     @ViewBuilder private func friendCard(_ edge: Friendship) -> some View {
         let id = edge.peerID(for: userID)
@@ -107,6 +108,9 @@ struct FriendsView: View {
             if let profile = store.peers[id] {
                 NavigationLink { PublicProfileView(profile: profile) } label: { SocialPersonRow(profile: profile) }.buttonStyle(.plain)
             } else { Label("Профиль недоступен", systemImage: "lock").foregroundStyle(Theme.textSecondary) }
+            if edge.status == "accepted", let friend = env.community.hub?.friends.first(where: { $0.peerId == id }) {
+                Text("Уровень \(friend.level.level) · \(friend.episodes) серий вместе").font(.caption).foregroundStyle(Theme.textSecondary)
+            }
             relationAction(id)
         }.profilePanel()
     }
@@ -151,6 +155,12 @@ struct PublicProfileView: View {
                     ProfileIdentityView(profile: details.profile, fallbackSubtitle: "Пока ничего о себе")
                         .padding(.vertical, 12)
                     if details.profile.userID != session.user?.id { friendshipActions }
+                    if relationships.edge(with: profile.userID)?.status == "accepted" {
+                        NavigationLink { WatchInviteView(peerId: profile.userID) } label: {
+                            Label("Смотреть вместе", systemImage: "play.rectangle.on.rectangle").frame(maxWidth: .infinity, minHeight: 44)
+                        }.buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+                        NavigationLink("Уровень дружбы и ежедневное задание") { FriendshipProgressView(peerId: profile.userID) }
+                    }
                     counters(details)
                     friendPreview(details)
                     historyPreview(details)

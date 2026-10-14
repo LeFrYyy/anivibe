@@ -23,6 +23,16 @@ struct ProfileView: View {
                 LazyVStack(spacing: Theme.Spacing.xl) {
                     identity
                     if session.user != nil { socialState }
+                    if session.user != nil {
+                        NavigationLink { CommunityView() } label: {
+                            HStack {
+                                Label("Вместе в Anivibe", systemImage: "play.rectangle.on.rectangle").font(.headline)
+                                Spacer()
+                                if let hub = env.community.hub { Text("\(hub.balance) монет").font(.caption.monospacedDigit()).foregroundStyle(Theme.accent) }
+                                Image(systemName: "chevron.right").font(.caption)
+                            }.profilePanel()
+                        }.buttonStyle(.plain)
+                    }
                     quickStats
                     libraryStats
                     if !session.isBackendConfigured { localMode }
@@ -242,15 +252,14 @@ struct ProfileIdentityView: View {
         VStack(spacing: 12) {
             Group {
                 if let profile {
-                    ProfileAvatarView(userID: profile.userID, revision: profile.avatarPath ?? profile.updatedAt, size: 112, avatarAvailable: profile.avatarPath != nil)
+                    CosmeticProfileIdentity(profile: profile)
                 } else {
                     Image(systemName: "person.crop.circle.fill").resizable().scaledToFit()
                         .foregroundStyle(Theme.accent).frame(width: 112, height: 112)
+                        .padding(6).background(Theme.accent.opacity(0.12), in: Circle())
+                        .overlay { Circle().strokeBorder(Theme.accent.opacity(0.25), lineWidth: 1) }
                 }
             }
-            .padding(6)
-            .background(Theme.accent.opacity(0.12), in: Circle())
-            .overlay { Circle().strokeBorder(Theme.accent.opacity(0.25), lineWidth: 1) }
             Text(profile?.displayName ?? fallbackName)
                 .font(.title.bold()).multilineTextAlignment(.center).textSelection(.enabled)
             if let username = profile?.username {
@@ -260,6 +269,7 @@ struct ProfileIdentityView: View {
                 .font(.subheadline).foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             if let profile {
+                Text("ID: " + profile.userID).font(.caption2.monospaced()).foregroundStyle(Theme.textSecondary).textSelection(.enabled)
                 Label(profile.visibility.title,
                       systemImage: profile.visibility == .publicProfile ? "globe" : "lock")
                     .font(.caption.weight(.medium)).foregroundStyle(Theme.textSecondary)

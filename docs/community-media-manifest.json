@@ -1,0 +1,62 @@
+[
+  {
+    "id": "orbit",
+    "name": "Орбита",
+    "category": "avatar",
+    "price": 100,
+    "asset_key": "orbit",
+    "poster_key": "orbit",
+    "mime": "video/mp4",
+    "byte_length": 9181,
+    "width": 192,
+    "height": 192,
+    "duration": 3,
+    "sha256": "bdda5104aa196ff159235881fe9352dc9f55a351bdc0068b2878174f9a78244e",
+    "poster_sha256": "4defd2757c6363c593971499cca4b0e6f531955d157ddbc7d8940ecfb1f8bb75"
+  },
+  {
+    "id": "duet",
+    "name": "Созвездие",
+    "category": "avatar",
+    "price": 250,
+    "asset_key": "duet",
+    "poster_key": "duet",
+    "mime": "video/mp4",
+    "byte_length": 12482,
+    "width": 192,
+    "height": 192,
+    "duration": 3,
+    "sha256": "3514e8021e4881d8d605a7fb499c40dcbd002e958e74f62cb69a8034ffc637aa",
+    "poster_sha256": "c642fbbedc405321549c65dc6cba55365c8f175f557cc34fec42cd859bcd9760"
+  },
+  {
+    "id": "horizon",
+    "name": "Тихий горизонт",
+    "category": "banner",
+    "price": 150,
+    "asset_key": "horizon",
+    "poster_key": "horizon",
+    "mime": "image/png",
+    "byte_length": 20797,
+    "width": 640,
+    "height": 240,
+    "duration": null,
+    "sha256": "1c9e9de3dc3d0b813e3316b9fb874578605010dafe5a373cb28429aedb1ae805",
+    "poster_sha256": "1c9e9de3dc3d0b813e3316b9fb874578605010dafe5a373cb28429aedb1ae805"
+  },
+  {
+    "id": "afterglow",
+    "name": "Послесвечение",
+    "category": "animated_banner",
+    "price": 400,
+    "asset_key": "afterglow",
+    "poster_key": "afterglow",
+    "mime": "video/mp4",
+    "byte_length": 38665,
+    "width": 640,
+    "height": 240,
+    "duration": 3,
+    "sha256": "9e61d7b82f6ac806b7aa8000d5e1e26621069ada687c5507d87ee19b675832c1",
+    "poster_sha256": "1c9e9de3dc3d0b813e3316b9fb874578605010dafe5a373cb28429aedb1ae805"
+  }
+]

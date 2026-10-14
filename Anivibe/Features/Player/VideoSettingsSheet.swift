@@ -29,14 +29,16 @@ struct VideoSettingsSheet: View {
                 }
                 if !model.voices.isEmpty {
                     Section("Озвучка") {
+                        if model.sharedWatch != nil { Text("Озвучка общего просмотра выбирается в комнате из подтверждённых сопоставлений.").font(.footnote) }
                         ForEach(model.voices, id: \.self) { voice in
-                            choice(voice, selected: voice == model.selectedVoice) { model.selectVoice(voice) }
+                            choice(voice, selected: voice == model.selectedVoice) { model.selectVoice(voice) }.disabled(model.sharedWatch != nil)
                         }
                     }
                 }
                 Section("Скорость") {
+                    if model.sharedWatch != nil { Text("Совместный просмотр синхронизируется на 1×. Одиночная скорость не изменяется.").font(.footnote) }
                     ForEach(PlayerViewModel.speeds, id: \.self) { speed in
-                        choice(KodikPlayerScreen.speedLabel(speed), selected: speed == model.playbackSpeed) { model.setSpeed(speed) }
+                        choice(KodikPlayerScreen.speedLabel(speed), selected: speed == model.playbackSpeed) { model.setSpeed(speed) }.disabled(model.sharedWatch != nil)
                     }
                 }
                 Section("Аудиодорожки") {

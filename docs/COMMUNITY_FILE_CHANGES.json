@@ -1,0 +1,195 @@
+{
+  "baseline": "Anivibe-improved.zip",
+  "admin_implemented": false,
+  "production_verified": false,
+  "changes": [
+    {
+      "path": ".github/workflows/ios.yml",
+      "status": "modified"
+    },
+    {
+      "path": ".gitignore",
+      "status": "modified"
+    },
+    {
+      "path": "Anivibe/App/AppEnvironment.swift",
+      "status": "modified"
+    },
+    {
+      "path": "Anivibe/App/RootView.swift",
+      "status": "modified"
+    },
+    {
+      "path": "Anivibe/Core/CommunityStore.swift",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Features/AnimeDetails/AnimeDetailsView.swift",
+      "status": "modified"
+    },
+    {
+      "path": "Anivibe/Features/AnimeDetails/AnimeDetailsViewModel.swift",
+      "status": "modified"
+    },
+    {
+      "path": "Anivibe/Features/Community/CommunityViews.swift",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Features/Community/CosmeticMediaView.swift",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Features/Community/SharedWatchCoordinator.swift",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Features/Community/WatchRoomViews.swift",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Features/Player/PlayerScreen.swift",
+      "status": "modified"
+    },
+    {
+      "path": "Anivibe/Features/Player/PlayerViewModel.swift",
+      "status": "modified"
+    },
+    {
+      "path": "Anivibe/Features/Player/VideoSettingsSheet.swift",
+      "status": "modified"
+    },
+    {
+      "path": "Anivibe/Features/Profile/FriendsView.swift",
+      "status": "modified"
+    },
+    {
+      "path": "Anivibe/Features/Profile/ProfileView.swift",
+      "status": "modified"
+    },
+    {
+      "path": "Anivibe/Resources/CommunityMedia/afterglow.mp4",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Resources/CommunityMedia/afterglow.png",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Resources/CommunityMedia/duet.mp4",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Resources/CommunityMedia/duet.png",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Resources/CommunityMedia/horizon.png",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Resources/CommunityMedia/orbit.mp4",
+      "status": "added"
+    },
+    {
+      "path": "Anivibe/Resources/CommunityMedia/orbit.png",
+      "status": "added"
+    },
+    {
+      "path": "Packages/AnivibeCore/Sources/AnivibeCore/Community/CommunityModels.swift",
+      "status": "added"
+    },
+    {
+      "path": "Packages/AnivibeCore/Sources/AnivibeCore/Community/SupabaseCommunityService.swift",
+      "status": "added"
+    },
+    {
+      "path": "Packages/AnivibeCore/Sources/AnivibeCore/Sync/SupabaseSocialService.swift",
+      "status": "modified"
+    },
+    {
+      "path": "Packages/AnivibeCore/Tests/AnivibeCoreTests/CommunityTests.swift",
+      "status": "added"
+    },
+    {
+      "path": "README.md",
+      "status": "modified"
+    },
+    {
+      "path": "UPDATE_WINDOWS.cmd",
+      "status": "modified"
+    },
+    {
+      "path": "docs/BUILD_STATUS.md",
+      "status": "modified"
+    },
+    {
+      "path": "docs/COMMUNITY_QA.md",
+      "status": "added"
+    },
+    {
+      "path": "docs/COMMUNITY_REQUIREMENTS_RU.md",
+      "status": "added"
+    },
+    {
+      "path": "docs/COMMUNITY_SETUP_RU.md",
+      "status": "added"
+    },
+    {
+      "path": "docs/canonical-catalog.example.json",
+      "status": "added"
+    },
+    {
+      "path": "docs/community-media-manifest.json",
+      "status": "added"
+    },
+    {
+      "path": "docs/community-media-preview.jpg",
+      "status": "added"
+    },
+    {
+      "path": "docs/community-qa-results/lexical-checks.txt",
+      "status": "added"
+    },
+    {
+      "path": "docs/community-qa-results/media-validation.txt",
+      "status": "added"
+    },
+    {
+      "path": "docs/community-qa-results/project-checks.txt",
+      "status": "added"
+    },
+    {
+      "path": "docs/community-qa-results/source-regressions.txt",
+      "status": "added"
+    },
+    {
+      "path": "scripts/import_canonical_catalog.py",
+      "status": "added"
+    },
+    {
+      "path": "scripts/test_community_source.py",
+      "status": "added"
+    },
+    {
+      "path": "scripts/validate_community_media.py",
+      "status": "added"
+    },
+    {
+      "path": "supabase/migrations/20261014000000_community_foundation.sql",
+      "status": "added"
+    },
+    {
+      "path": "supabase/migrations/20261014010000_shared_watch.sql",
+      "status": "added"
+    },
+    {
+      "path": "supabase/migrations/20261014020000_curated_cosmetics.sql",
+      "status": "added"
+    },
+    {
+      "path": "supabase/tests/community_test.py",
+      "status": "added"
+    }
+  ]
+}

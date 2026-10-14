@@ -34,6 +34,8 @@ jobs:
         run: python3 scripts/test_motion_performance.py
       - name: Test build configuration scripts
         run: python3 scripts/test_build_scripts.py
+      - name: Community source contracts
+        run: python3 scripts/test_community_source.py
       - name: Run AnivibeCore tests
         shell: bash
         run: |
@@ -81,6 +83,22 @@ jobs:
           set -o pipefail
           python3 supabase/tests/social_test.py 2>&1 | tee social-database-tests.log
           python3 supabase/tests/comments_test.py 2>&1 | tee -a social-database-tests.log
+          python3 supabase/tests/community_test.py 2>&1 | tee -a social-database-tests.log
+      - name: Verify durable rewards after PostgreSQL server restart
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 supabase/tests/community_test.py --write-persistence
+          docker restart "${{ job.services.postgres.id }}"
+          for attempt in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; then break; fi
+            sleep 1
+          done
+          python3 supabase/tests/community_test.py --verify-persistence
+      - name: Validate actual curated media
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y ffmpeg python3-pil
+          /usr/bin/python3 scripts/validate_community_media.py
       - name: Save database test log
         if: always()
         uses: actions/upload-artifact@v4
