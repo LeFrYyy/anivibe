@@ -48,14 +48,16 @@ struct LibraryView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Theme.Spacing.s) {
                         ForEach(LibrarySection.allCases) { s in
-                            Button { withAnimation(.easeInOut(duration: 0.15)) { section = s } } label: {
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) { section = s }
+                            } label: {
                                 Text("\(s.title) \(count(s))")
                                     .font(.subheadline.weight(.medium))
                                     .padding(.horizontal, 14).frame(minHeight: 44)
                                     .background(section == s ? Theme.accent : Theme.surfaceElevated, in: Capsule())
                                     .foregroundStyle(section == s ? Theme.onAccent : Theme.textPrimary)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PosterPressStyle())
                             .accessibilityAddTraits(section == s ? .isSelected : [])
                         }
                     }
@@ -63,6 +65,7 @@ struct LibraryView: View {
                     .padding(.vertical, Theme.Spacing.s)
                 }
                 content
+                    .animation(.spring(response: 0.32, dampingFraction: 0.85), value: section)
             }
             .screenBackground()
             .navigationTitle("Библиотека")

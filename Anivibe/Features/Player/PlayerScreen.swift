@@ -81,9 +81,14 @@ private struct PlayerContent: View {
                                 playNow: model.playNextEpisode, cancel: model.cancelCountdown)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(Theme.Spacing.xl)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .scale(scale: 0.9).combined(with: .opacity)
+                    ))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: controlsVisible)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: controlsVisible)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: model.nextEpisodeCountdown != nil)
         .sheet(item: $webPlayback) { request in
             NavigationStack {
                 WebPlayerView(url: request.url).background(Color.black)

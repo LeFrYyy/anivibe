@@ -13,6 +13,7 @@ struct CatalogView: View {
         @Bindable var model = model
         NavigationStack {
             content
+                .animation(.easeInOut(duration: 0.25), value: model.phase)
                 .screenBackground()
                 .navigationTitle("Каталог")
                 .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
@@ -86,6 +87,7 @@ struct CatalogView: View {
                 NavigationLink(value: anime) {
                     SuggestionRow(anime: anime)
                 }
+                .buttonStyle(PosterPressStyle())
                 .searchCompletion(anime.title.preferred)
             }
 
@@ -140,7 +142,7 @@ struct CatalogView: View {
             LazyVGrid(columns: columns, spacing: Theme.Spacing.l) {
                 ForEach(model.items) { anime in
                     NavigationLink(value: anime) { PosterCard(anime: anime) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PosterPressStyle())
                         .folderMenu(anime.snapshot)
                         .onAppear { model.loadMoreIfNeeded(current: anime, catalog: env.catalog) }
                 }

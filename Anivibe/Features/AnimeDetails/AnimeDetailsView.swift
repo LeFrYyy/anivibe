@@ -337,7 +337,7 @@ struct AnimeDetailsView: View {
                                            colorHex: rel.anime.coverColorHex, subtitle: rel.relation.localizedName)
                                 .frame(width: 110)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PosterPressStyle())
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.l)

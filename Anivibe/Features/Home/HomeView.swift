@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import AnivibeCore
 
@@ -88,18 +89,24 @@ struct HomeView: View {
                     closeFolder()
                     path.append(anime)
                 }
-                .transition(.opacity.combined(with: .scale(scale: 0.88)))
-                .zIndex(1)
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.86)),
+                        removal: .opacity.combined(with: .scale(scale: 0.92))
+                    )
+                )
+                .zIndex(100)
             }
         }
         .confirmationDialog("Удалить папку?", isPresented: Binding(get: { deleteFolderID != nil }, set: { if !$0 { deleteFolderID = nil } }), titleVisibility: .visible) {
             Button("Удалить", role: .destructive) { if let id = deleteFolderID { env.collections.delete(id) }; deleteFolderID = nil }
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.82), value: openedFolder)
+        .animation(.spring(response: 0.4, dampingFraction: 0.78), value: openedFolder)
     }
 
     private func closeFolder() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { openedFolder = nil }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) { openedFolder = nil }
     }
 
     // MARK: Папки
@@ -117,7 +124,8 @@ struct HomeView: View {
                     ForEach(folders) { folder in
                         Button {
                             guard !editingFolders else { return }
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.82)) { openedFolder = folder.id }
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) { openedFolder = folder.id }
                         } label: {
                             FolderTile(collection: folder)
                         }
@@ -165,7 +173,7 @@ struct HomeView: View {
                                            progress: item.resume.isNextEpisode ? nil : item.resume.fraction)
                                 .frame(width: 130)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PosterPressStyle())
                             .folderMenu(item.anime)
                         }
                     }
@@ -197,7 +205,7 @@ struct HomeView: View {
                                            subtitle: "Серия \(item.episode) · \(RecentEpisodesView.relative(item.airedAt))")
                                     .frame(width: 120)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PosterPressStyle())
                             .folderMenu(item.anime.snapshot)
                         }
                     }
@@ -241,7 +249,7 @@ struct HomeView: View {
                             NavigationLink(value: entry.anime) {
                                 PosterCard(title: entry.anime.title, coverURL: entry.anime.coverURL).frame(width: 120)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PosterPressStyle())
                             .folderMenu(entry.anime)
                         }
                     }
@@ -262,7 +270,7 @@ struct HomeView: View {
             .padding(Theme.Spacing.l)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PosterPressStyle())
         .padding(.horizontal, Theme.Spacing.l)
     }
 }
@@ -287,7 +295,7 @@ struct PosterRow: View {
                             NavigationLink(value: anime) {
                                 PosterCard(anime: anime).frame(width: 120)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PosterPressStyle())
                             .folderMenu(anime.snapshot)
                         }
                     }
@@ -417,14 +425,15 @@ struct FolderBackground: View {
         shape
             .fill(.ultraThinMaterial)
             .overlay(
-                shape.fill(LinearGradient(colors: [Theme.accent.opacity(0.35), Theme.secondaryAccent.opacity(0.18)],
+                shape.fill(LinearGradient(colors: [Theme.accent.opacity(0.32), Theme.secondaryAccent.opacity(0.16)],
                                           startPoint: .topLeading, endPoint: .bottomTrailing))
             )
             .overlay(
-                shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.05)],
+                shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.4), .white.opacity(0.08)],
                                                   startPoint: .top, endPoint: .bottom), lineWidth: 1)
             )
-            .shadow(color: Theme.accent.opacity(0.25), radius: 10, y: 6)
+            .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
+            .shadow(color: Theme.accent.opacity(0.2), radius: 14, y: 4)
     }
 }
 
@@ -462,7 +471,8 @@ struct FolderPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.92 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.88 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.65), value: configuration.isPressed)
     }
 }
 
@@ -478,6 +488,7 @@ struct FolderOverlay: View {
     @State private var draggedItem: String?
     @State private var showSearch = false
     @State private var confirmDelete = false
+    @State private var isVisible = false
     @FocusState private var nameFocused: Bool
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: Theme.Spacing.m), count: 3)
@@ -486,8 +497,9 @@ struct FolderOverlay: View {
         ZStack {
             Rectangle()
                 .fill(.ultraThinMaterial)
-                .overlay(Color.black.opacity(0.25))
+                .overlay(Color.black.opacity(0.35))
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
                 .onTapGesture { finish() }
 
             if let collection = env.collections.collection(collectionID) {
@@ -500,8 +512,12 @@ struct FolderOverlay: View {
                         .submitLabel(.done)
                         .onSubmit { env.collections.rename(collectionID, to: name) }
                         .padding(.horizontal, Theme.Spacing.xl)
+                        .opacity(isVisible ? 1 : 0)
+                        .offset(y: isVisible ? 0 : -8)
 
                     panel(collection)
+                        .scaleEffect(isVisible ? 1.0 : 0.93)
+                        .opacity(isVisible ? 1 : 0)
 
                     HStack(spacing: Theme.Spacing.m) {
                         Button {
@@ -520,12 +536,19 @@ struct FolderOverlay: View {
                         .buttonStyle(GlassCapsuleStyle())
                         .accessibilityLabel("Удалить папку")
                     }
+                    .opacity(isVisible ? 1 : 0)
+                    .offset(y: isVisible ? 0 : 8)
                 }
                 .padding(.horizontal, Theme.Spacing.l)
             }
         }
         .environment(\.colorScheme, .dark)
-        .onAppear { name = env.collections.collection(collectionID)?.name ?? "" }
+        .onAppear {
+            name = env.collections.collection(collectionID)?.name ?? ""
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                isVisible = true
+            }
+        }
         .sheet(isPresented: $showSearch) {
             AddToFolderSheet(collectionID: collectionID)
         }
@@ -551,6 +574,7 @@ struct FolderOverlay: View {
                 ForEach(Array(collection.items.enumerated()), id: \.element.id) { index, anime in
                     FolderItemView(anime: anime, index: index, editing: editing) {
                         if editing { return }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         env.collections.rename(collectionID, to: name)
                         open(anime)
                     } remove: {
@@ -666,13 +690,15 @@ struct GlassCapsuleStyle: ButtonStyle {
                 if prominent {
                     Capsule().fill(LinearGradient(colors: [Theme.accent, Theme.secondaryAccent],
                                                   startPoint: .leading, endPoint: .trailing))
+                        .shadow(color: Theme.accent.opacity(0.4), radius: 8, y: 3)
                 } else {
                     Capsule().fill(.ultraThinMaterial)
-                        .overlay(Capsule().strokeBorder(.white.opacity(0.2)))
+                        .overlay(Capsule().strokeBorder(.white.opacity(0.25)))
                 }
             }
             .scaleEffect(configuration.isPressed ? 0.94 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.65), value: configuration.isPressed)
     }
 }
 

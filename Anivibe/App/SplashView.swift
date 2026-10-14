@@ -9,7 +9,7 @@ struct SplashView: View {
             VStack(spacing: 16) {
                 AnivibeMark()
                     .frame(width: 140, height: 140)
-                    .scaleEffect(appeared ? 1 : 0.85)
+                    .scaleEffect(appeared ? 1 : 0.82)
                 Text("Anivibe")
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .foregroundStyle(.white)
@@ -18,7 +18,7 @@ struct SplashView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Anivibe")
-        .onAppear { withAnimation(.easeOut(duration: 0.4)) { appeared = true } }
+        .onAppear { withAnimation(.spring(response: 0.52, dampingFraction: 0.72)) { appeared = true } }
     }
 }
 

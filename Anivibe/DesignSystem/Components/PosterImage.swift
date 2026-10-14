@@ -48,9 +48,11 @@ struct PosterImage: View {
             let loaded = try await ImagePipeline.shared.image(for: url)
             try Task.checkCancellation()
             guard self.url == url else { return }
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { image = loaded }
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { image = loaded }
         } catch {
-            if !Task.isCancelled { failed = true }
+            if !Task.isCancelled {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { failed = true }
+            }
         }
     }
 }

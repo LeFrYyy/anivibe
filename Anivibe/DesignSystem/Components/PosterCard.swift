@@ -92,3 +92,13 @@ struct ProgressBar: View {
         .accessibilityLabel("Просмотрено \(Int(safeValue * 100))%")
     }
 }
+
+/// Тактильный пружинящий эффект нажатия для постеров и карточек аниме.
+struct PosterPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
