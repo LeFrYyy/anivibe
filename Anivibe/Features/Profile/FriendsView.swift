@@ -248,7 +248,7 @@ struct PublicProfileView: View {
             else if data.history.isEmpty { Text("История пока пуста.").font(.subheadline).foregroundStyle(Theme.textSecondary) }
             else {
                 ForEach(data.history.prefix(3)) { item in
-                    NavigationLink(value: item.anime) { SocialAnimeRow(anime: item.anime, subtitle: "Серия \(item.episode) · " + item.watchedAt.formatted(date: .abbreviated, time: .omitted)) }.buttonStyle(.plain)
+                    NavigationLink { AnimeDetailsView(snapshot: item.anime) } label: { SocialAnimeRow(anime: item.anime, subtitle: "Серия \(item.episode) · " + item.watchedAt.formatted(date: .abbreviated, time: .omitted)) }.buttonStyle(.plain)
                 }
             }
         }.profilePanel()
@@ -317,7 +317,7 @@ private struct SocialActivityList: View {
                     else if data.history.isEmpty { SocialEmptyPanel(icon: "clock", title: "История пока пуста", message: "Новые просмотры появятся после синхронизации владельца.") }
                     else {
                         ForEach(data.history) { item in
-                            NavigationLink(value: item.anime) { SocialAnimeRow(anime: item.anime, subtitle: "Серия \(item.episode) · " + item.watchedAt.formatted(date: .abbreviated, time: .shortened)).profilePanel() }.buttonStyle(.plain)
+                            NavigationLink { AnimeDetailsView(snapshot: item.anime) } label: { SocialAnimeRow(anime: item.anime, subtitle: "Серия \(item.episode) · " + item.watchedAt.formatted(date: .abbreviated, time: .shortened)).profilePanel() }.buttonStyle(.plain)
                         }
                     }
                     if data.historyHasMore { Button("Загрузить ещё") { Task { await data.moreHistory(service: env.socialService) } }.frame(minHeight: 44).disabled(data.isPaging || data.isLoading) }
@@ -326,7 +326,7 @@ private struct SocialActivityList: View {
                     else if data.entries.isEmpty { SocialEmptyPanel(icon: "books.vertical", title: "Библиотека пока пуста", message: "Здесь будут списки и избранное пользователя.") }
                     else {
                         ForEach(data.entries) { entry in
-                            NavigationLink(value: entry.anime) { SocialAnimeRow(anime: entry.anime, subtitle: (entry.status?.localizedName ?? "Без списка") + (entry.isFavorite ? " · Избранное" : "")).profilePanel() }.buttonStyle(.plain)
+                            NavigationLink { AnimeDetailsView(snapshot: entry.anime) } label: { SocialAnimeRow(anime: entry.anime, subtitle: (entry.status?.localizedName ?? "Без списка") + (entry.isFavorite ? " · Избранное" : "")).profilePanel() }.buttonStyle(.plain)
                         }
                     }
                     if data.libraryHasMore { Button("Загрузить ещё") { Task { await data.moreLibrary(service: env.socialService) } }.frame(minHeight: 44).disabled(data.isPaging || data.isLoading) }

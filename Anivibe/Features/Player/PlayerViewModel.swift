@@ -31,8 +31,14 @@ final class PlayerViewModel {
     private(set) var isPlaying = false
     private(set) var isBuffering = false
     private(set) var duration: Double = 0
+    private(set) var bufferedTime: Double = 0
     var currentTime: Double = 0
     var isScrubbing = false
+
+    var bufferedFraction: Double {
+        guard duration > 0 else { return 0 }
+        return min(1.0, max(0.0, bufferedTime / duration))
+    }
     private(set) var audioOptions: [TrackOption] = []
     private(set) var subtitleOptions: [TrackOption] = []
     private(set) var selectedAudioID: String?
@@ -219,8 +225,22 @@ final class PlayerViewModel {
         playerObservations.append(player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
             let status = player.timeControlStatus
             Task { @MainActor [weak self] in
-                self?.isPlaying = status == .playing
-                self?.isBuffering = status == .waitingToPlayAtSpecifiedRate
+                guard let self else { return }
+                self.isPlaying = status == .playing
+                switch status {
+                case .playing:
+                    self.isBuffering = false
+                case .waitingToPlayAtSpecifiedRate:
+                    self.isBuffering = true
+                case .paused:
+                    if let item = self.player.currentItem {
+                        self.isBuffering = item.isPlaybackBufferEmpty && !item.isPlaybackLikelyToKeepUp && !item.isPlaybackBufferFull
+                    } else {
+                        self.isBuffering = false
+                    }
+                @unknown default:
+                    break
+                }
             }
         })
     }
@@ -240,7 +260,38 @@ final class PlayerViewModel {
         })
         itemObservations.append(item.observe(\.isPlaybackBufferEmpty, options: [.new]) { [weak self] item, _ in
             let empty = item.isPlaybackBufferEmpty
-            Task { @MainActor [weak self] in if empty { self?.isBuffering = true } }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if empty {
+                    self.isBuffering = true
+                } else if item.isPlaybackLikelyToKeepUp || item.isPlaybackBufferFull {
+                    self.isBuffering = false
+                }
+            }
+        })
+        itemObservations.append(item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { [weak self] item, _ in
+            let likely = item.isPlaybackLikelyToKeepUp
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if likely {
+                    self.isBuffering = false
+                }
+            }
+        })
+        itemObservations.append(item.observe(\.isPlaybackBufferFull, options: [.new]) { [weak self] item, _ in
+            let full = item.isPlaybackBufferFull
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if full {
+                    self.isBuffering = false
+                }
+            }
+        })
+        itemObservations.append(item.observe(\.loadedTimeRanges, options: [.initial, .new]) { [weak self] item, _ in
+            let ranges = item.loadedTimeRanges
+            Task { @MainActor [weak self] in
+                self?.updateLoadedTimeRanges(ranges)
+            }
         })
         let center = NotificationCenter.default
         itemTokens.append(center.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main) { [weak self] _ in
@@ -273,6 +324,24 @@ final class PlayerViewModel {
         itemObservations.removeAll()
         itemTokens.forEach { NotificationCenter.default.removeObserver($0) }
         itemTokens.removeAll()
+        bufferedTime = 0
+    }
+
+    private func updateLoadedTimeRanges(_ ranges: [NSValue]) {
+        var maxLoaded: Double = 0
+        for val in ranges {
+            let r = val.timeRangeValue
+            let start = r.start.seconds
+            let dur = r.duration.seconds
+            if start.isFinite && dur.isFinite {
+                let end = start + dur
+                if end > maxLoaded { maxLoaded = end }
+            }
+        }
+        self.bufferedTime = maxLoaded
+        if let item = player.currentItem, (item.isPlaybackLikelyToKeepUp || item.isPlaybackBufferFull) {
+            self.isBuffering = false
+        }
     }
 
     private func itemBecameReady(_ item: AVPlayerItem) async {
@@ -416,10 +485,19 @@ final class PlayerViewModel {
         let upper = duration > 0 ? duration : seconds
         let target = min(max(0, seconds), upper)
         currentTime = target
+        if let item = player.currentItem, !item.isPlaybackLikelyToKeepUp {
+            isBuffering = true
+        }
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor in
-                self?.isScrubbing = false
-                self?.saveProgress(force: true)
+                guard let self else { return }
+                self.isScrubbing = false
+                if let item = self.player.currentItem {
+                    self.isBuffering = item.isPlaybackBufferEmpty && !item.isPlaybackLikelyToKeepUp && !item.isPlaybackBufferFull
+                } else {
+                    self.isBuffering = false
+                }
+                self.saveProgress(force: true)
             }
         }
     }

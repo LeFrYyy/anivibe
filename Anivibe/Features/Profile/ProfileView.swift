@@ -62,6 +62,8 @@ struct ProfileView: View {
                         .accessibilityLabel("Настройки")
                 }
             }
+            .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
+            .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
             .task(id: session.user?.id) { await reloadProfile() }
             .refreshable { await reloadProfile() }
             .sheet(isPresented: $editProfile) {

@@ -134,7 +134,7 @@ private struct PlayerContent: View {
                 }
             }
         case .ready:
-            if model.isBuffering {
+            if model.isBuffering && !controlsVisible {
                 ProgressView().controlSize(.large).tint(.white)
                     .accessibilityLabel("Буферизация")
             }

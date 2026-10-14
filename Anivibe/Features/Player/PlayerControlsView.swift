@@ -83,8 +83,14 @@ struct PlayerControlsView: View {
             }
             .accessibilityLabel("Назад на 10 секунд")
             Button { model.togglePlay(); interacted() } label: {
-                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 44))
-                    .frame(width: 64, height: 64)
+                ZStack {
+                    Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 44))
+                        .opacity(model.isBuffering ? 0.35 : 1)
+                    if model.isBuffering {
+                        ProgressView().controlSize(.large).tint(.white)
+                    }
+                }
+                .frame(width: 64, height: 64)
             }
             .accessibilityLabel(model.isPlaying ? "Пауза" : "Воспроизвести")
             Button { model.skip(by: 10); interacted() } label: {
@@ -100,14 +106,7 @@ struct PlayerControlsView: View {
         VStack(spacing: Theme.Spacing.s) {
             HStack(spacing: Theme.Spacing.m) {
                 Text(TimeFormat.string(model.currentTime)).font(.caption.monospacedDigit())
-                Slider(value: Binding(get: { model.currentTime }, set: { model.currentTime = $0 }),
-                       in: 0...max(model.duration, 1)) { editing in
-                    if editing { model.isScrubbing = true } else { model.seek(to: model.currentTime) }
-                    interacted()
-                }
-                .disabled(model.duration <= 0)
-                .accessibilityLabel("Позиция воспроизведения")
-                .accessibilityValue("\(TimeFormat.string(model.currentTime)) из \(TimeFormat.string(model.duration))")
+                VideoTimelineSlider(model: model, interacted: interacted)
                 Text(model.duration > 0 ? TimeFormat.string(model.duration) : "--:--").font(.caption.monospacedDigit())
             }
             HStack(spacing: Theme.Spacing.l) {
@@ -238,3 +237,87 @@ struct EpisodesSheet: View {
         }
     }
 }
+
+private struct VideoTimelineSlider: View {
+    @Bindable var model: PlayerViewModel
+    let interacted: () -> Void
+
+    @State private var dragPosition: Double?
+
+    private var displayTime: Double {
+        dragPosition ?? model.currentTime
+    }
+
+    private var duration: Double {
+        max(model.duration, 1)
+    }
+
+    private var playedFraction: Double {
+        min(1.0, max(0.0, displayTime / duration))
+    }
+
+    private var bufferedFraction: Double {
+        min(1.0, max(0.0, model.bufferedTime / duration))
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height: CGFloat = 6
+            let thumbRadius: CGFloat = 7
+
+            ZStack(alignment: .leading) {
+                // Фоновая дорожка
+                Capsule()
+                    .fill(Color.white.opacity(0.25))
+                    .frame(height: height)
+
+                // Буферизация (прогруженная часть потока)
+                Capsule()
+                    .fill(Color.white.opacity(0.6))
+                    .frame(width: max(0, min(width, width * bufferedFraction)), height: height)
+                    .animation(.linear(duration: 0.2), value: bufferedFraction)
+
+                // Воспроизведённая часть
+                Capsule()
+                    .fill(
+                        LinearGradient(colors: [Theme.accent, Theme.secondaryAccent],
+                                       startPoint: .leading, endPoint: .trailing)
+                    )
+                    .frame(width: max(0, min(width, width * playedFraction)), height: height)
+
+                // Ползунок текущей позиции
+                Circle()
+                    .fill(.white)
+                    .frame(width: thumbRadius * 2, height: thumbRadius * 2)
+                    .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
+                    .offset(x: max(0, min(width - thumbRadius * 2, (width * playedFraction) - thumbRadius)))
+            }
+            .frame(height: max(geo.size.height, 32))
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        model.isScrubbing = true
+                        let fraction = max(0, min(1, gesture.location.x / width))
+                        let targetTime = fraction * duration
+                        dragPosition = targetTime
+                        model.currentTime = targetTime
+                        interacted()
+                    }
+                    .onEnded { gesture in
+                        let fraction = max(0, min(1, gesture.location.x / width))
+                        let targetTime = fraction * duration
+                        dragPosition = nil
+                        model.seek(to: targetTime)
+                        interacted()
+                    }
+            )
+        }
+        .frame(height: 32)
+        .disabled(model.duration <= 0)
+        .accessibilityLabel("Позиция воспроизведения")
+        .accessibilityValue("\(TimeFormat.string(model.currentTime)) из \(TimeFormat.string(model.duration)), прогружено \(Int(bufferedFraction * 100))%")
+    }
+}
+
