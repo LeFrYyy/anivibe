@@ -1,4 +1,5 @@
 import SwiftUI
+import AnivibeCore
 
 /// Постер с кэшированием, плейсхолдером и плавным появлением.
 struct PosterImage: View {
@@ -7,8 +8,15 @@ struct PosterImage: View {
     var cornerRadius: CGFloat = Theme.Radius.card
 
     @State private var image: UIImage?
+    @State private var loadedURL: URL?
     @State private var failed = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
+
+    private struct LoadRequest: Hashable, Sendable {
+        let url: URL?
+        let size: ImageDecodeSize
+    }
 
     var body: some View {
         // Размер задаёт только плейсхолдер (он ровно равен предложенному месту),
@@ -17,7 +25,7 @@ struct PosterImage: View {
         // страница аниме становится шире экрана и уезжает в сторону.
         placeholder
             .overlay {
-                if let image {
+                if loadedURL == url, let image {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
@@ -30,7 +38,18 @@ struct PosterImage: View {
             }
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .task(id: url) { await load() }
+            .background {
+                GeometryReader { geometry in
+                    let request = LoadRequest(
+                        url: url,
+                        size: ImageDownsampling.targetSize(
+                            width: Double(geometry.size.width), height: Double(geometry.size.height),
+                            scale: Double(displayScale)
+                        )
+                    )
+                    Color.clear.task(id: request) { await load(request) }
+                }
+            }
             .accessibilityHidden(true)
     }
 
@@ -39,19 +58,21 @@ struct PosterImage: View {
         return Rectangle().fill(base.opacity(placeholderColorHex == nil ? 1 : 0.35))
     }
 
-    private func load() async {
-        image = nil
+    @MainActor private func load(_ request: LoadRequest) async {
+        guard !Task.isCancelled, self.url == request.url else { return }
+        // Retain the current image during a rotation/resize; don't flash a placeholder.
+        if loadedURL != request.url { image = nil; loadedURL = request.url }
         failed = false
-        guard let url else { return }
-        if let hit = ImagePipeline.shared.cached(url) { image = hit; return }
+        guard !Task.isCancelled, let url = request.url else { return }
+        if let hit = ImagePipeline.shared.cached(url, size: request.size) { image = hit; return }
         do {
-            let loaded = try await ImagePipeline.shared.image(for: url)
+            let loaded = try await ImagePipeline.shared.image(for: url, size: request.size)
             try Task.checkCancellation()
             guard self.url == url else { return }
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { image = loaded }
+            withAnimation(AppMotion.fade(reduceMotion: reduceMotion)) { image = loaded }
         } catch {
-            if !Task.isCancelled {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { failed = true }
+            if !Task.isCancelled, self.url == url, image == nil {
+                failed = true
             }
         }
     }

@@ -7,6 +7,7 @@ struct HomeView: View {
     let openCatalog: () -> Void
     @Environment(AppEnvironment.self) private var env
     @Environment(LibraryStore.self) private var library
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model = HomeViewModel()
     @State private var path = NavigationPath()
     @State private var openedFolder: UUID?
@@ -61,7 +62,8 @@ struct HomeView: View {
                 TextField("Название", text: $newFolderName)
                 Button("Создать") {
                     let id = env.collections.create(name: newFolderName)
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.82)) { openedFolder = id }
+                    guard env.collections.collection(id) != nil else { return }
+                    openedFolder = id
                 }
                 Button("Отмена", role: .cancel) {}
             } message: {
@@ -70,8 +72,9 @@ struct HomeView: View {
             .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
             .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
             .refreshable {
-                await model.load(catalog: env.catalog, force: true)
-                await model.loadRecentEpisodes(catalog: env.catalog)
+                async let feed: Void = model.load(catalog: env.catalog, force: true)
+                async let recent: Void = model.loadRecentEpisodes(catalog: env.catalog, force: true)
+                _ = await (feed, recent)
             }
             .onChange(of: env.collections.activeAccountID) { _, _ in
                 openedFolder = nil; path = NavigationPath(); editingFolders = false; draggedFolder = nil
@@ -83,30 +86,34 @@ struct HomeView: View {
                 await model.loadRecommendations(catalog: env.catalog, basedOn: library.continueWatching.first)
             }
         }
+        .allowsHitTesting(openedFolder == nil)
+        .accessibilityHidden(openedFolder != nil)
         .overlay {
-            if let id = openedFolder {
-                FolderOverlay(collectionID: id, close: closeFolder) { anime in
-                    closeFolder()
-                    path.append(anime)
+            // The backdrop only fades; only the panel moves. Scaling the material
+            // together with the grid caused a double zoom and unnecessary compositing.
+            ZStack {
+                if let id = openedFolder {
+                    FolderBackdrop(close: closeFolder)
+                        .transition(.opacity)
+                    FolderOverlay(collectionID: id, close: closeFolder) { anime in
+                        closeFolder()
+                        path.append(anime)
+                    }
+                    .id(id)
+                    .transition(AppMotion.panelTransition(reduceMotion: reduceMotion))
+                    .zIndex(1)
                 }
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.86)),
-                        removal: .opacity.combined(with: .scale(scale: 0.92))
-                    )
-                )
-                .zIndex(100)
             }
+            .animation(AppMotion.panel(reduceMotion: reduceMotion), value: openedFolder)
+            .allowsHitTesting(openedFolder != nil)
         }
         .confirmationDialog("Удалить папку?", isPresented: Binding(get: { deleteFolderID != nil }, set: { if !$0 { deleteFolderID = nil } }), titleVisibility: .visible) {
             Button("Удалить", role: .destructive) { if let id = deleteFolderID { env.collections.delete(id) }; deleteFolderID = nil }
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.78), value: openedFolder)
     }
 
     private func closeFolder() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) { openedFolder = nil }
+        openedFolder = nil
     }
 
     // MARK: Папки
@@ -124,18 +131,18 @@ struct HomeView: View {
                     ForEach(folders) { folder in
                         Button {
                             guard !editingFolders else { return }
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) { openedFolder = folder.id }
+                            openedFolder = folder.id
                         } label: {
                             FolderTile(collection: folder)
                         }
                         .buttonStyle(FolderPressStyle())
-                        .scaleEffect(draggedFolder == folder.id.uuidString ? 1.05 : 1)
+                        .scaleEffect(!reduceMotion && draggedFolder == folder.id.uuidString ? 1.03 : 1)
+                        .animation(AppMotion.press(reduceMotion: reduceMotion), value: draggedFolder)
                         .onDrag {
                             editingFolders = true; draggedFolder = folder.id.uuidString
                             return NSItemProvider(object: folder.id.uuidString as NSString)
                         }
-                        .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: folder.id.uuidString, draggedID: $draggedFolder) { from, to in
+                        .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: folder.id.uuidString, draggedID: $draggedFolder, reduceMotion: reduceMotion) { from, to in
                             if let source = UUID(uuidString: from), let target = UUID(uuidString: to) { env.collections.reorder(source, to: target) }
                         })
                         .contextMenu {
@@ -419,11 +426,14 @@ struct FolderTile: View {
 /// Фон папки: матовое стекло с лёгким фирменным переливом и бликом по краю.
 struct FolderBackground: View {
     var cornerRadius: CGFloat
+    var usesMaterial = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         shape
-            .fill(.ultraThinMaterial)
+            .fill(usesMaterial && !reduceTransparency
+                  ? AnyShapeStyle(Material.ultraThinMaterial) : AnyShapeStyle(Theme.surfaceElevated))
             .overlay(
                 shape.fill(LinearGradient(colors: [Theme.accent.opacity(0.32), Theme.secondaryAccent.opacity(0.16)],
                                           startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -432,8 +442,8 @@ struct FolderBackground: View {
                 shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.4), .white.opacity(0.08)],
                                                   startPoint: .top, endPoint: .bottom), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
-            .shadow(color: Theme.accent.opacity(0.2), radius: 14, y: 4)
+            .shadow(color: .black.opacity(usesMaterial ? 0.25 : 0.12),
+                    radius: usesMaterial ? 14 : 4, y: usesMaterial ? 6 : 2)
     }
 }
 
@@ -468,17 +478,36 @@ struct NewFolderTile: View {
 
 /// Пружинистое нажатие, как у иконок на «Домой».
 struct FolderPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.92 : 1)
-            .opacity(configuration.isPressed ? 0.88 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.65), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(AppMotion.press(reduceMotion: reduceMotion), value: configuration.isPressed)
+    }
+}
+
+private struct FolderBackdrop: View {
+    let close: () -> Void
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var body: some View {
+        Rectangle()
+            .fill(reduceTransparency ? AnyShapeStyle(Color(white: 0.08)) : AnyShapeStyle(Material.ultraThinMaterial))
+            .overlay(Color.black.opacity(reduceTransparency ? 0 : 0.35))
+            .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture(perform: close)
+            .environment(\.colorScheme, .dark)
+            .accessibilityHidden(true)
     }
 }
 
 /// Открытая папка: размытый фон, крупное название, сетка обложек, «+» и режим правки.
 struct FolderOverlay: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let collectionID: UUID
     let close: () -> Void
     let open: (AnimeSnapshot) -> Void
@@ -488,20 +517,13 @@ struct FolderOverlay: View {
     @State private var draggedItem: String?
     @State private var showSearch = false
     @State private var confirmDelete = false
-    @State private var isVisible = false
+    @State private var presentedAccountID: String?
     @FocusState private var nameFocused: Bool
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: Theme.Spacing.m), count: 3)
 
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(Color.black.opacity(0.35))
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { finish() }
-
             if let collection = env.collections.collection(collectionID) {
                 VStack(spacing: Theme.Spacing.l) {
                     TextField("Название папки", text: $name)
@@ -512,16 +534,14 @@ struct FolderOverlay: View {
                         .submitLabel(.done)
                         .onSubmit { env.collections.rename(collectionID, to: name) }
                         .padding(.horizontal, Theme.Spacing.xl)
-                        .opacity(isVisible ? 1 : 0)
-                        .offset(y: isVisible ? 0 : -8)
-
                     panel(collection)
-                        .scaleEffect(isVisible ? 1.0 : 0.93)
-                        .opacity(isVisible ? 1 : 0)
 
                     HStack(spacing: Theme.Spacing.m) {
                         Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { editing.toggle() }
+                            withAnimation(AppMotion.selection(reduceMotion: reduceMotion)) {
+                                editing.toggle()
+                                draggedItem = nil
+                            }
                         } label: {
                             Label(editing ? "Готово" : "Изменить", systemImage: editing ? "checkmark" : "pencil")
                         }
@@ -536,17 +556,22 @@ struct FolderOverlay: View {
                         .buttonStyle(GlassCapsuleStyle())
                         .accessibilityLabel("Удалить папку")
                     }
-                    .opacity(isVisible ? 1 : 0)
-                    .offset(y: isVisible ? 0 : 8)
                 }
                 .padding(.horizontal, Theme.Spacing.l)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.colorScheme, .dark)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityAction(.escape, close)
         .onAppear {
+            presentedAccountID = env.collections.activeAccountID
             name = env.collections.collection(collectionID)?.name ?? ""
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
-                isVisible = true
+        }
+        .onDisappear {
+            // A backdrop tap also commits the name, but never to a different account.
+            if env.collections.activeAccountID == presentedAccountID {
+                env.collections.rename(collectionID, to: name)
             }
         }
         .sheet(isPresented: $showSearch) {
@@ -562,23 +587,16 @@ struct FolderOverlay: View {
         }
     }
 
-    private func finish() {
-        if nameFocused { nameFocused = false }
-        env.collections.rename(collectionID, to: name)
-        close()
-    }
-
     private func panel(_ collection: AnimeCollection) -> some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: Theme.Spacing.l) {
                 ForEach(Array(collection.items.enumerated()), id: \.element.id) { index, anime in
                     FolderItemView(anime: anime, index: index, editing: editing) {
                         if editing { return }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         env.collections.rename(collectionID, to: name)
                         open(anime)
                     } remove: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        withAnimation(AppMotion.selection(reduceMotion: reduceMotion)) {
                             env.collections.remove(anime.id, from: collectionID)
                         }
                     }
@@ -586,7 +604,7 @@ struct FolderOverlay: View {
                         editing = true; draggedItem = String(anime.id)
                         return NSItemProvider(object: String(anime.id) as NSString)
                     }
-                    .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: String(anime.id), draggedID: $draggedItem) { from, to in
+                    .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: String(anime.id), draggedID: $draggedItem, reduceMotion: reduceMotion) { from, to in
                         if let source = Int(from), let target = Int(to) { env.collections.reorderItem(source, in: collectionID, to: target) }
                     })
                 }
@@ -612,11 +630,11 @@ struct FolderOverlay: View {
         }
         .frame(maxHeight: 460)
         .fixedSize(horizontal: false, vertical: collection.items.count < 4)
-        .background(FolderBackground(cornerRadius: 34))
+        .background(FolderBackground(cornerRadius: 34, usesMaterial: true))
     }
 }
 
-/// Обложка внутри открытой папки; в режиме правки «дрожит» и показывает кнопку удаления.
+/// Edit mode is a quiet, static tilt with a remove button, not an endless wiggle.
 struct FolderItemView: View {
     let anime: AnimeSnapshot
     let index: Int
@@ -624,12 +642,12 @@ struct FolderItemView: View {
     let tap: () -> Void
     let remove: () -> Void
 
-    @State private var wiggle = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var wiggleAngle: Double {
-        guard editing else { return 0 }
+    private var editAngle: Double {
+        guard editing, !reduceMotion else { return 0 }
         let direction: Double = index.isMultiple(of: 2) ? 1 : -1
-        return (wiggle ? 1.6 : -1.6) * direction
+        return 0.7 * direction
     }
 
     var body: some View {
@@ -637,8 +655,7 @@ struct FolderItemView: View {
             VStack(spacing: 6) {
                 PosterImage(url: anime.coverURL, cornerRadius: 14)
                     .aspectRatio(Theme.posterAspect, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+                    .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
                 Text(anime.title)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white)
@@ -656,20 +673,17 @@ struct FolderItemView: View {
                         .frame(width: 24, height: 24)
                         .background(Circle().fill(.white))
                         .shadow(radius: 2)
+                        .padding(10)
+                        .contentShape(Rectangle())
                 }
-                .offset(x: -8, y: -8)
+                .buttonStyle(.plain)
+                .offset(x: -18, y: -18)
                 .transition(.scale.combined(with: .opacity))
                 .accessibilityLabel("Убрать «\(anime.title)» из папки")
             }
         }
-        .rotationEffect(.degrees(wiggleAngle))
-        .onChange(of: editing) { _, isEditing in
-            if isEditing {
-                withAnimation(.easeInOut(duration: 0.14).repeatForever(autoreverses: true)) { wiggle = true }
-            } else {
-                withAnimation(.easeOut(duration: 0.1)) { wiggle = false }
-            }
-        }
+        .rotationEffect(.degrees(editAngle))
+        .animation(AppMotion.press(reduceMotion: reduceMotion), value: editing)
         .contextMenu {
             Button(role: .destructive, action: remove) { Label("Убрать из папки", systemImage: "folder.badge.minus") }
         }
@@ -679,6 +693,8 @@ struct FolderItemView: View {
 /// Капсульные «стеклянные» кнопки под открытой папкой.
 struct GlassCapsuleStyle: ButtonStyle {
     var prominent = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -692,13 +708,13 @@ struct GlassCapsuleStyle: ButtonStyle {
                                                   startPoint: .leading, endPoint: .trailing))
                         .shadow(color: Theme.accent.opacity(0.4), radius: 8, y: 3)
                 } else {
-                    Capsule().fill(.ultraThinMaterial)
+                    Capsule().fill(reduceTransparency ? AnyShapeStyle(Theme.surfaceElevated) : AnyShapeStyle(Material.ultraThinMaterial))
                         .overlay(Capsule().strokeBorder(.white.opacity(0.25)))
                 }
             }
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
             .opacity(configuration.isPressed ? 0.9 : 1)
-            .animation(.spring(response: 0.24, dampingFraction: 0.65), value: configuration.isPressed)
+            .animation(AppMotion.press(reduceMotion: reduceMotion), value: configuration.isPressed)
     }
 }
 
@@ -706,12 +722,14 @@ struct GlassCapsuleStyle: ButtonStyle {
 struct AddToFolderSheet: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let collectionID: UUID
 
     @State private var query = ""
     @State private var results: [Anime] = []
     @State private var isLoading = false
     @State private var errorText: String?
+    @State private var searchRequestID = UUID()
 
     private var folderName: String { env.collections.collection(collectionID)?.name ?? "папку" }
 
@@ -734,6 +752,7 @@ struct AddToFolderSheet: View {
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Найти аниме")
             .autocorrectionDisabled()
             .task(id: query) { await search() }
+            .refreshable { await search(debounce: false) }
             .navigationTitle("В «\(folderName)»")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -748,7 +767,7 @@ struct AddToFolderSheet: View {
     private func row(_ anime: Anime) -> some View {
         let added = env.collections.collection(collectionID)?.contains(anime.id) ?? false
         return Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(AppMotion.selection(reduceMotion: reduceMotion)) {
                 env.collections.toggle(anime.snapshot, in: collectionID)
             }
         } label: {
@@ -770,7 +789,7 @@ struct AddToFolderSheet: View {
                 Image(systemName: added ? "checkmark.circle.fill" : "plus.circle")
                     .font(.title2)
                     .foregroundStyle(added ? Theme.success : Theme.accent)
-                    .contentTransition(.symbolEffect(.replace))
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
             }
             .contentShape(Rectangle())
         }
@@ -778,22 +797,27 @@ struct AddToFolderSheet: View {
         .accessibilityLabel(added ? "Убрать «\(anime.title.preferred)» из папки" : "Добавить «\(anime.title.preferred)» в папку")
     }
 
-    private func search() async {
+    @MainActor private func search(debounce: Bool = true) async {
+        let requestID = UUID()
+        searchRequestID = requestID
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !text.isEmpty {
+        if debounce && !text.isEmpty {
             // Небольшая пауза: не дёргаем каталог на каждую букву.
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
         }
+        guard !Task.isCancelled, searchRequestID == requestID else { return }
         isLoading = true
-        defer { isLoading = false }
+        defer { if searchRequestID == requestID { isLoading = false } }
         do {
             let page = try await env.catalog.search(CatalogQuery(search: text, perPage: 30))
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, searchRequestID == requestID else { return }
             results = page.items
             errorText = page.items.isEmpty ? "Ничего не нашлось" : nil
         } catch {
-            if !Task.isCancelled { errorText = "Не удалось выполнить поиск. Потяните, чтобы повторить." }
+            if !Task.isCancelled, searchRequestID == requestID {
+                errorText = "Не удалось выполнить поиск. Потяните, чтобы повторить."
+            }
         }
     }
 }

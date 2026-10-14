@@ -26,16 +26,16 @@ struct RootView: View {
 
             if showSplash {
                 SplashView()
-                    .transition(.asymmetric(
-                        insertion: .opacity,
-                        removal: .opacity.combined(with: .scale(scale: 1.05))
-                    ))
+                    .transition(.opacity)
                     .zIndex(1)
             }
         }
         .task {
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.38)) { showSplash = false }
+            guard showSplash else { return }
+            do { try await Task.sleep(nanoseconds: 450_000_000) }
+            catch { return }
+            guard !Task.isCancelled else { return }
+            withAnimation(AppMotion.fade(reduceMotion: reduceMotion)) { showSplash = false }
         }
     }
 }

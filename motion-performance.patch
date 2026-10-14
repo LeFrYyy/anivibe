@@ -1,0 +1,2373 @@
+diff --git a/.github/workflows/ios.yml b/.github/workflows/ios.yml
+--- a/.github/workflows/ios.yml
++++ b/.github/workflows/ios.yml
+@@ -30,6 +30,8 @@
+         run: python3 scripts/check_project.py
+       - name: Static Kodik routing regressions
+         run: python3 scripts/test_kodik_routing.py
++      - name: Static motion and performance regressions
++        run: python3 scripts/test_motion_performance.py
+       - name: Test build configuration scripts
+         run: python3 scripts/test_build_scripts.py
+       - name: Run AnivibeCore tests
+diff --git a/Anivibe/App/AppEnvironment.swift b/Anivibe/App/AppEnvironment.swift
+--- a/Anivibe/App/AppEnvironment.swift
++++ b/Anivibe/App/AppEnvironment.swift
+@@ -201,7 +201,16 @@
+     func remove(_ animeID: Int, from id: UUID) { mutate { $0.remove(animeID, from: id) } }
+     func toggle(_ anime: AnimeSnapshot, in id: UUID) { mutate { $0.toggle(anime, in: id) } }
+     func move(in id: UUID, from source: IndexSet, to destination: Int) { mutate { $0.moveItems(in: id, from: source, to: destination) } }
+-    private func mutate(_ work: (inout AnimeCollections) -> Void) { guard canSave else { return }; work(&state); saveLocal() }
++    private func mutate(_ work: (inout AnimeCollections) -> Void) {
++        guard canSave else { return }
++        var next = state
++        work(&next)
++        // Closing an unchanged folder or adding an existing item needs no disk write.
++        // Retry a failed save even if the visible state did not change.
++        guard next != state || errorMessage != nil else { return }
++        if next != state { state = next }
++        saveLocal()
++    }
+     private func saveLocal() {
+         document.capture(state)
+         do { try persist(); onLocalChange?() }
+diff --git a/Anivibe/App/RootView.swift b/Anivibe/App/RootView.swift
+--- a/Anivibe/App/RootView.swift
++++ b/Anivibe/App/RootView.swift
+@@ -26,16 +26,16 @@
+ 
+             if showSplash {
+                 SplashView()
+-                    .transition(.asymmetric(
+-                        insertion: .opacity,
+-                        removal: .opacity.combined(with: .scale(scale: 1.05))
+-                    ))
++                    .transition(.opacity)
+                     .zIndex(1)
+             }
+         }
+         .task {
+-            try? await Task.sleep(nanoseconds: 700_000_000)
+-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.38)) { showSplash = false }
++            guard showSplash else { return }
++            do { try await Task.sleep(nanoseconds: 450_000_000) }
++            catch { return }
++            guard !Task.isCancelled else { return }
++            withAnimation(AppMotion.fade(reduceMotion: reduceMotion)) { showSplash = false }
+         }
+     }
+ }
+diff --git a/Anivibe/App/SplashView.swift b/Anivibe/App/SplashView.swift
+--- a/Anivibe/App/SplashView.swift
++++ b/Anivibe/App/SplashView.swift
+@@ -2,6 +2,7 @@
+ 
+ struct SplashView: View {
+     @State private var appeared = false
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+ 
+     var body: some View {
+         ZStack {
+@@ -9,7 +10,7 @@
+             VStack(spacing: 16) {
+                 AnivibeMark()
+                     .frame(width: 140, height: 140)
+-                    .scaleEffect(appeared ? 1 : 0.82)
++                    .scaleEffect(appeared || reduceMotion ? 1 : 0.92)
+                 Text("Anivibe")
+                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                     .foregroundStyle(.white)
+@@ -18,7 +19,7 @@
+         }
+         .accessibilityElement(children: .combine)
+         .accessibilityLabel("Anivibe")
+-        .onAppear { withAnimation(.spring(response: 0.52, dampingFraction: 0.72)) { appeared = true } }
++        .onAppear { withAnimation(AppMotion.panel(reduceMotion: reduceMotion)) { appeared = true } }
+     }
+ }
+ 
+diff --git a/Anivibe/Core/ImagePipeline.swift b/Anivibe/Core/ImagePipeline.swift
+--- a/Anivibe/Core/ImagePipeline.swift
++++ b/Anivibe/Core/ImagePipeline.swift
+@@ -1,66 +1,176 @@
+ import UIKit
+ import ImageIO
++import AnivibeCore
+ 
+-/// Bounded decoded-image cache + HTTP disk cache. A shared task coalesces requests
+-/// for the same URL; scrolling one cell away does not cancel other subscribers.
++/// Bounded decoded-image cache + HTTP disk cache. Downloads are shared by URL;
++/// decoded variants are shared by display size. One cell never cancels another.
+ final class ImagePipeline: @unchecked Sendable {
+     static let shared = ImagePipeline()
+-    private let memory = NSCache<NSURL, UIImage>()
++    private let memory = NSCache<NSString, UIImage>()
+     private let session: URLSession
+     private let lock = NSLock()
+-    private struct Flight {
++    private struct Request: Hashable, Sendable {
++        let url: URL
++        let size: ImageDecodeSize
++        var cacheKey: NSString { "\(size.width)x\(size.height)|\(url.absoluteString)" as NSString }
++    }
++    private struct Flight: Sendable {
+         let id: UUID
+         let task: Task<UIImage, Error>
++        var subscribers: Set<UUID>
+     }
+-    private var flights: [URL: Flight] = [:]
++    private struct Download: Sendable {
++        let id: UUID
++        let task: Task<Data, Error>
++        var subscribers: Set<UUID>
++    }
++    private var flights: [Request: Flight] = [:]
++    private var downloads: [URL: Download] = [:]
++    private var memoryWarningObserver: NSObjectProtocol?
+ 
+     private init() {
+-        memory.countLimit = 160
+-        memory.totalCostLimit = 96 * 1024 * 1024
++        memory.countLimit = 180
++        memory.totalCostLimit = 64 * 1024 * 1024
+         let config = URLSessionConfiguration.default
+-        config.urlCache = URLCache(memoryCapacity: 16 * 1024 * 1024, diskCapacity: 300 * 1024 * 1024)
++        config.urlCache = URLCache(memoryCapacity: 8 * 1024 * 1024, diskCapacity: 300 * 1024 * 1024)
+         config.requestCachePolicy = .returnCacheDataElseLoad
+         config.timeoutIntervalForRequest = 20
++        config.timeoutIntervalForResource = 40
++        config.httpMaximumConnectionsPerHost = 4
+         session = URLSession(configuration: config)
++        memoryWarningObserver = NotificationCenter.default.addObserver(
++            forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil
++        ) { [weak self] _ in
++            self?.memory.removeAllObjects()
++        }
+     }
+ 
+-    func cached(_ url: URL) -> UIImage? { memory.object(forKey: url as NSURL) }
++    deinit {
++        if let memoryWarningObserver { NotificationCenter.default.removeObserver(memoryWarningObserver) }
++    }
+ 
+-    func image(for url: URL) async throws -> UIImage {
++    func cached(_ url: URL, size: ImageDecodeSize = .full) -> UIImage? {
++        memory.object(forKey: Request(url: url, size: size).cacheKey)
++    }
++
++    func image(for url: URL, size: ImageDecodeSize = .full) async throws -> UIImage {
+         try Task.checkCancellation()
+-        if let hit = cached(url) { return hit }
++        let request = Request(url: url, size: size)
++        if let hit = cached(url, size: size) { return hit }
++        let subscriber = UUID()
+         let flight: Flight = lock.withLock {
+-            if let existing = flights[url] { return existing }
++            if var existing = flights[request] {
++                existing.subscribers.insert(subscriber)
++                flights[request] = existing
++                return existing
++            }
+             let id = UUID()
+-            let task = Task.detached(priority: .userInitiated) { [self] () throws -> UIImage in
++            let task = Task.detached(priority: .userInitiated) { [self] () async throws -> UIImage in
+                 // Another request may have completed between the first lookup and lock.
+-                if let hit = cached(url) { return hit }
+-                let (data, response) = try await session.data(from: url)
+-                guard let response = response as? HTTPURLResponse,
+-                      (200..<300).contains(response.statusCode) else { throw URLError(.badServerResponse) }
+-                guard data.count <= 40 * 1024 * 1024,
+-                      let source = CGImageSourceCreateWithData(data as CFData, nil),
++                if let hit = cached(url, size: size) { return hit }
++                // A header and a small card can need different decodes of one URL,
++                // but must not start two simultaneous HTTP downloads.
++                let data = try await self.data(for: url)
++                try Task.checkCancellation()
++                guard let source = CGImageSourceCreateWithData(data as CFData, [
++                        kCGImageSourceShouldCache: false
++                      ] as CFDictionary) else { throw URLError(.cannotDecodeContentData) }
++                let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
++                var width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0
++                var height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue ?? 0
++                let orientation = (properties?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
++                if (5...8).contains(orientation) { swap(&width, &height) }
++                let pixelSize = ImageDownsampling.thumbnailPixelSize(
++                    sourceWidth: width, sourceHeight: height, target: size
++                )
++                guard
+                       let bitmap = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                         kCGImageSourceCreateThumbnailFromImageAlways: true,
+-                        kCGImageSourceThumbnailMaxPixelSize: 1600,
++                        kCGImageSourceThumbnailMaxPixelSize: pixelSize,
+                         kCGImageSourceCreateThumbnailWithTransform: true,
+                         kCGImageSourceShouldCacheImmediately: true
+                       ] as CFDictionary) else { throw URLError(.cannotDecodeContentData) }
+                 let image = UIImage(cgImage: bitmap)
+                 let prepared = await image.byPreparingForDisplay() ?? image
++                try Task.checkCancellation()
+                 let cost = prepared.cgImage.map { $0.bytesPerRow * $0.height } ?? bitmap.bytesPerRow * bitmap.height
+-                memory.setObject(prepared, forKey: url as NSURL, cost: cost)
++                memory.setObject(prepared, forKey: request.cacheKey, cost: cost)
+                 return prepared
+             }
+-            let created = Flight(id: id, task: task)
+-            flights[url] = created
++            let created = Flight(id: id, task: task, subscribers: [subscriber])
++            flights[request] = created
+             return created
+         }
+-        defer {
+-            lock.withLock { if flights[url]?.id == flight.id { flights[url] = nil } }
++        let flightID = flight.id
++        defer { release(request, flightID: flightID, subscriber: subscriber) }
++        return try await withTaskCancellationHandler(operation: {
++            let image = try await flight.task.value
++            try Task.checkCancellation()
++            return image
++        }, onCancel: { [self] in
++            // Cancel a download only when *all* visible consumers have left.
++            release(request, flightID: flightID, subscriber: subscriber)
++        })
++    }
++
++    private func release(_ request: Request, flightID: UUID, subscriber: UUID) {
++        let abandoned: Task<UIImage, Error>? = lock.withLock {
++            guard var flight = flights[request], flight.id == flightID,
++                  flight.subscribers.remove(subscriber) != nil else { return nil }
++            if flight.subscribers.isEmpty {
++                flights[request] = nil
++                return flight.task
++            }
++            flights[request] = flight
++            return nil
+         }
+-        let image = try await flight.task.value
++        // Do not call cancellation handlers while holding the dictionary lock.
++        abandoned?.cancel()
++    }
++
++    private func data(for url: URL) async throws -> Data {
+         try Task.checkCancellation()
+-        return image
++        let subscriber = UUID()
++        let download: Download = lock.withLock {
++            if var existing = downloads[url] {
++                existing.subscribers.insert(subscriber)
++                downloads[url] = existing
++                return existing
++            }
++            let task = Task.detached(priority: .userInitiated) { [session] () async throws -> Data in
++                let (data, response) = try await session.data(from: url)
++                try Task.checkCancellation()
++                guard let response = response as? HTTPURLResponse,
++                      (200..<300).contains(response.statusCode) else { throw URLError(.badServerResponse) }
++                guard data.count <= 40 * 1024 * 1024 else { throw URLError(.dataLengthExceedsMaximum) }
++                return data
++            }
++            let created = Download(id: UUID(), task: task, subscribers: [subscriber])
++            downloads[url] = created
++            return created
++        }
++        let downloadID = download.id
++        defer { releaseDownload(url, downloadID: downloadID, subscriber: subscriber) }
++        return try await withTaskCancellationHandler(operation: {
++            let data = try await download.task.value
++            try Task.checkCancellation()
++            return data
++        }, onCancel: { [self] in
++            releaseDownload(url, downloadID: downloadID, subscriber: subscriber)
++        })
++    }
++
++    private func releaseDownload(_ url: URL, downloadID: UUID, subscriber: UUID) {
++        let abandoned: Task<Data, Error>? = lock.withLock {
++            guard var download = downloads[url], download.id == downloadID,
++                  download.subscribers.remove(subscriber) != nil else { return nil }
++            if download.subscribers.isEmpty {
++                downloads[url] = nil
++                return download.task
++            }
++            downloads[url] = download
++            return nil
++        }
++        abandoned?.cancel()
+     }
+ }
+diff --git a/Anivibe/Core/LibraryStore.swift b/Anivibe/Core/LibraryStore.swift
+--- a/Anivibe/Core/LibraryStore.swift
++++ b/Anivibe/Core/LibraryStore.swift
+@@ -27,14 +27,16 @@
+     func allowAccountStorage() { refreshGeneration = UUID(); isAccountStorageAvailable = true }
+     func refresh() async {
+         guard isAccountStorageAvailable else { return }
++        refreshGeneration = UUID()
+         let request = refreshGeneration
++        let view = await repository.viewState()
+         let account = await repository.activeAccountID
+-        let next = await repository.snapshot()
+-        let continuing = await repository.continueWatching()
+-        let error = await repository.lastSaveError
+         guard isAccountStorageAvailable, request == refreshGeneration,
+-              account == (await repository.activeAccountID) else { return }
+-        snapshot = next; continueWatching = continuing; errorMessage = error
++              view.accountID == account else { return }
++        // Observation otherwise invalidates every dependent list even on a no-op refresh.
++        if snapshot != view.snapshot { snapshot = view.snapshot }
++        if continueWatching != view.continueWatching { continueWatching = view.continueWatching }
++        if errorMessage != view.errorMessage { errorMessage = view.errorMessage }
+     }
+ 
+     // MARK: Queries
+diff --git a/Anivibe/DesignSystem/AppMotion.swift b/Anivibe/DesignSystem/AppMotion.swift
+new file mode 100644
+--- /dev/null
++++ b/Anivibe/DesignSystem/AppMotion.swift
+@@ -0,0 +1,31 @@
++import SwiftUI
++
++/// One motion language: quiet presses, quick fades and a restrained panel spring.
++/// Every caller passes the system Reduce Motion preference; no looping effects.
++enum AppMotion {
++    static func press(reduceMotion: Bool) -> Animation? {
++        reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.9)
++    }
++
++    static func selection(reduceMotion: Bool) -> Animation? {
++        reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9)
++    }
++
++    static func panel(reduceMotion: Bool) -> Animation? {
++        reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.9)
++    }
++
++    static func fade(reduceMotion: Bool) -> Animation? {
++        reduceMotion ? nil : .easeOut(duration: 0.18)
++    }
++
++    static func panelTransition(reduceMotion: Bool) -> AnyTransition {
++        guard !reduceMotion else { return .opacity }
++        return .asymmetric(
++            insertion: .opacity.combined(with: .scale(scale: 0.96))
++                .combined(with: .offset(x: 0, y: 12)),
++            removal: .opacity.combined(with: .scale(scale: 0.98))
++                .combined(with: .offset(x: 0, y: 6))
++        )
++    }
++}
+diff --git a/Anivibe/DesignSystem/Components/PosterCard.swift b/Anivibe/DesignSystem/Components/PosterCard.swift
+--- a/Anivibe/DesignSystem/Components/PosterCard.swift
++++ b/Anivibe/DesignSystem/Components/PosterCard.swift
+@@ -93,12 +93,14 @@
+     }
+ }
+ 
+-/// Тактильный пружинящий эффект нажатия для постеров и карточек аниме.
++/// Quiet visual press feedback; no vibration for routine navigation.
+ struct PosterPressStyle: ButtonStyle {
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
++
+     func makeBody(configuration: Configuration) -> some View {
+         configuration.label
+-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
++            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+             .opacity(configuration.isPressed ? 0.92 : 1.0)
+-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
++            .animation(AppMotion.press(reduceMotion: reduceMotion), value: configuration.isPressed)
+     }
+ }
+diff --git a/Anivibe/DesignSystem/Components/PosterImage.swift b/Anivibe/DesignSystem/Components/PosterImage.swift
+--- a/Anivibe/DesignSystem/Components/PosterImage.swift
++++ b/Anivibe/DesignSystem/Components/PosterImage.swift
+@@ -1,4 +1,5 @@
+ import SwiftUI
++import AnivibeCore
+ 
+ /// Постер с кэшированием, плейсхолдером и плавным появлением.
+ struct PosterImage: View {
+@@ -7,8 +8,15 @@
+     var cornerRadius: CGFloat = Theme.Radius.card
+ 
+     @State private var image: UIImage?
++    @State private var loadedURL: URL?
+     @State private var failed = false
+     @Environment(\.accessibilityReduceMotion) private var reduceMotion
++    @Environment(\.displayScale) private var displayScale
++
++    private struct LoadRequest: Hashable, Sendable {
++        let url: URL?
++        let size: ImageDecodeSize
++    }
+ 
+     var body: some View {
+         // Размер задаёт только плейсхолдер (он ровно равен предложенному месту),
+@@ -17,7 +25,7 @@
+         // страница аниме становится шире экрана и уезжает в сторону.
+         placeholder
+             .overlay {
+-                if let image {
++                if loadedURL == url, let image {
+                     Image(uiImage: image)
+                         .resizable()
+                         .scaledToFill()
+@@ -30,7 +38,18 @@
+             }
+             .clipped()
+             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+-            .task(id: url) { await load() }
++            .background {
++                GeometryReader { geometry in
++                    let request = LoadRequest(
++                        url: url,
++                        size: ImageDownsampling.targetSize(
++                            width: Double(geometry.size.width), height: Double(geometry.size.height),
++                            scale: Double(displayScale)
++                        )
++                    )
++                    Color.clear.task(id: request) { await load(request) }
++                }
++            }
+             .accessibilityHidden(true)
+     }
+ 
+@@ -39,19 +58,21 @@
+         return Rectangle().fill(base.opacity(placeholderColorHex == nil ? 1 : 0.35))
+     }
+ 
+-    private func load() async {
+-        image = nil
++    @MainActor private func load(_ request: LoadRequest) async {
++        guard !Task.isCancelled, self.url == request.url else { return }
++        // Retain the current image during a rotation/resize; don't flash a placeholder.
++        if loadedURL != request.url { image = nil; loadedURL = request.url }
+         failed = false
+-        guard let url else { return }
+-        if let hit = ImagePipeline.shared.cached(url) { image = hit; return }
++        guard !Task.isCancelled, let url = request.url else { return }
++        if let hit = ImagePipeline.shared.cached(url, size: request.size) { image = hit; return }
+         do {
+-            let loaded = try await ImagePipeline.shared.image(for: url)
++            let loaded = try await ImagePipeline.shared.image(for: url, size: request.size)
+             try Task.checkCancellation()
+             guard self.url == url else { return }
+-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { image = loaded }
++            withAnimation(AppMotion.fade(reduceMotion: reduceMotion)) { image = loaded }
+         } catch {
+-            if !Task.isCancelled {
+-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { failed = true }
++            if !Task.isCancelled, self.url == url, image == nil {
++                failed = true
+             }
+         }
+     }
+diff --git a/Anivibe/Features/AnimeDetails/AnimeDetailsView.swift b/Anivibe/Features/AnimeDetails/AnimeDetailsView.swift
+--- a/Anivibe/Features/AnimeDetails/AnimeDetailsView.swift
++++ b/Anivibe/Features/AnimeDetails/AnimeDetailsView.swift
+@@ -5,6 +5,7 @@
+     @Environment(AppEnvironment.self) private var env
+     @Environment(LibraryStore.self) private var library
+     @Environment(\.openURL) private var openURL
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+     @State private var model: AnimeDetailsViewModel
+     @State private var playback: PlaybackRequest?
+     @State private var descriptionExpanded = false
+@@ -277,7 +278,7 @@
+                     .lineLimit(descriptionExpanded ? nil : 5)
+                     .padding(.horizontal, Theme.Spacing.l)
+                 Button(descriptionExpanded ? "Свернуть" : "Читать полностью") {
+-                    withAnimation(.easeInOut(duration: 0.2)) { descriptionExpanded.toggle() }
++                    withAnimation(AppMotion.selection(reduceMotion: reduceMotion)) { descriptionExpanded.toggle() }
+                 }
+                 .font(.subheadline)
+                 .padding(.horizontal, Theme.Spacing.l)
+diff --git a/Anivibe/Features/AnimeDetails/AnimeDetailsViewModel.swift b/Anivibe/Features/AnimeDetails/AnimeDetailsViewModel.swift
+--- a/Anivibe/Features/AnimeDetails/AnimeDetailsViewModel.swift
++++ b/Anivibe/Features/AnimeDetails/AnimeDetailsViewModel.swift
+@@ -10,30 +10,36 @@
+     private(set) var details: AnimeDetails?
+     private(set) var episodeList: EpisodeList?
+     private(set) var phase: Phase = .loading
++    @ObservationIgnored private var loadRequestID: UUID?
+ 
+     init(anime: Anime) {
+         self.anime = anime
+     }
+ 
+-    func load(catalog: CatalogService) async {
+-        if details != nil { return }
++    func load(catalog: CatalogService, force: Bool = false) async {
++        if details != nil, !force { return }
++        guard force || loadRequestID == nil else { return }
++        let requestID = UUID()
++        loadRequestID = requestID
++        defer { if loadRequestID == requestID { loadRequestID = nil } }
+         phase = .loading
+         do {
+             let d = try await catalog.details(id: anime.id)
++            guard !Task.isCancelled, loadRequestID == requestID else { return }
+             details = d
+             anime = d.anime
+             episodeList = EpisodeListBuilder.build(from: d)
+             phase = .loaded
+-        } catch let e as APIError {
+-            if e != .cancelled { phase = .failed(e.userMessage) }
+         } catch {
+-            phase = .failed("Не удалось загрузить тайтл.")
++            guard !Task.isCancelled, loadRequestID == requestID,
++                  !(error is CancellationError), (error as? APIError) != .cancelled else { return }
++            phase = .failed((error as? APIError)?.userMessage ?? "Не удалось загрузить тайтл.")
+         }
+     }
+ 
+     func retry(catalog: CatalogService) async {
+         details = nil
+-        await load(catalog: catalog)
++        await load(catalog: catalog, force: true)
+     }
+ }
+ 
+diff --git a/Anivibe/Features/Catalog/CatalogView.swift b/Anivibe/Features/Catalog/CatalogView.swift
+--- a/Anivibe/Features/Catalog/CatalogView.swift
++++ b/Anivibe/Features/Catalog/CatalogView.swift
+@@ -4,6 +4,7 @@
+ struct CatalogView: View {
+     @Environment(AppEnvironment.self) private var env
+     @Environment(\.dismissSearch) private var dismissSearch
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+     @State private var model = CatalogViewModel()
+     @State private var showFilters = false
+ 
+@@ -13,7 +14,7 @@
+         @Bindable var model = model
+         NavigationStack {
+             content
+-                .animation(.easeInOut(duration: 0.25), value: model.phase)
++                .animation(AppMotion.fade(reduceMotion: reduceMotion), value: model.phase)
+                 .screenBackground()
+                 .navigationTitle("Каталог")
+                 .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
+@@ -45,11 +46,12 @@
+                     .presentationDetents([.medium, .large])
+                 }
+                 .task {
+-                    if model.phase == .idle { model.reload(catalog: env.catalog) }
++                    if model.phase == .idle || model.needsReload { model.reload(catalog: env.catalog) }
+                     await model.loadGenres(catalog: env.catalog)
+                     await model.loadCachedAnime(cache: env.cache)
+                 }
+         }
++        .onDisappear { model.cancelRequests() }
+     }
+ 
+     @ViewBuilder private var suggestionsContent: some View {
+diff --git a/Anivibe/Features/Catalog/CatalogViewModel.swift b/Anivibe/Features/Catalog/CatalogViewModel.swift
+--- a/Anivibe/Features/Catalog/CatalogViewModel.swift
++++ b/Anivibe/Features/Catalog/CatalogViewModel.swift
+@@ -14,9 +14,13 @@
+     private(set) var isLoadingMore = false
+     private(set) var hasNextPage = false
+     private(set) var genres: [String] = []
++    private(set) var needsReload = true
+ 
+     private let runner = LatestTaskRunner()
+     @ObservationIgnored private var loadMoreTask: Task<Void, Never>?
++    @ObservationIgnored private var loadMoreRequestID: UUID?
++    @ObservationIgnored private var reloadRequestID: UUID?
++    @ObservationIgnored private var isReloading = false
+     @ObservationIgnored private var page = 1
+     @ObservationIgnored private var knownAnimePool: [Anime] = []
+ 
+@@ -37,9 +41,8 @@
+             .filter { $0.1 > 0 }
+             .sorted { $0.1 > $1.1 }
+             .map(\.0)
+-        if !matches.isEmpty {
+-            self.suggestions = Array(matches.prefix(10))
+-        }
++        // A query with no local matches must not keep suggestions from the previous text.
++        self.suggestions = Array(matches.prefix(10))
+ 
+         // 2. Сетевой поиск с минимальным дебаунсом (0.25 сек)
+         isSearchingLive = true
+@@ -49,25 +52,37 @@
+     /// Новый поиск. Предыдущий запрос (и подгрузка страниц) отменяется.
+     func reload(catalog: CatalogService, debounce: TimeInterval = 0) {
+         loadMoreTask?.cancel()
++        loadMoreTask = nil
++        loadMoreRequestID = nil
+         isLoadingMore = false
++        hasNextPage = false
++        isReloading = true
++        needsReload = true
++        let requestID = UUID()
++        reloadRequestID = requestID
+         var q = query.withPage(1)
+         // При вводе текста логичнее «по совпадению», если пользователь не выбрал иное.
+         if !q.trimmedSearch.isEmpty && q.sort == .popularity { q.sort = .relevance }
+         if phase != .loaded || items.isEmpty { phase = .loading }
+         let searchQuery = q
+         runner.run(debounce: debounce, operation: { try await catalog.search(searchQuery) }) { [weak self] result in
+-            guard let self else { return }
++            guard let self, self.reloadRequestID == requestID else { return }
++            self.reloadRequestID = nil
++            self.isReloading = false
++            self.needsReload = false
+             self.isSearchingLive = false
+             switch result {
+             case .success(let page):
++                var seen = Set<Int>()
++                let uniqueItems = page.items.filter { seen.insert($0.id).inserted }
+                 self.page = 1
+-                self.items = page.items
++                self.items = uniqueItems
+                 if !searchQuery.trimmedSearch.isEmpty {
+-                    self.suggestions = page.items
++                    self.suggestions = uniqueItems
+                 }
+-                self.remember(page.items)
++                self.remember(uniqueItems)
+                 self.hasNextPage = page.hasNextPage
+-                self.phase = page.items.isEmpty ? .empty : .loaded
++                self.phase = uniqueItems.isEmpty ? .empty : .loaded
+             case .failure(let error):
+                 self.phase = .failed((error as? APIError)?.userMessage ?? "Не удалось загрузить каталог.")
+             }
+@@ -83,17 +98,28 @@
+ 
+     /// Постраничная подгрузка при прокрутке к концу списка.
+     func loadMoreIfNeeded(current anime: Anime, catalog: CatalogService) {
+-        guard hasNextPage, !isLoadingMore, phase == .loaded,
++        guard hasNextPage, !isReloading, !isLoadingMore, phase == .loaded,
+               let index = items.firstIndex(of: anime), index >= items.count - 6 else { return }
+         isLoadingMore = true
++        let requestID = UUID()
++        loadMoreRequestID = requestID
+         var q = query.withPage(page + 1)
+         if !q.trimmedSearch.isEmpty && q.sort == .popularity { q.sort = .relevance }
++        let searchQuery = q
+         loadMoreTask = Task { [weak self] in
++            defer {
++                // An old cancelled page must never clear a newer page's loading flag.
++                if let self, self.loadMoreRequestID == requestID {
++                    self.loadMoreRequestID = nil
++                    self.loadMoreTask = nil
++                    self.isLoadingMore = false
++                }
++            }
+             do {
+-                let next = try await catalog.search(q)
+-                guard !Task.isCancelled, let self else { return }
+-                let known = Set(self.items.map(\.id))
+-                let newItems = next.items.filter { !known.contains($0.id) }
++                let next = try await catalog.search(searchQuery)
++                guard !Task.isCancelled, let self, self.loadMoreRequestID == requestID else { return }
++                var known = Set(self.items.map(\.id))
++                let newItems = next.items.filter { known.insert($0.id).inserted }
+                 self.items.append(contentsOf: newItems)
+                 self.remember(newItems)
+                 self.page = next.page
+@@ -101,8 +127,20 @@
+             } catch {
+                 // Ошибку подгрузки не показываем на весь экран — можно прокрутить ещё раз.
+             }
+-            self?.isLoadingMore = false
+         }
++    }
++
++    func cancelRequests() {
++        runner.cancel()
++        reloadRequestID = nil
++        isReloading = false
++        loadMoreRequestID = nil
++        loadMoreTask?.cancel()
++        loadMoreTask = nil
++        isLoadingMore = false
++        isSearchingLive = false
++        if items.isEmpty, phase == .loading { phase = .idle }
++        // needsReload remains true when a pending new query was interrupted.
+     }
+ 
+     func loadGenres(catalog: CatalogService) async {
+@@ -113,10 +151,13 @@
+     /// Загружает локально сохранённые тайтлы для мгновенного поиска по мере ввода.
+     func loadCachedAnime(cache: MetadataCache) async {
+         guard knownAnimePool.isEmpty else { return }
+-        if let data = await cache.data(for: "russian-name-index"),
+-           let cached = try? JSONDecoder().decode([Anime].self, from: data) {
+-            remember(cached)
+-        }
++        guard let data = await cache.data(for: "russian-name-index"), !Task.isCancelled else { return }
++        // A large name index used to be decoded on MainActor during screen presentation.
++        let cached = await Task.detached(priority: .utility) {
++            try? JSONDecoder().decode([Anime].self, from: data)
++        }.value
++        guard !Task.isCancelled, let cached else { return }
++        remember(cached)
+     }
+ 
+     func resetFilters() {
+diff --git a/Anivibe/Features/Home/HomeView.swift b/Anivibe/Features/Home/HomeView.swift
+--- a/Anivibe/Features/Home/HomeView.swift
++++ b/Anivibe/Features/Home/HomeView.swift
+@@ -7,6 +7,7 @@
+     let openCatalog: () -> Void
+     @Environment(AppEnvironment.self) private var env
+     @Environment(LibraryStore.self) private var library
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+     @State private var model = HomeViewModel()
+     @State private var path = NavigationPath()
+     @State private var openedFolder: UUID?
+@@ -61,7 +62,8 @@
+                 TextField("Название", text: $newFolderName)
+                 Button("Создать") {
+                     let id = env.collections.create(name: newFolderName)
+-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.82)) { openedFolder = id }
++                    guard env.collections.collection(id) != nil else { return }
++                    openedFolder = id
+                 }
+                 Button("Отмена", role: .cancel) {}
+             } message: {
+@@ -70,8 +72,9 @@
+             .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
+             .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
+             .refreshable {
+-                await model.load(catalog: env.catalog, force: true)
+-                await model.loadRecentEpisodes(catalog: env.catalog)
++                async let feed: Void = model.load(catalog: env.catalog, force: true)
++                async let recent: Void = model.loadRecentEpisodes(catalog: env.catalog, force: true)
++                _ = await (feed, recent)
+             }
+             .onChange(of: env.collections.activeAccountID) { _, _ in
+                 openedFolder = nil; path = NavigationPath(); editingFolders = false; draggedFolder = nil
+@@ -83,30 +86,34 @@
+                 await model.loadRecommendations(catalog: env.catalog, basedOn: library.continueWatching.first)
+             }
+         }
++        .allowsHitTesting(openedFolder == nil)
++        .accessibilityHidden(openedFolder != nil)
+         .overlay {
+-            if let id = openedFolder {
+-                FolderOverlay(collectionID: id, close: closeFolder) { anime in
+-                    closeFolder()
+-                    path.append(anime)
+-                }
+-                .transition(
+-                    .asymmetric(
+-                        insertion: .opacity.combined(with: .scale(scale: 0.86)),
+-                        removal: .opacity.combined(with: .scale(scale: 0.92))
+-                    )
+-                )
+-                .zIndex(100)
+-            }
++            // The backdrop only fades; only the panel moves. Scaling the material
++            // together with the grid caused a double zoom and unnecessary compositing.
++            ZStack {
++                if let id = openedFolder {
++                    FolderBackdrop(close: closeFolder)
++                        .transition(.opacity)
++                    FolderOverlay(collectionID: id, close: closeFolder) { anime in
++                        closeFolder()
++                        path.append(anime)
++                    }
++                    .id(id)
++                    .transition(AppMotion.panelTransition(reduceMotion: reduceMotion))
++                    .zIndex(1)
++                }
++            }
++            .animation(AppMotion.panel(reduceMotion: reduceMotion), value: openedFolder)
++            .allowsHitTesting(openedFolder != nil)
+         }
+         .confirmationDialog("Удалить папку?", isPresented: Binding(get: { deleteFolderID != nil }, set: { if !$0 { deleteFolderID = nil } }), titleVisibility: .visible) {
+             Button("Удалить", role: .destructive) { if let id = deleteFolderID { env.collections.delete(id) }; deleteFolderID = nil }
+         }
+-        .animation(.spring(response: 0.4, dampingFraction: 0.78), value: openedFolder)
+     }
+ 
+     private func closeFolder() {
+-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+-        withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) { openedFolder = nil }
++        openedFolder = nil
+     }
+ 
+     // MARK: Папки
+@@ -124,18 +131,18 @@
+                     ForEach(folders) { folder in
+                         Button {
+                             guard !editingFolders else { return }
+-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) { openedFolder = folder.id }
++                            openedFolder = folder.id
+                         } label: {
+                             FolderTile(collection: folder)
+                         }
+                         .buttonStyle(FolderPressStyle())
+-                        .scaleEffect(draggedFolder == folder.id.uuidString ? 1.05 : 1)
++                        .scaleEffect(!reduceMotion && draggedFolder == folder.id.uuidString ? 1.03 : 1)
++                        .animation(AppMotion.press(reduceMotion: reduceMotion), value: draggedFolder)
+                         .onDrag {
+                             editingFolders = true; draggedFolder = folder.id.uuidString
+                             return NSItemProvider(object: folder.id.uuidString as NSString)
+                         }
+-                        .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: folder.id.uuidString, draggedID: $draggedFolder) { from, to in
++                        .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: folder.id.uuidString, draggedID: $draggedFolder, reduceMotion: reduceMotion) { from, to in
+                             if let source = UUID(uuidString: from), let target = UUID(uuidString: to) { env.collections.reorder(source, to: target) }
+                         })
+                         .contextMenu {
+@@ -419,11 +426,14 @@
+ /// Фон папки: матовое стекло с лёгким фирменным переливом и бликом по краю.
+ struct FolderBackground: View {
+     var cornerRadius: CGFloat
++    var usesMaterial = false
++    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+ 
+     var body: some View {
+         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+         shape
+-            .fill(.ultraThinMaterial)
++            .fill(usesMaterial && !reduceTransparency
++                  ? AnyShapeStyle(Material.ultraThinMaterial) : AnyShapeStyle(Theme.surfaceElevated))
+             .overlay(
+                 shape.fill(LinearGradient(colors: [Theme.accent.opacity(0.32), Theme.secondaryAccent.opacity(0.16)],
+                                           startPoint: .topLeading, endPoint: .bottomTrailing))
+@@ -432,8 +442,8 @@
+                 shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.4), .white.opacity(0.08)],
+                                                   startPoint: .top, endPoint: .bottom), lineWidth: 1)
+             )
+-            .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
+-            .shadow(color: Theme.accent.opacity(0.2), radius: 14, y: 4)
++            .shadow(color: .black.opacity(usesMaterial ? 0.25 : 0.12),
++                    radius: usesMaterial ? 14 : 4, y: usesMaterial ? 6 : 2)
+     }
+ }
+ 
+@@ -468,17 +478,36 @@
+ 
+ /// Пружинистое нажатие, как у иконок на «Домой».
+ struct FolderPressStyle: ButtonStyle {
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
++
+     func makeBody(configuration: Configuration) -> some View {
+         configuration.label
+-            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+-            .opacity(configuration.isPressed ? 0.88 : 1)
+-            .animation(.spring(response: 0.25, dampingFraction: 0.65), value: configuration.isPressed)
++            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
++            .opacity(configuration.isPressed ? 0.9 : 1)
++            .animation(AppMotion.press(reduceMotion: reduceMotion), value: configuration.isPressed)
++    }
++}
++
++private struct FolderBackdrop: View {
++    let close: () -> Void
++    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
++
++    var body: some View {
++        Rectangle()
++            .fill(reduceTransparency ? AnyShapeStyle(Color(white: 0.08)) : AnyShapeStyle(Material.ultraThinMaterial))
++            .overlay(Color.black.opacity(reduceTransparency ? 0 : 0.35))
++            .ignoresSafeArea()
++            .contentShape(Rectangle())
++            .onTapGesture(perform: close)
++            .environment(\.colorScheme, .dark)
++            .accessibilityHidden(true)
+     }
+ }
+ 
+ /// Открытая папка: размытый фон, крупное название, сетка обложек, «+» и режим правки.
+ struct FolderOverlay: View {
+     @Environment(AppEnvironment.self) private var env
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+     let collectionID: UUID
+     let close: () -> Void
+     let open: (AnimeSnapshot) -> Void
+@@ -488,20 +517,13 @@
+     @State private var draggedItem: String?
+     @State private var showSearch = false
+     @State private var confirmDelete = false
+-    @State private var isVisible = false
++    @State private var presentedAccountID: String?
+     @FocusState private var nameFocused: Bool
+ 
+     private let columns = Array(repeating: GridItem(.flexible(), spacing: Theme.Spacing.m), count: 3)
+ 
+     var body: some View {
+         ZStack {
+-            Rectangle()
+-                .fill(.ultraThinMaterial)
+-                .overlay(Color.black.opacity(0.35))
+-                .ignoresSafeArea()
+-                .contentShape(Rectangle())
+-                .onTapGesture { finish() }
+-
+             if let collection = env.collections.collection(collectionID) {
+                 VStack(spacing: Theme.Spacing.l) {
+                     TextField("Название папки", text: $name)
+@@ -512,16 +534,14 @@
+                         .submitLabel(.done)
+                         .onSubmit { env.collections.rename(collectionID, to: name) }
+                         .padding(.horizontal, Theme.Spacing.xl)
+-                        .opacity(isVisible ? 1 : 0)
+-                        .offset(y: isVisible ? 0 : -8)
+-
+                     panel(collection)
+-                        .scaleEffect(isVisible ? 1.0 : 0.93)
+-                        .opacity(isVisible ? 1 : 0)
+ 
+                     HStack(spacing: Theme.Spacing.m) {
+                         Button {
+-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { editing.toggle() }
++                            withAnimation(AppMotion.selection(reduceMotion: reduceMotion)) {
++                                editing.toggle()
++                                draggedItem = nil
++                            }
+                         } label: {
+                             Label(editing ? "Готово" : "Изменить", systemImage: editing ? "checkmark" : "pencil")
+                         }
+@@ -536,17 +556,22 @@
+                         .buttonStyle(GlassCapsuleStyle())
+                         .accessibilityLabel("Удалить папку")
+                     }
+-                    .opacity(isVisible ? 1 : 0)
+-                    .offset(y: isVisible ? 0 : 8)
+                 }
+                 .padding(.horizontal, Theme.Spacing.l)
+             }
+         }
++        .frame(maxWidth: .infinity, maxHeight: .infinity)
+         .environment(\.colorScheme, .dark)
++        .accessibilityAddTraits(.isModal)
++        .accessibilityAction(.escape, close)
+         .onAppear {
++            presentedAccountID = env.collections.activeAccountID
+             name = env.collections.collection(collectionID)?.name ?? ""
+-            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+-                isVisible = true
++        }
++        .onDisappear {
++            // A backdrop tap also commits the name, but never to a different account.
++            if env.collections.activeAccountID == presentedAccountID {
++                env.collections.rename(collectionID, to: name)
+             }
+         }
+         .sheet(isPresented: $showSearch) {
+@@ -560,12 +585,6 @@
+         } message: {
+             Text("Сами аниме останутся в каталоге и библиотеке.")
+         }
+-    }
+-
+-    private func finish() {
+-        if nameFocused { nameFocused = false }
+-        env.collections.rename(collectionID, to: name)
+-        close()
+     }
+ 
+     private func panel(_ collection: AnimeCollection) -> some View {
+@@ -574,11 +593,10 @@
+                 ForEach(Array(collection.items.enumerated()), id: \.element.id) { index, anime in
+                     FolderItemView(anime: anime, index: index, editing: editing) {
+                         if editing { return }
+-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                         env.collections.rename(collectionID, to: name)
+                         open(anime)
+                     } remove: {
+-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
++                        withAnimation(AppMotion.selection(reduceMotion: reduceMotion)) {
+                             env.collections.remove(anime.id, from: collectionID)
+                         }
+                     }
+@@ -586,7 +604,7 @@
+                         editing = true; draggedItem = String(anime.id)
+                         return NSItemProvider(object: String(anime.id) as NSString)
+                     }
+-                    .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: String(anime.id), draggedID: $draggedItem) { from, to in
++                    .onDrop(of: [UTType.text], delegate: CollectionDropDelegate(targetID: String(anime.id), draggedID: $draggedItem, reduceMotion: reduceMotion) { from, to in
+                         if let source = Int(from), let target = Int(to) { env.collections.reorderItem(source, in: collectionID, to: target) }
+                     })
+                 }
+@@ -612,11 +630,11 @@
+         }
+         .frame(maxHeight: 460)
+         .fixedSize(horizontal: false, vertical: collection.items.count < 4)
+-        .background(FolderBackground(cornerRadius: 34))
+-    }
+-}
+-
+-/// Обложка внутри открытой папки; в режиме правки «дрожит» и показывает кнопку удаления.
++        .background(FolderBackground(cornerRadius: 34, usesMaterial: true))
++    }
++}
++
++/// Edit mode is a quiet, static tilt with a remove button, not an endless wiggle.
+ struct FolderItemView: View {
+     let anime: AnimeSnapshot
+     let index: Int
+@@ -624,12 +642,12 @@
+     let tap: () -> Void
+     let remove: () -> Void
+ 
+-    @State private var wiggle = false
+-
+-    private var wiggleAngle: Double {
+-        guard editing else { return 0 }
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
++
++    private var editAngle: Double {
++        guard editing, !reduceMotion else { return 0 }
+         let direction: Double = index.isMultiple(of: 2) ? 1 : -1
+-        return (wiggle ? 1.6 : -1.6) * direction
++        return 0.7 * direction
+     }
+ 
+     var body: some View {
+@@ -637,8 +655,7 @@
+             VStack(spacing: 6) {
+                 PosterImage(url: anime.coverURL, cornerRadius: 14)
+                     .aspectRatio(Theme.posterAspect, contentMode: .fit)
+-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+-                    .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
++                    .shadow(color: .black.opacity(0.18), radius: 3, y: 2)
+                 Text(anime.title)
+                     .font(.caption.weight(.medium))
+                     .foregroundStyle(.white)
+@@ -656,20 +673,17 @@
+                         .frame(width: 24, height: 24)
+                         .background(Circle().fill(.white))
+                         .shadow(radius: 2)
+-                }
+-                .offset(x: -8, y: -8)
++                        .padding(10)
++                        .contentShape(Rectangle())
++                }
++                .buttonStyle(.plain)
++                .offset(x: -18, y: -18)
+                 .transition(.scale.combined(with: .opacity))
+                 .accessibilityLabel("Убрать «\(anime.title)» из папки")
+             }
+         }
+-        .rotationEffect(.degrees(wiggleAngle))
+-        .onChange(of: editing) { _, isEditing in
+-            if isEditing {
+-                withAnimation(.easeInOut(duration: 0.14).repeatForever(autoreverses: true)) { wiggle = true }
+-            } else {
+-                withAnimation(.easeOut(duration: 0.1)) { wiggle = false }
+-            }
+-        }
++        .rotationEffect(.degrees(editAngle))
++        .animation(AppMotion.press(reduceMotion: reduceMotion), value: editing)
+         .contextMenu {
+             Button(role: .destructive, action: remove) { Label("Убрать из папки", systemImage: "folder.badge.minus") }
+         }
+@@ -679,6 +693,8 @@
+ /// Капсульные «стеклянные» кнопки под открытой папкой.
+ struct GlassCapsuleStyle: ButtonStyle {
+     var prominent = false
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
++    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+ 
+     func makeBody(configuration: Configuration) -> some View {
+         configuration.label
+@@ -692,13 +708,13 @@
+                                                   startPoint: .leading, endPoint: .trailing))
+                         .shadow(color: Theme.accent.opacity(0.4), radius: 8, y: 3)
+                 } else {
+-                    Capsule().fill(.ultraThinMaterial)
++                    Capsule().fill(reduceTransparency ? AnyShapeStyle(Theme.surfaceElevated) : AnyShapeStyle(Material.ultraThinMaterial))
+                         .overlay(Capsule().strokeBorder(.white.opacity(0.25)))
+                 }
+             }
+-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
++            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+             .opacity(configuration.isPressed ? 0.9 : 1)
+-            .animation(.spring(response: 0.24, dampingFraction: 0.65), value: configuration.isPressed)
++            .animation(AppMotion.press(reduceMotion: reduceMotion), value: configuration.isPressed)
+     }
+ }
+ 
+@@ -706,12 +722,14 @@
+ struct AddToFolderSheet: View {
+     @Environment(AppEnvironment.self) private var env
+     @Environment(\.dismiss) private var dismiss
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+     let collectionID: UUID
+ 
+     @State private var query = ""
+     @State private var results: [Anime] = []
+     @State private var isLoading = false
+     @State private var errorText: String?
++    @State private var searchRequestID = UUID()
+ 
+     private var folderName: String { env.collections.collection(collectionID)?.name ?? "папку" }
+ 
+@@ -734,6 +752,7 @@
+             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Найти аниме")
+             .autocorrectionDisabled()
+             .task(id: query) { await search() }
++            .refreshable { await search(debounce: false) }
+             .navigationTitle("В «\(folderName)»")
+             .navigationBarTitleDisplayMode(.inline)
+             .toolbar {
+@@ -748,7 +767,7 @@
+     private func row(_ anime: Anime) -> some View {
+         let added = env.collections.collection(collectionID)?.contains(anime.id) ?? false
+         return Button {
+-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
++            withAnimation(AppMotion.selection(reduceMotion: reduceMotion)) {
+                 env.collections.toggle(anime.snapshot, in: collectionID)
+             }
+         } label: {
+@@ -770,7 +789,7 @@
+                 Image(systemName: added ? "checkmark.circle.fill" : "plus.circle")
+                     .font(.title2)
+                     .foregroundStyle(added ? Theme.success : Theme.accent)
+-                    .contentTransition(.symbolEffect(.replace))
++                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+             }
+             .contentShape(Rectangle())
+         }
+@@ -778,22 +797,27 @@
+         .accessibilityLabel(added ? "Убрать «\(anime.title.preferred)» из папки" : "Добавить «\(anime.title.preferred)» в папку")
+     }
+ 
+-    private func search() async {
++    @MainActor private func search(debounce: Bool = true) async {
++        let requestID = UUID()
++        searchRequestID = requestID
+         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+-        if !text.isEmpty {
++        if debounce && !text.isEmpty {
+             // Небольшая пауза: не дёргаем каталог на каждую букву.
+             try? await Task.sleep(nanoseconds: 200_000_000)
+             guard !Task.isCancelled else { return }
+         }
++        guard !Task.isCancelled, searchRequestID == requestID else { return }
+         isLoading = true
+-        defer { isLoading = false }
++        defer { if searchRequestID == requestID { isLoading = false } }
+         do {
+             let page = try await env.catalog.search(CatalogQuery(search: text, perPage: 30))
+-            guard !Task.isCancelled else { return }
++            guard !Task.isCancelled, searchRequestID == requestID else { return }
+             results = page.items
+             errorText = page.items.isEmpty ? "Ничего не нашлось" : nil
+         } catch {
+-            if !Task.isCancelled { errorText = "Не удалось выполнить поиск. Потяните, чтобы повторить." }
++            if !Task.isCancelled, searchRequestID == requestID {
++                errorText = "Не удалось выполнить поиск. Потяните, чтобы повторить."
++            }
+         }
+     }
+ }
+diff --git a/Anivibe/Features/Home/HomeViewModel.swift b/Anivibe/Features/Home/HomeViewModel.swift
+--- a/Anivibe/Features/Home/HomeViewModel.swift
++++ b/Anivibe/Features/Home/HomeViewModel.swift
+@@ -10,25 +10,48 @@
+     private(set) var recommendations: [Anime] = []
+     private(set) var recommendationsBasis: String?
+     private(set) var recentEpisodes: [AiredEpisode] = []
++    @ObservationIgnored private var feedRequestID: UUID?
++    @ObservationIgnored private var recentRequestID: UUID?
+     @ObservationIgnored private var lastRecommendationSource: Int?
+     @ObservationIgnored private var recommendationRequestID: UUID?
+ 
+     func load(catalog: CatalogService, force: Bool = false) async {
+         if case .loaded = state, !force { return }
++        guard force || feedRequestID == nil else { return }
++        let requestID = UUID()
++        feedRequestID = requestID
++        defer {
++            if feedRequestID == requestID {
++                feedRequestID = nil
++                if Task.isCancelled, case .loading = state { state = .idle }
++            }
++        }
+         if case .idle = state { state = .loading }
+         if force, case .failed = state { state = .loading }
+         do {
+-            state = .loaded(try await catalog.homeFeed())
+-        } catch let e as APIError {
+-            if e != .cancelled { state = .failed(e.userMessage) }
++            let feed = try await catalog.homeFeed()
++            guard !Task.isCancelled, feedRequestID == requestID else { return }
++            state = .loaded(feed)
+         } catch {
+-            state = .failed("Не удалось загрузить главную.")
++            guard feedRequestID == requestID else { return }
++            if Task.isCancelled || error is CancellationError || (error as? APIError) == .cancelled {
++                if case .loading = state { state = .idle }
++                return
++            }
++            state = .failed((error as? APIError)?.userMessage ?? "Не удалось загрузить главную.")
+         }
+     }
+ 
+     /// «Недавно вышедшие» грузятся отдельно: их ошибка не ломает главную.
+-    func loadRecentEpisodes(catalog: CatalogService) async {
+-        if let list = try? await catalog.recentEpisodes() { recentEpisodes = list }
++    func loadRecentEpisodes(catalog: CatalogService, force: Bool = false) async {
++        guard force || recentRequestID == nil else { return }
++        let requestID = UUID()
++        recentRequestID = requestID
++        defer { if recentRequestID == requestID { recentRequestID = nil } }
++        if let list = try? await catalog.recentEpisodes(),
++           !Task.isCancelled, recentRequestID == requestID {
++            recentEpisodes = list
++        }
+     }
+ 
+     /// Рекомендации строятся от последнего просмотренного тайтла (данные AniList).
+diff --git a/Anivibe/Features/Library/CollectionDropDelegate.swift b/Anivibe/Features/Library/CollectionDropDelegate.swift
+--- a/Anivibe/Features/Library/CollectionDropDelegate.swift
++++ b/Anivibe/Features/Library/CollectionDropDelegate.swift
+@@ -4,11 +4,12 @@
+ struct CollectionDropDelegate: DropDelegate {
+     let targetID: String
+     @Binding var draggedID: String?
++    var reduceMotion = false
+     let move: (String, String) -> Void
+     func validateDrop(info: DropInfo) -> Bool { draggedID != nil }
+     func dropEntered(info: DropInfo) {
+         guard let draggedID, draggedID != targetID else { return }
+-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { move(draggedID, targetID) }
++        withAnimation(AppMotion.selection(reduceMotion: reduceMotion)) { move(draggedID, targetID) }
+     }
+     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+     func performDrop(info: DropInfo) -> Bool { draggedID = nil; return true }
+diff --git a/Anivibe/Features/Library/LibraryView.swift b/Anivibe/Features/Library/LibraryView.swift
+--- a/Anivibe/Features/Library/LibraryView.swift
++++ b/Anivibe/Features/Library/LibraryView.swift
+@@ -27,6 +27,8 @@
+ 
+ struct LibraryView: View {
+     @Environment(LibraryStore.self) private var library
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
++    @Namespace private var selectionNamespace
+     @State private var section: LibrarySection = .list(.watching)
+     @State private var confirmClear = false
+ 
+@@ -49,23 +51,30 @@
+                     HStack(spacing: Theme.Spacing.s) {
+                         ForEach(LibrarySection.allCases) { s in
+                             Button {
+-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) { section = s }
++                                section = s
+                             } label: {
+                                 Text("\(s.title) \(count(s))")
+                                     .font(.subheadline.weight(.medium))
+                                     .padding(.horizontal, 14).frame(minHeight: 44)
+-                                    .background(section == s ? Theme.accent : Theme.surfaceElevated, in: Capsule())
++                                    .background {
++                                        Capsule().fill(Theme.surfaceElevated)
++                                        if section == s {
++                                            Capsule().fill(Theme.accent)
++                                                .matchedGeometryEffect(id: "library.selection", in: selectionNamespace)
++                                        }
++                                    }
+                                     .foregroundStyle(section == s ? Theme.onAccent : Theme.textPrimary)
+                             }
+                             .buttonStyle(PosterPressStyle())
+                             .accessibilityAddTraits(section == s ? .isSelected : [])
+                         }
+                     }
++                    .animation(AppMotion.selection(reduceMotion: reduceMotion), value: section)
+                     .padding(.horizontal, Theme.Spacing.l)
+                     .padding(.vertical, Theme.Spacing.s)
+                 }
+                 content
+-                    .animation(.spring(response: 0.32, dampingFraction: 0.85), value: section)
++                    .animation(AppMotion.fade(reduceMotion: reduceMotion), value: section)
+             }
+             .screenBackground()
+             .navigationTitle("Библиотека")
+@@ -85,8 +94,8 @@
+     private func count(_ s: LibrarySection) -> String {
+         let n: Int
+         switch s {
+-        case .list(let status): n = library.snapshot.entries(in: status).count
+-        case .favorites: n = library.snapshot.favorites.count
++        case .list(let status): n = library.snapshot.entries.lazy.filter { !$0.isDeleted && $0.status == status }.count
++        case .favorites: n = library.snapshot.entries.lazy.filter { !$0.isDeleted && $0.isFavorite }.count
+         case .history: n = library.snapshot.history.count
+         }
+         return n > 0 ? "· \(n)" : ""
+diff --git a/Anivibe/Features/Player/PlayerControlsView.swift b/Anivibe/Features/Player/PlayerControlsView.swift
+--- a/Anivibe/Features/Player/PlayerControlsView.swift
++++ b/Anivibe/Features/Player/PlayerControlsView.swift
+@@ -241,6 +241,7 @@
+ private struct VideoTimelineSlider: View {
+     @Bindable var model: PlayerViewModel
+     let interacted: () -> Void
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+ 
+     @State private var dragPosition: Double?
+ 
+@@ -276,7 +277,7 @@
+                 Capsule()
+                     .fill(Color.white.opacity(0.6))
+                     .frame(width: max(0, min(width, width * bufferedFraction)), height: height)
+-                    .animation(.linear(duration: 0.2), value: bufferedFraction)
++                    .animation(AppMotion.fade(reduceMotion: reduceMotion), value: bufferedFraction)
+ 
+                 // Воспроизведённая часть
+                 Capsule()
+@@ -298,14 +299,22 @@
+             .gesture(
+                 DragGesture(minimumDistance: 0)
+                     .onChanged { gesture in
+-                        model.isScrubbing = true
++                        guard width.isFinite, width > 0 else { return }
++                        if dragPosition == nil {
++                            model.isScrubbing = true
++                            interacted()
++                        }
+                         let fraction = max(0, min(1, gesture.location.x / width))
+                         let targetTime = fraction * duration
+                         dragPosition = targetTime
+                         model.currentTime = targetTime
+-                        interacted()
+                     }
+                     .onEnded { gesture in
++                        guard width.isFinite, width > 0 else {
++                            dragPosition = nil
++                            model.isScrubbing = false
++                            return
++                        }
+                         let fraction = max(0, min(1, gesture.location.x / width))
+                         let targetTime = fraction * duration
+                         dragPosition = nil
+@@ -316,8 +325,20 @@
+         }
+         .frame(height: 32)
+         .disabled(model.duration <= 0)
++        .onDisappear {
++            dragPosition = nil
++            model.isScrubbing = false
++        }
+         .accessibilityLabel("Позиция воспроизведения")
+         .accessibilityValue("\(TimeFormat.string(model.currentTime)) из \(TimeFormat.string(model.duration)), прогружено \(Int(bufferedFraction * 100))%")
++        .accessibilityAdjustableAction { direction in
++            switch direction {
++            case .increment: model.skip(by: 10)
++            case .decrement: model.skip(by: -10)
++            @unknown default: break
++            }
++            interacted()
++        }
+     }
+ }
+ 
+diff --git a/Anivibe/Features/Player/PlayerScreen.swift b/Anivibe/Features/Player/PlayerScreen.swift
+--- a/Anivibe/Features/Player/PlayerScreen.swift
++++ b/Anivibe/Features/Player/PlayerScreen.swift
+@@ -43,6 +43,8 @@
+ 
+ private struct PlayerContent: View {
+     @Bindable var model: PlayerViewModel
++    @Environment(\.accessibilityReduceMotion) private var reduceMotion
++    @Environment(\.scenePhase) private var scenePhase
+     let pip: PictureInPictureModel
+     let close: () -> Void
+ 
+@@ -51,7 +53,8 @@
+     @State private var webPlayback: WebPlaybackRequest?
+     private var controlsVisible: Bool { controls.isVisible }
+     private var interactionBlocked: Bool {
+-        webPlayback != nil || showSettings || showSources || showEpisodes || model.isScrubbing || model.isBuffering || model.phase != .ready
++        scenePhase != .active || webPlayback != nil || showSettings || showSources || showEpisodes ||
++            model.isScrubbing || model.isBuffering || model.phase != .ready
+     }
+     @State private var hideTask: Task<Void, Never>?
+     @State private var showSources = false
+@@ -81,14 +84,11 @@
+                                 playNow: model.playNextEpisode, cancel: model.cancelCountdown)
+                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                     .padding(Theme.Spacing.xl)
+-                    .transition(.asymmetric(
+-                        insertion: .move(edge: .trailing).combined(with: .opacity),
+-                        removal: .scale(scale: 0.9).combined(with: .opacity)
+-                    ))
+-            }
+-        }
+-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: controlsVisible)
+-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: model.nextEpisodeCountdown != nil)
++                    .transition(AppMotion.panelTransition(reduceMotion: reduceMotion))
++            }
++        }
++        .animation(AppMotion.fade(reduceMotion: reduceMotion), value: controlsVisible)
++        .animation(AppMotion.panel(reduceMotion: reduceMotion), value: model.nextEpisodeCountdown != nil)
+         .sheet(item: $webPlayback) { request in
+             NavigationStack {
+                 WebPlayerView(url: request.url).background(Color.black)
+diff --git a/Anivibe/Features/Player/PlayerViewModel.swift b/Anivibe/Features/Player/PlayerViewModel.swift
+--- a/Anivibe/Features/Player/PlayerViewModel.swift
++++ b/Anivibe/Features/Player/PlayerViewModel.swift
+@@ -59,7 +59,11 @@
+     @ObservationIgnored private var audioGroup: AVMediaSelectionGroup?
+     @ObservationIgnored private var subtitleGroup: AVMediaSelectionGroup?
+     @ObservationIgnored private var loadTask: Task<Void, Never>?
++    @ObservationIgnored private var preparationTask: Task<Void, Never>?
+     @ObservationIgnored private var countdownTask: Task<Void, Never>?
++    @ObservationIgnored private var progressSaveTask: Task<Void, Never>?
++    @ObservationIgnored private var seekGeneration = UUID()
++    @ObservationIgnored private var lastSavedProgress: SavedProgress?
+     @ObservationIgnored private var lastSaveDate = Date.distantPast
+     @ObservationIgnored private var didStart = false
+     @ObservationIgnored private var isTornDown = false
+@@ -68,6 +72,13 @@
+     @ObservationIgnored private var hasActuallyPlayed = false
+ 
+     static let saveInterval: TimeInterval = 5
++
++    private struct SavedProgress: Equatable {
++        let episode: Int
++        let position: Double
++        let duration: Double
++        let sourceKey: String?
++    }
+ 
+     init(request: PlaybackRequest, registry: ProviderRegistry, library: LibraryStore, accountID: String?, autoplayNext: @escaping () -> Bool) {
+         anime = request.anime
+@@ -127,6 +138,7 @@
+     // MARK: - Sources
+ 
+     func findSources() {
++        guard !isTornDown else { return }
+         loadTask?.cancel()
+         cancelCountdown()
+         phase = .searchingSources
+@@ -142,7 +154,7 @@
+             } else {
+                 found = await registry.candidates(for: anime, season: self.currentEpisode?.season ?? 1, episode: episode)
+             }
+-            guard !Task.isCancelled, episode == self.episodeNumber else { return }
++            guard !Task.isCancelled, !self.isTornDown, episode == self.episodeNumber else { return }
+             self.candidates = found
+             if let first = found.first(where: { $0.availability.isAvailable }) {
+                 await self.play(candidate: first)
+@@ -153,7 +165,7 @@
+     }
+ 
+     func select(candidate: SourceCandidate) {
+-        guard candidate.availability.isAvailable else { return }
++        guard !isTornDown, candidate.availability.isAvailable else { return }
+         saveProgress(force: true)
+         resumeAfterLoad = isPlaying || isBuffering
+         startPosition = currentTime > 1 ? currentTime : startPosition
+@@ -163,6 +175,7 @@
+ 
+     /// Повтор: заново получаем ссылку (временные ссылки не переиспользуются).
+     func retry() {
++        guard !isTornDown else { return }
+         if let activeCandidate {
+             startPosition = max(startPosition, currentTime)
+             loadTask?.cancel()
+@@ -180,12 +193,13 @@
+         activeCandidate = candidate
+         phase = .preparing
+         guard let episode = candidate.episode, let provider = await registry.provider(candidate.providerID) else {
+-            phase = .failed("Источник недоступен.")
++            if !Task.isCancelled, !isTornDown { phase = .failed("Источник недоступен.") }
+             return
+         }
++        guard !Task.isCancelled, !isTornDown else { return }
+         do {
+             let resolved = try await provider.resolve(episode)
+-            guard !Task.isCancelled else { return }
++            guard !Task.isCancelled, !isTornDown else { return }
+             guard !resolved.isExpired() else { throw VideoSourceError.linkExpired }
+             source = resolved
+             load(resolved)
+@@ -198,6 +212,7 @@
+ 
+     private func load(_ source: PlaybackSource) {
+         clearItemObservers()
++        hasActuallyPlayed = false
+         audioOptions = []
+         subtitleOptions = []
+         duration = 0
+@@ -207,6 +222,18 @@
+         let item = AVPlayerItem(url: source.url)
+         observe(item: item)
+         player.replaceCurrentItem(with: item)
++        preparationTask = Task { [weak self, weak item] in
++            do { try await Task.sleep(nanoseconds: 30_000_000_000) }
++            catch { return }
++            guard !Task.isCancelled, let self, let item, !self.isTornDown,
++                  self.player.currentItem === item, self.phase == .preparing else { return }
++            // A stalled asset/track/initial-seek load must offer Retry, not spin forever.
++            self.player.pause()
++            self.clearItemObservers()
++            self.player.replaceCurrentItem(with: nil)
++            self.restoringPosition = false
++            self.phase = .failed("Видео не удалось подготовить за 30 секунд. Проверьте сеть или выберите другой источник.")
++        }
+     }
+ 
+     // MARK: - Observers
+@@ -215,17 +242,18 @@
+         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+             MainActor.assumeIsolated {
+-                guard let self, !self.isScrubbing, !self.restoringPosition, self.phase == .ready else { return }
++                guard let self, !self.isTornDown, !self.isScrubbing, !self.restoringPosition, self.phase == .ready else { return }
+                 let seconds = time.seconds
+-                if seconds.isFinite { self.currentTime = seconds }
++                if seconds.isFinite, seconds >= 0, self.currentTime != seconds { self.currentTime = seconds }
+                 if self.isPlaying && seconds > 0 { self.hasActuallyPlayed = true }
+                 self.saveProgress(force: false)
+             }
+         }
+         playerObservations.append(player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
+-            let status = player.timeControlStatus
+             Task { @MainActor [weak self] in
+-                guard let self else { return }
++                guard let self, !self.isTornDown else { return }
++                // Read the latest status instead of applying a queued, stale KVO value.
++                let status = self.player.timeControlStatus
+                 self.isPlaying = status == .playing
+                 switch status {
+                 case .playing:
+@@ -250,10 +278,13 @@
+             let status = item.status
+             let message = item.error.map(Self.describe)
+             Task { @MainActor [weak self] in
+-                guard let self, self.player.currentItem === item else { return }
++                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
+                 switch status {
+                 case .readyToPlay: await self.itemBecameReady(item)
+-                case .failed: self.phase = .failed(message ?? "Не удалось воспроизвести поток.")
++                case .failed:
++                    self.preparationTask?.cancel()
++                    self.preparationTask = nil
++                    self.phase = .failed(message ?? "Не удалось воспроизвести поток.")
+                 default: break
+                 }
+             }
+@@ -261,7 +292,7 @@
+         itemObservations.append(item.observe(\.isPlaybackBufferEmpty, options: [.new]) { [weak self] item, _ in
+             let empty = item.isPlaybackBufferEmpty
+             Task { @MainActor [weak self] in
+-                guard let self else { return }
++                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
+                 if empty {
+                     self.isBuffering = true
+                 } else if item.isPlaybackLikelyToKeepUp || item.isPlaybackBufferFull {
+@@ -272,7 +303,7 @@
+         itemObservations.append(item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { [weak self] item, _ in
+             let likely = item.isPlaybackLikelyToKeepUp
+             Task { @MainActor [weak self] in
+-                guard let self else { return }
++                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
+                 if likely {
+                     self.isBuffering = false
+                 }
+@@ -281,7 +312,7 @@
+         itemObservations.append(item.observe(\.isPlaybackBufferFull, options: [.new]) { [weak self] item, _ in
+             let full = item.isPlaybackBufferFull
+             Task { @MainActor [weak self] in
+-                guard let self else { return }
++                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
+                 if full {
+                     self.isBuffering = false
+                 }
+@@ -290,18 +321,23 @@
+         itemObservations.append(item.observe(\.loadedTimeRanges, options: [.initial, .new]) { [weak self] item, _ in
+             let ranges = item.loadedTimeRanges
+             Task { @MainActor [weak self] in
+-                self?.updateLoadedTimeRanges(ranges)
++                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
++                self.updateLoadedTimeRanges(ranges)
+             }
+         })
+         let center = NotificationCenter.default
+         itemTokens.append(center.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main) { [weak self] _ in
+-            MainActor.assumeIsolated { self?.playbackEnded() }
++            MainActor.assumeIsolated {
++                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
++                self.playbackEnded()
++            }
+         })
+         itemTokens.append(center.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main) { [weak self] note in
+             let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+             MainActor.assumeIsolated {
+-                self?.saveProgress(force: true)
+-                self?.phase = .failed(error.map(Self.describe) ?? "Воспроизведение прервано.")
++                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
++                self.saveProgress(force: true)
++                self.phase = .failed(error.map(Self.describe) ?? "Воспроизведение прервано.")
+             }
+         })
+     }
+@@ -320,10 +356,16 @@
+     }
+ 
+     private func clearItemObservers() {
++        preparationTask?.cancel()
++        preparationTask = nil
++        seekGeneration = UUID()
++        isScrubbing = false
+         itemObservations.forEach { $0.invalidate() }
+         itemObservations.removeAll()
+         itemTokens.forEach { NotificationCenter.default.removeObserver($0) }
+         itemTokens.removeAll()
++        player.currentItem?.cancelPendingSeeks()
++        player.currentItem?.asset.cancelLoading()
+         bufferedTime = 0
+     }
+ 
+@@ -338,7 +380,7 @@
+                 if end > maxLoaded { maxLoaded = end }
+             }
+         }
+-        self.bufferedTime = maxLoaded
++        if bufferedTime != maxLoaded { bufferedTime = maxLoaded }
+         if let item = player.currentItem, (item.isPlaybackLikelyToKeepUp || item.isPlaybackBufferFull) {
+             self.isBuffering = false
+         }
+@@ -359,6 +401,8 @@
+         }
+         startPosition = 0
+         restoringPosition = false
++        preparationTask?.cancel()
++        preparationTask = nil
+         phase = .ready
+         if resumeAfterLoad { player.playImmediately(atRate: playbackSpeed) } else { player.pause() }
+     }
+@@ -482,20 +526,27 @@
+     }
+ 
+     func seek(to seconds: Double) {
++        guard !isTornDown, phase == .ready, seconds.isFinite, let item = player.currentItem else { return }
+         let upper = duration > 0 ? duration : seconds
+         let target = min(max(0, seconds), upper)
++        let requestID = UUID()
++        seekGeneration = requestID
++        item.cancelPendingSeeks()
++        isScrubbing = true
+         currentTime = target
+-        if let item = player.currentItem, !item.isPlaybackLikelyToKeepUp {
++        if !item.isPlaybackLikelyToKeepUp {
+             isBuffering = true
+         }
+-        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+-            Task { @MainActor in
+-                guard let self else { return }
++        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak item] finished in
++            Task { @MainActor [weak self, weak item] in
++                guard let self, let item, !self.isTornDown,
++                      self.player.currentItem === item, self.seekGeneration == requestID else { return }
+                 self.isScrubbing = false
+-                if let item = self.player.currentItem {
+-                    self.isBuffering = item.isPlaybackBufferEmpty && !item.isPlaybackLikelyToKeepUp && !item.isPlaybackBufferFull
+-                } else {
+-                    self.isBuffering = false
++                self.isBuffering = item.isPlaybackBufferEmpty && !item.isPlaybackLikelyToKeepUp && !item.isPlaybackBufferFull
++                if !finished {
++                    let actual = self.player.currentTime().seconds
++                    if actual.isFinite, actual >= 0 { self.currentTime = actual }
++                    return
+                 }
+                 self.saveProgress(force: true)
+             }
+@@ -505,11 +556,12 @@
+     // MARK: - Episodes
+ 
+     func selectEpisode(_ number: Int) {
+-        guard number != episodeNumber || phase != .ready, episodes.contains(where: { $0.number == number }) else { return }
++        guard !isTornDown, number != episodeNumber || phase != .ready,
++              episodes.contains(where: { $0.number == number }) else { return }
+         saveProgress(force: true)
+         player.pause()
++        clearItemObservers()
+         player.replaceCurrentItem(with: nil)
+-        clearItemObservers()
+         source = nil
+         hasActuallyPlayed = false
+         resumeAfterLoad = true
+@@ -556,12 +608,21 @@
+         let now = Date()
+         guard force || now.timeIntervalSince(lastSaveDate) >= Self.saveInterval else { return }
+         guard force || isPlaying else { return }
+-        lastSaveDate = now
+         let snapshot = anime.snapshot
+         let kodikEpisode = activeCandidate?.providerID == KodikProvider.providerID ? activeCandidate?.episode : nil
+         let (episode, position, total) = (kodikEpisode?.number ?? currentEpisode?.progressNumber ?? episodeNumber, currentTime, duration)
+         let key = kodikEpisode?.id ?? currentEpisode?.sourceKey
+-        Task { await library.recordProgress(anime: snapshot, episode: episode, position: position, duration: total, sourceKey: key, accountID: progressAccountID) }
++        let sample = SavedProgress(episode: episode, position: position, duration: total, sourceKey: key)
++        guard sample != lastSavedProgress || library.errorMessage != nil else { return }
++        lastSaveDate = now
++        lastSavedProgress = sample
++        let previousSave = progressSaveTask
++        // Preserve pause/seek/exit ordering. The final save deliberately survives teardown.
++        progressSaveTask = Task { [library, progressAccountID] in
++            await previousSave?.value
++            await library.recordProgress(anime: snapshot, episode: episode, position: position,
++                                         duration: total, sourceKey: key, accountID: progressAccountID)
++        }
+     }
+ 
+     // MARK: - Helpers
+diff --git a/Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryRepository.swift b/Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryRepository.swift
+--- a/Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryRepository.swift
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryRepository.swift
+@@ -31,6 +31,19 @@
+     }
+ 
+     public func snapshot() -> LibrarySnapshot { state }
++
++    /// One actor read keeps the visible library, continue row and error consistent.
++    public struct ViewState: Sendable {
++        public let snapshot: LibrarySnapshot
++        public let continueWatching: [ContinueWatchingItem]
++        public let accountID: String?
++        public let errorMessage: String?
++    }
++
++    public func viewState(limit: Int = 20) -> ViewState {
++        ViewState(snapshot: state, continueWatching: Self.continueWatching(in: state, limit: limit),
++                  accountID: activeAccountID, errorMessage: lastSaveError)
++    }
+ 
+     /// Separate local files per account. Legacy library.json is the guest library and is never auto-uploaded.
+     public func switchAccount(userID: String?) throws {
+@@ -144,7 +157,12 @@
+     }
+ 
+     public static func resumePoint(in state: LibrarySnapshot, animeId: Int, lastAvailableEpisode: Int?) -> ResumePoint? {
+-        guard let latest = state.progress.filter({ $0.animeId == animeId }).max(by: { $0.updatedAt < $1.updatedAt }) else { return nil }
++        resumePoint(in: state.progress.filter { $0.animeId == animeId },
++                    animeId: animeId, lastAvailableEpisode: lastAvailableEpisode)
++    }
++
++    private static func resumePoint(in progress: [WatchProgress], animeId: Int, lastAvailableEpisode: Int?) -> ResumePoint? {
++        guard let latest = progress.max(by: { $0.updatedAt < $1.updatedAt }) else { return nil }
+         if let sourceKey = latest.sourceKey {
+             guard !latest.isFinished else { return nil } // No guessed next episode/offset.
+             return ResumePoint(animeId: animeId, episode: latest.episode, position: latest.position,
+@@ -153,9 +171,10 @@
+         if !latest.isFinished {
+             return ResumePoint(animeId: animeId, episode: latest.episode, position: latest.position, fraction: latest.fraction, isNextEpisode: false)
+         }
++        guard latest.episode < Int.max else { return nil }
+         let next = latest.episode + 1
+         if let last = lastAvailableEpisode, next > last { return nil }
+-        let nextProgress = state.progress(animeId: animeId, episode: next)
++        let nextProgress = progress.first { $0.episode == next && $0.sourceKey == nil }
+         return ResumePoint(animeId: animeId, episode: next, position: nextProgress?.isFinished == false ? nextProgress?.position ?? 0 : 0,
+                            fraction: nextProgress?.isFinished == false ? nextProgress?.fraction ?? 0 : 0, isNextEpisode: true)
+     }
+@@ -166,16 +185,21 @@
+     }
+ 
+     static func continueWatching(in state: LibrarySnapshot, limit: Int) -> [ContinueWatchingItem] {
++        guard limit > 0 else { return [] }
+         let byAnime = Dictionary(grouping: state.progress, by: \.animeId)
++        // Keep the first entry, as the old first(where:) lookup did; tolerate old duplicates.
++        let entries = Dictionary(state.entries.map { ($0.anime.id, $0) }, uniquingKeysWith: { first, _ in first })
+         var items: [ContinueWatchingItem] = []
+         for (animeId, list) in byAnime {
+-            guard let entry = state.entries.first(where: { $0.anime.id == animeId }), !entry.isDeleted,
++            guard let entry = entries[animeId], !entry.isDeleted,
+                   entry.status != .completed,
+-                  let resume = resumePoint(in: state, animeId: animeId, lastAvailableEpisode: entry.anime.episodeCount),
+-                  let updated = list.map(\.updatedAt).max() else { continue }
++                  let resume = resumePoint(in: list, animeId: animeId, lastAvailableEpisode: entry.anime.episodeCount),
++                  let updated = list.max(by: { $0.updatedAt < $1.updatedAt })?.updatedAt else { continue }
+             items.append(ContinueWatchingItem(anime: entry.anime, resume: resume, updatedAt: updated))
+         }
+-        return Array(items.sorted { $0.updatedAt > $1.updatedAt }.prefix(limit))
++        return Array(items.sorted {
++            $0.updatedAt == $1.updatedAt ? $0.anime.id < $1.anime.id : $0.updatedAt > $1.updatedAt
++        }.prefix(limit))
+     }
+ 
+     // MARK: - History
+diff --git a/Packages/AnivibeCore/Sources/AnivibeCore/Support/ImageDownsampling.swift b/Packages/AnivibeCore/Sources/AnivibeCore/Support/ImageDownsampling.swift
+new file mode 100644
+--- /dev/null
++++ b/Packages/AnivibeCore/Sources/AnivibeCore/Support/ImageDownsampling.swift
+@@ -0,0 +1,44 @@
++import Foundation
++
++/// Bucketed *display* pixels, not the dimensions of the original download.
++/// Buckets keep minor layout changes from creating a separate image/cache task.
++public struct ImageDecodeSize: Hashable, Sendable {
++    public let width: Int
++    public let height: Int
++
++    public init(width: Int, height: Int) {
++        self.width = min(1600, max(1, width))
++        self.height = min(1600, max(1, height))
++    }
++
++    public static let full = ImageDecodeSize(width: 1600, height: 1600)
++}
++
++public enum ImageDownsampling {
++    public static let maximumPixelSize = 1600
++    private static let buckets = [64, 128, 192, 256, 384, 512, 768, 1024, 1600]
++
++    public static func targetSize(width: Double, height: Double, scale: Double) -> ImageDecodeSize {
++        let safeScale = scale.isFinite && scale > 0 ? min(scale, 4) : 1
++        return ImageDecodeSize(width: bucket(width * safeScale), height: bucket(height * safeScale))
++    }
++
++    /// Aspect-fill math preserves enough pixels for crops, especially wide banners.
++    /// Never upscale a small original, and retain the existing 1600 px safety cap.
++    public static func thumbnailPixelSize(sourceWidth: Double, sourceHeight: Double,
++                                          target: ImageDecodeSize) -> Int {
++        guard sourceWidth.isFinite, sourceHeight.isFinite, sourceWidth > 0, sourceHeight > 0 else {
++            return maximumPixelSize
++        }
++        let longestSide = max(sourceWidth, sourceHeight)
++        let ratio = max(Double(target.width) / sourceWidth, Double(target.height) / sourceHeight)
++        let requested = min(Double(maximumPixelSize), longestSide, ceil(longestSide * ratio))
++        guard requested.isFinite else { return maximumPixelSize }
++        return max(1, Int(requested))
++    }
++
++    private static func bucket(_ value: Double) -> Int {
++        guard value.isFinite, value > 0 else { return 64 }
++        return buckets.first(where: { Double($0) >= value }) ?? maximumPixelSize
++    }
++}
+diff --git a/Packages/AnivibeCore/Tests/AnivibeCoreTests/MotionPerformanceTests.swift b/Packages/AnivibeCore/Tests/AnivibeCoreTests/MotionPerformanceTests.swift
+new file mode 100644
+--- /dev/null
++++ b/Packages/AnivibeCore/Tests/AnivibeCoreTests/MotionPerformanceTests.swift
+@@ -0,0 +1,146 @@
++import XCTest
++@testable import AnivibeCore
++
++/// Platform-independent regressions. Run with `swift test` / the existing macOS CI.
++/// SwiftUI animation timing, AVPlayer and UIKit decoding still need an iOS device.
++final class MotionPerformanceTests: XCTestCase {
++    func testSmallPosterUsesDisplayPixelsRatherThan1600() {
++        let target = ImageDownsampling.targetSize(width: 40, height: 60, scale: 3)
++        XCTAssertEqual(target, ImageDecodeSize(width: 128, height: 192))
++        let pixels = ImageDownsampling.thumbnailPixelSize(sourceWidth: 1200, sourceHeight: 1800, target: target)
++        XCTAssertEqual(pixels, 192)
++    }
++
++    func testGridPosterKeepsRetinaResolution() {
++        let target = ImageDownsampling.targetSize(width: 130, height: 195, scale: 3)
++        XCTAssertEqual(target, ImageDecodeSize(width: 512, height: 768))
++        let pixels = ImageDownsampling.thumbnailPixelSize(sourceWidth: 1200, sourceHeight: 1800, target: target)
++        XCTAssertEqual(pixels, 768)
++    }
++
++    func testNearbyLayoutSizesShareCacheBucket() {
++        XCTAssertEqual(ImageDownsampling.targetSize(width: 120, height: 180, scale: 2),
++                       ImageDownsampling.targetSize(width: 121, height: 181, scale: 2))
++    }
++
++    func testWideBannerUsesAspectFillRatherThanLongestDisplaySide() {
++        let pixels = ImageDownsampling.thumbnailPixelSize(
++            sourceWidth: 1900, sourceHeight: 400, target: ImageDecodeSize(width: 600, height: 200)
++        )
++        XCTAssertEqual(pixels, 950, "A 600 px decode would blur the vertically cropped banner.")
++    }
++
++    func testSmallOriginalIsNeverUpscaledAndLargeDecodeIsCapped() {
++        XCTAssertEqual(ImageDownsampling.thumbnailPixelSize(sourceWidth: 60, sourceHeight: 90, target: .full), 90)
++        XCTAssertEqual(ImageDownsampling.thumbnailPixelSize(sourceWidth: 6000, sourceHeight: 4000, target: .full), 1600)
++    }
++
++    func testInvalidGeometryAndSourceDimensionsAreSafe() {
++        let target = ImageDownsampling.targetSize(width: .nan, height: -.infinity, scale: .nan)
++        XCTAssertEqual(target, ImageDecodeSize(width: 64, height: 64))
++        XCTAssertEqual(ImageDownsampling.thumbnailPixelSize(sourceWidth: 0, sourceHeight: .nan, target: target), 1600)
++        XCTAssertEqual(ImageDecodeSize(width: Int.min, height: Int.max), ImageDecodeSize(width: 1, height: 1600))
++    }
++
++    func testContinueWatchingAcceptsZeroAndNegativeLimits() async {
++        let repo = LibraryRepository(persistence: InMemoryLibraryPersistence())
++        let anime = AnimeSnapshot(id: 1, title: "Test", episodeCount: 12)
++        await repo.recordProgress(anime: anime, episode: 1, position: 20, duration: 100)
++        let zero = await repo.continueWatching(limit: 0)
++        let negative = await repo.continueWatching(limit: -1)
++        XCTAssertTrue(zero.isEmpty)
++        XCTAssertTrue(negative.isEmpty)
++    }
++
++    func testCorruptExtremeEpisodeDoesNotOverflowResumePoint() {
++        let state = LibrarySnapshot(progress: [
++            WatchProgress(animeId: 1, episode: Int.max, position: 100, duration: 100)
++        ])
++        XCTAssertNil(LibraryRepository.resumePoint(in: state, animeId: 1, lastAvailableEpisode: nil))
++    }
++
++    func testDuplicateLegacyEntriesPreserveFirstEntryWithoutDictionaryTrap() async {
++        let anime = AnimeSnapshot(id: 1, title: "Duplicate", episodeCount: 12)
++        let state = LibrarySnapshot(entries: [
++            LibraryEntry(anime: anime, status: .completed),
++            LibraryEntry(anime: anime, status: .watching)
++        ], progress: [WatchProgress(animeId: 1, episode: 1, position: 20, duration: 100)])
++        let repo = LibraryRepository(persistence: InMemoryLibraryPersistence(state))
++        let continuing = await repo.continueWatching()
++        XCTAssertTrue(continuing.isEmpty)
++    }
++
++    func testEqualTimestampsHaveStableTitleIDOrder() async {
++        let time = Date(timeIntervalSince1970: 1000)
++        let entries = [3, 1, 2].map { LibraryEntry(anime: AnimeSnapshot(id: $0, title: "\($0)"), status: .watching) }
++        let progress = [3, 1, 2].map { WatchProgress(animeId: $0, episode: 1, position: 20, duration: 100, updatedAt: time) }
++        let repo = LibraryRepository(persistence: InMemoryLibraryPersistence(LibrarySnapshot(entries: entries, progress: progress)))
++        let continuing = await repo.continueWatching()
++        XCTAssertEqual(continuing.map(\.id), [1, 2, 3])
++    }
++
++    func testSourceScopedProgressNeverGuessesNextEpisode() async {
++        let anime = AnimeSnapshot(id: 1, title: "Source", episodeCount: 24)
++        let repo = LibraryRepository(persistence: InMemoryLibraryPersistence())
++        await repo.recordProgress(anime: anime, episode: 4, position: 25, duration: 100, sourceKey: "kodik:voice:6:4")
++        let unfinished = await repo.continueWatching()
++        XCTAssertEqual(unfinished.first?.resume.sourceKey, "kodik:voice:6:4")
++        XCTAssertEqual(unfinished.first?.resume.episode, 4)
++        await repo.recordProgress(anime: anime, episode: 4, position: 100, duration: 100, sourceKey: "kodik:voice:6:4")
++        let finished = await repo.continueWatching()
++        XCTAssertTrue(finished.isEmpty)
++    }
++
++    func testLargeLibraryUsesSameResumeSemanticsAndHonorsLimit() async {
++        var entries: [LibraryEntry] = []
++        var progress: [WatchProgress] = []
++        for id in 1...400 {
++            let anime = AnimeSnapshot(id: id, title: "Title \(id)", episodeCount: 24)
++            entries.append(LibraryEntry(anime: anime, status: .watching))
++            for episode in 1...12 {
++                progress.append(WatchProgress(animeId: id, episode: episode, position: 20, duration: 100,
++                                              updatedAt: Date(timeIntervalSince1970: Double(id * 100 + episode))))
++            }
++        }
++        let state = LibrarySnapshot(entries: entries, progress: progress)
++        let repo = LibraryRepository(persistence: InMemoryLibraryPersistence(state))
++        let view = await repo.viewState(limit: 60)
++        XCTAssertEqual(view.snapshot, state)
++        XCTAssertEqual(view.continueWatching.map(\.id), Array(stride(from: 400, through: 341, by: -1)))
++        for item in view.continueWatching {
++            XCTAssertEqual(item.resume, LibraryRepository.resumePoint(in: state, animeId: item.id, lastAvailableEpisode: 24))
++            XCTAssertEqual(item.resume.episode, 12)
++        }
++    }
++
++    func testViewStateKeepsAccountSnapshotAndContinueRowTogether() async throws {
++        let repo = LibraryRepository(persistence: InMemoryLibraryPersistence())
++        let account = "10000000-0000-0000-0000-000000000001"
++        try await repo.switchAccount(userID: account)
++        let anime = AnimeSnapshot(id: 8, title: "Account", episodeCount: 12)
++        await repo.recordProgressForAccount(anime: anime, episode: 2, position: 50, duration: 100, accountID: account)
++        let view = await repo.viewState()
++        XCTAssertEqual(view.accountID, account)
++        XCTAssertEqual(view.snapshot.progress.first?.position, 50)
++        XCTAssertEqual(view.continueWatching.first?.resume.position, 50)
++        XCTAssertNil(view.errorMessage)
++        try await repo.switchAccount(userID: nil)
++        let guest = await repo.viewState()
++        XCTAssertNil(guest.accountID)
++        XCTAssertTrue(guest.snapshot.progress.isEmpty)
++        XCTAssertTrue(guest.continueWatching.isEmpty)
++    }
++
++    func testViewStateIncludesStorageFailureWithoutInventingData() async {
++        let repo = LibraryRepository(persistence: UnreadablePersistence())
++        let view = await repo.viewState()
++        XCTAssertEqual(view.snapshot, .empty)
++        XCTAssertTrue(view.continueWatching.isEmpty)
++        XCTAssertNotNil(view.errorMessage)
++    }
++}
++
++private struct UnreadablePersistence: LibraryPersistence {
++    func load() throws -> LibrarySnapshot { throw CocoaError(.fileReadCorruptFile) }
++    func save(_ snapshot: LibrarySnapshot) throws { throw CocoaError(.fileWriteUnknown) }
++}
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,11 @@
++## Обновление: анимации и производительность
++
++Обновлены переходы папок, карточек, библиотеки и плеера; убрана лишняя вибрация при навигации. Добавлены оптимизации изображений и защиты от устаревших задач/событий. Новые ключи и миграции не нужны.
++
++Инструкция, изменения и ручной чек-лист: [MOTION_PERFORMANCE_RU](docs/MOTION_PERFORMANCE_RU.md). Локально пройдены 35 Python-проверок исходников/конфигурации. **Swift-тесты, сборка iOS и визуальная проверка этого обновления не выполнялись** — нужны Swift и macOS/Xcode. Ниже сохранена история прежних поставок; их результаты не подтверждают текущие изменения.
++
++---
++
+ ## Обновление: аватары, комментарии, качество
+ 
+ Пошаговая установка новой миграции и функции: [AVATARS_COMMENTS_QUALITY](docs/AVATARS_COMMENTS_QUALITY.md).
+diff --git a/UPDATE_WINDOWS.cmd b/UPDATE_WINDOWS.cmd
+--- a/UPDATE_WINDOWS.cmd
++++ b/UPDATE_WINDOWS.cmd
+@@ -56,7 +56,7 @@
+ echo git diff --stat
+ echo git status --short
+ echo git add -A
+-echo git commit -m "Add avatars comments and restore quality controls"
++echo git commit -m "Improve animations and playback reliability"
+ echo git push origin main
+ pause
+ exit /b 0
+diff --git a/docs/MOTION_PERFORMANCE_CHECKS.txt b/docs/MOTION_PERFORMANCE_CHECKS.txt
+new file mode 100644
+--- /dev/null
++++ b/docs/MOTION_PERFORMANCE_CHECKS.txt
+@@ -0,0 +1,51 @@
++
++=== check_project.py ===
++Static project checks passed. Swift compilation and device checks are separate.
++
++=== test_build_scripts.py ===
++........
++----------------------------------------------------------------------
++Ran 8 tests in 0.240s
++
++OK
++
++=== test_kodik_routing.py ===
++test_default_player_does_not_exclude_kodik (__main__.KodikWiringTests.test_default_player_does_not_exclude_kodik) ... ok
++test_kodik_has_explicit_registry_priority (__main__.KodikWiringTests.test_kodik_has_explicit_registry_priority) ... ok
++test_online_buttons_share_native_source_identity (__main__.KodikWiringTests.test_online_buttons_share_native_source_identity) ... ok
++test_watch_waits_for_voice_lookup_before_routing (__main__.KodikWiringTests.test_watch_waits_for_voice_lookup_before_routing) ... ok
++test_web_fallback_is_offered_on_native_failure (__main__.KodikWiringTests.test_web_fallback_is_offered_on_native_failure) ... ok
++
++----------------------------------------------------------------------
++Ran 5 tests in 0.001s
++
++OK
++
++=== test_motion_performance.py ===
++test_cached_catalog_index_decodes_off_main (__main__.MotionPerformanceSourceTests.test_cached_catalog_index_decodes_off_main) ... ok
++test_catalog_cancels_invisible_work_and_restarts_pending_query (__main__.MotionPerformanceSourceTests.test_catalog_cancels_invisible_work_and_restarts_pending_query) ... ok
++test_continue_row_does_not_rescan_all_progress_for_every_anime (__main__.MotionPerformanceSourceTests.test_continue_row_does_not_rescan_all_progress_for_every_anime) ... ok
++test_different_decode_sizes_share_one_url_download (__main__.MotionPerformanceSourceTests.test_different_decode_sizes_share_one_url_download) ... ok
++test_drag_does_not_restart_hide_timer_for_every_pixel (__main__.MotionPerformanceSourceTests.test_drag_does_not_restart_hide_timer_for_every_pixel) ... ok
++test_every_explicit_ui_animation_uses_motion_policy (__main__.MotionPerformanceSourceTests.test_every_explicit_ui_animation_uses_motion_policy) ... ok
++test_folder_backdrop_is_separate_from_moving_panel (__main__.MotionPerformanceSourceTests.test_folder_backdrop_is_separate_from_moving_panel) ... ok
++test_home_details_and_folder_search_reject_stale_results (__main__.MotionPerformanceSourceTests.test_home_details_and_folder_search_reject_stale_results) ... ok
++test_image_decode_and_size_key_are_off_main_and_bounded (__main__.MotionPerformanceSourceTests.test_image_decode_and_size_key_are_off_main_and_bounded) ... ok
++test_initial_video_preparation_has_cancellable_current_item_timeout (__main__.MotionPerformanceSourceTests.test_initial_video_preparation_has_cancellable_current_item_timeout) ... ok
++test_library_ui_reads_one_consistent_snapshot_and_skips_no_op_updates (__main__.MotionPerformanceSourceTests.test_library_ui_reads_one_consistent_snapshot_and_skips_no_op_updates) ... ok
++test_motion_policy_respects_reduce_motion (__main__.MotionPerformanceSourceTests.test_motion_policy_respects_reduce_motion) ... ok
++test_new_files_are_in_automatic_xcode_and_package_source_groups (__main__.MotionPerformanceSourceTests.test_new_files_are_in_automatic_xcode_and_package_source_groups) ... ok
++test_no_endless_edit_mode_animation (__main__.MotionPerformanceSourceTests.test_no_endless_edit_mode_animation) ... ok
++test_no_routine_navigation_haptics (__main__.MotionPerformanceSourceTests.test_no_routine_navigation_haptics) ... ok
++test_offscreen_image_cancel_keeps_other_consumers_and_rejects_old_flight (__main__.MotionPerformanceSourceTests.test_offscreen_image_cancel_keeps_other_consumers_and_rejects_old_flight) ... ok
++test_pagination_cleanup_is_owned_by_current_request (__main__.MotionPerformanceSourceTests.test_pagination_cleanup_is_owned_by_current_request) ... ok
++test_posters_request_bucketed_actual_display_size (__main__.MotionPerformanceSourceTests.test_posters_request_bucketed_actual_display_size) ... ok
++test_progress_writes_are_ordered_and_duplicate_final_save_is_skipped (__main__.MotionPerformanceSourceTests.test_progress_writes_are_ordered_and_duplicate_final_save_is_skipped) ... ok
++test_scrolling_folder_tiles_do_not_each_blur_and_double_shadow (__main__.MotionPerformanceSourceTests.test_scrolling_folder_tiles_do_not_each_blur_and_double_shadow) ... ok
++test_seek_is_latest_only_and_old_item_events_are_guarded (__main__.MotionPerformanceSourceTests.test_seek_is_latest_only_and_old_item_events_are_guarded) ... ok
++test_unchanged_folder_mutations_skip_disk_and_cloud_work (__main__.MotionPerformanceSourceTests.test_unchanged_folder_mutations_skip_disk_and_cloud_work) ... ok
++
++----------------------------------------------------------------------
++Ran 22 tests in 0.011s
++
++OK
+diff --git a/docs/MOTION_PERFORMANCE_RU.md b/docs/MOTION_PERFORMANCE_RU.md
+new file mode 100644
+--- /dev/null
++++ b/docs/MOTION_PERFORMANCE_RU.md
+@@ -0,0 +1,95 @@
++# Анимации, производительность и устойчивость Anivibe
++
++Основа — предоставленный архив Anivibe.zip. Изменены исходники iOS-приложения и несколько функций AnivibeCore. Минимальная iOS 17, структура Xcode-проекта, серверные таблицы, RLS и настройки подключения не изменены. Новые миграции и ключи не нужны.
++
++## Что изменено
++
++### Анимации и отклик
++
++- Общая политика `AppMotion`: короткий отклик на нажатие, быстрые затухания и спокойные пружинные переходы без сильного отскока.
++- При открытии папки фон только проявляется; движение и небольшое масштабирование применяются отдельно к панели. Убран прежний двойной zoom всей композиции.
++- Выделение раздела библиотеки плавно перемещается между кнопками через `matchedGeometryEffect`; весь список больше не получает сильную пружину.
++- Согласованы нажатия на карточки, переключение режима редактирования, раскрытие описания, появление изображений и элементов управления плеером.
++- В режиме редактирования обложки больше не качаются бесконечно: остаются небольшое статичное выделение и кнопка удаления с зоной нажатия 44×44.
++- Все явные анимации учитывают системное «Уменьшение движения»; материал панелей учитывает «Понижение прозрачности».
++- Плитки папок используют лёгкую заливку с градиентом вместо отдельных blur-слоёв и двух больших теней. Material сохранён для большой панели.
++- Убраны три собственных виброотклика: открытие папки, закрытие папки и переход к тайтлу внутри папки. Системные реакции iOS на контекстные меню не переопределяются.
++- Искусственная задержка заставки сокращена с 700 до 450 мс; отменённая задача не меняет состояние исчезнувшего экрана.
++
++### Изображения и прокрутка
++
++- Размер декодирования выбирается по фактическому размеру элемента и масштабу экрана, а не всегда по пределу 1600 px. Размеры сгруппированы в корзины, чтобы небольшие изменения layout не создавали новые задачи.
++- Расчёт учитывает aspect-fill и ориентацию исходника: широкие баннеры не декодируются только по ширине маленькой карточки. Сохранён верхний предел 1600 px; маленькие оригиналы не увеличиваются.
++- HTTP-загрузка объединяется по URL, декодирование — по URL и размеру. Разные варианты одной обложки не начинают два одновременных скачивания.
++- Отмена задачи исчезнувшей ячейки снимает её подписку. Скачивание отменяется лишь после ухода всех потребителей, а старое завершение не затрагивает новую задачу с тем же URL.
++- Декодирование и подготовка изображения остаются вне MainActor. Кэш декодированных картинок получил ориентир 64 МБ вместо 96 МБ; HTTP-кэш в RAM — 8 МБ вместо 16 МБ. `NSCache` — мягкое ограничение, не предел всей памяти приложения.
++- Добавлены очистка кэша при предупреждении о памяти, лимит HTTP-соединений на хост и тайм-аут ресурса 40 с. Лимит соединений не означает жёсткий предел параллельных HTTP/2-потоков.
++- При изменении размера уже загруженное изображение остаётся на экране. Отменённая задача или предыдущий URL не подменяют новый постер.
++
++### Поиск, главная и библиотека
++
++- Подгрузка страниц больше не запускается во время смены поискового запроса. Старая отменённая страница не сбрасывает флаг загрузки новой страницы.
++- Отбрасываются устаревшие результаты главной, деталей и поиска внутри папки. Уход из каталога отменяет задачи; прерванный новый запрос повторяется при возвращении.
++- Пустые локальные совпадения очищают подсказки предыдущего текста. Повторяющиеся ID удаляются до попадания в сетку.
++- Большой локальный индекс названий декодируется в фоновой задаче, а не на MainActor.
++- Обновление главной и недавно вышедших серий при pull-to-refresh запускается параллельно. В поиске папки появился реально работающий pull-to-refresh.
++- Библиотека получает снимок, строку продолжения, ID аккаунта и ошибку одним чтением актора. Старый refresh не перезаписывает более новый; одинаковые значения не публикуются повторно.
++- «Продолжить просмотр» использует группы прогресса и индекс записей вместо полного обхода всей библиотеки для каждого тайтла. Сохранена идентичность прогресса источника; равные даты имеют стабильный порядок.
++- Нулевой/отрицательный limit и крайний номер серии не вызывают аварийный precondition/переполнение.
++- Неизменённое имя папки и добавление уже присутствующего элемента больше не вызывают лишние обновления UI, запись JSON и синхронизацию. Ошибочную запись можно повторить даже без изменения данных.
++- Имя папки сохраняется при закрытии через фон, но не в другой аккаунт. При неудачном создании не открывается пустая несуществующая папка.
++
++### Плеер и защита от зависшего состояния
++
++- Очередные KVO-события старого AVPlayerItem игнорируются после смены серии/источника и закрытия экрана; статус плеера читается актуальный.
++- Быстрая перемотка отменяет предыдущие незавершённые seeks. Только последнее завершение текущего item меняет UI и сохраняет позицию; нечисловые значения и нулевая ширина ползунка проверяются.
++- Во время перетаскивания ползунка таймер скрытия контролов не пересоздаётся на каждый пиксель. В фоне таймер не работает. Ползунок поддерживает изменение позиции через VoiceOver.
++- Записи прогресса выполняются последовательно, а одинаковая финальная позиция не сохраняется повторно. Финальная запись намеренно не отменяется при закрытии плеера; проверка владельца аккаунта сохранена.
++- Подготовка нового видео получила отменяемый тайм-аут 30 с: вместо бесконечного экрана подготовки появляется ошибка с возможностью повторить/сменить источник. Это не обещание отсутствия любой буферизации во время просмотра.
++- При смене item и завершении работы отменяются загрузка свойств asset и незавершённые seeks. Неудачная подготовка нового качества не записывает ложный прогресс до реального воспроизведения.
++
++## Как обновить
++
++1. Распакуйте архив в отдельную папку, не поверх единственной рабочей копии. Сделайте резервную копию своих изменений.
++2. На Windows можно использовать существующий `UPDATE_WINDOWS.cmd`, указав папку репозитория. Скрипт сохраняет `.git`, корневой `.env` и `Config/Secrets.xcconfig`, делает резервную копию заменяемых папок и сам не выполняет commit/push. Сначала прочитайте его предупреждение и проверьте diff.
++3. При ручном обновлении переносите изменения **во всём проекте**, включая `Packages`, `scripts`, `.github`, `docs` и README, а не только папку приложения. Свою конфигурацию и секреты сохраняйте.
++4. Альтернатива для разработчика — `motion-performance.patch`, созданный относительно присланного архива. Сначала `git apply --check motion-performance.patch`; не применяйте его поверх уже обновлённых файлов.
++5. На Mac откройте `Anivibe.xcodeproj` и выполните сборку. Затем `cd Packages/AnivibeCore && swift test`. Существующий GitHub Actions workflow дополнен новыми статическими регрессиями; Swift-тесты пакета подхватываются автоматически.
++
++Архив содержит исходники, не IPA. `.git` и временные результаты сборки в поставку не включены. Файлы конфигурации проекта сохранены; серверные миграции не выполнялись.
++
++## Что действительно проверено
++
++| Проверка | Результат |
++| --- | --- |
++| `scripts/check_project.py` | Пройдена |
++| Конфигурационные Python-тесты сборочных скриптов | 8 пройдено |
++| Статические регрессии маршрутизации Kodik | 5 пройдено |
++| Новые статические регрессии motion/performance | 22 пройдено |
++| Структура скобок и кодировка изменённых Swift-файлов | Лексическая проверка; **не компиляция** |
++| Whitespace исходников | Пройдена с учётом Windows CRLF |
++| Swift-тесты AnivibeCore | **Не запускались**: в среде нет Swift |
++| Новые XCTest-кейсы | Подготовлено 14; **не запускались** |
++| Debug/Release сборка iOS | **Не выполнялась**: нет macOS/Xcode |
++| Симулятор, реальный iPhone, визуальная QA | **Не выполнялись** |
++| FPS, hitches, фактическая память и сеть | **Не измерялись на устройстве** |
++
++Итого: 35 локальных Python-регрессий исходников/конфигурации. Полный лог — `MOTION_PERFORMANCE_CHECKS.txt`. Новые XCTest-кейсы проверяют расчёт размеров изображений, широкие баннеры, неверную геометрию, лимиты продолжения, дубликаты, большую библиотеку и изоляцию аккаунтов.
++
++Результаты старых поставок в README не являются подтверждением компиляции этих изменений. Обновление требует проверки в Xcode/CI до установки на основное устройство.
++
++## Короткая ручная проверка на iPhone
++
++- Открыть/закрыть папку много раз; перейти к аниме; лишних собственных вибраций быть не должно. Проверить светлую/тёмную тему и небольшой экран.
++- Отредактировать имя, закрыть через фон и перезапустить приложение: имя должно сохраниться. Сменить аккаунт при открытой папке — чужие данные не должны измениться.
++- Добавить, удалить и переставить элементы; проверить большие папки, кнопки удаления и VoiceOver.
++- Повторить с включёнными «Уменьшение движения» и «Понижение прозрачности»; убедиться, что нет масштабирования/дрожания и фон остаётся читаемым.
++- Быстро вводить/стирать текст поиска, менять фильтры во время пагинации, переключать вкладки; не должно быть старых результатов поверх нового запроса или вечного индикатора из-за старой задачи.
++- Быстро прокрутить каталог с холодным и тёплым кэшем, открыть баннер, повернуть устройство. Проверить резкость, отсутствие чужих постеров и работу после memory warning.
++- Проверить плохую сеть/авиарежим, повторную загрузку и отмену. Неподготовившийся плеер должен предложить повтор через 30 с, а не остаться навечно в подготовке.
++- Многократно перемотать, сменить серию/качество/источник во время загрузки, поставить на паузу, уйти в фон, закрыть и продолжить просмотр. Проверить сохранение позиции, следующий эпизод и PiP.
++- Профилировать **Release на реальном устройстве**: Instruments Time Profiler, Animation Hitches/Core Animation и Allocations. Сравнивать одинаковые сценарии, сеть и объём библиотеки до/после.
++
++## Границы изменений
++
++Полностью исключить тормоза и зависания без запуска на устройстве нельзя. Реальные изменения папок по-прежнему атомарно сохраняются синхронно; при очень больших папках это отдельная точка для профилирования. Начальная загрузка локальных файлов и работа сторонних видео/API также требуют измерений. Отложенную запись/миграцию хранилища и автоматические изменения серверной схемы намеренно не вводили, чтобы не повышать риск потери данных или смешения аккаунтов.
+diff --git a/scripts/test_motion_performance.py b/scripts/test_motion_performance.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/test_motion_performance.py
+@@ -0,0 +1,201 @@
++#!/usr/bin/env python3
++"""Source/configuration regressions, NOT Swift compilation or runtime/FPS tests."""
++from pathlib import Path
++import re
++import unittest
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def source(relative):
++    return (ROOT / relative).read_text(encoding="utf-8")
++
++
++class MotionPerformanceSourceTests(unittest.TestCase):
++    def test_no_routine_navigation_haptics(self):
++        swift = "\n".join(path.read_text() for path in (ROOT / "Anivibe").rglob("*.swift"))
++        for call in ("UIImpactFeedbackGenerator(", "UISelectionFeedbackGenerator(",
++                     "UINotificationFeedbackGenerator(", ".sensoryFeedback("):
++            self.assertNotIn(call, swift)
++
++    def test_no_endless_edit_mode_animation(self):
++        swift = "\n".join(path.read_text() for path in (ROOT / "Anivibe").rglob("*.swift"))
++        self.assertNotIn(".repeatForever(", swift)
++        self.assertNotIn("wiggle = true", swift)
++
++    def test_every_explicit_ui_animation_uses_motion_policy(self):
++        for path in (ROOT / "Anivibe").rglob("*.swift"):
++            for line in path.read_text().splitlines():
++                if "withAnimation(" in line or ".animation(" in line:
++                    self.assertIn("AppMotion.", line, str(path.relative_to(ROOT)) + ": " + line)
++
++    def test_motion_policy_respects_reduce_motion(self):
++        motion = source("Anivibe/DesignSystem/AppMotion.swift")
++        self.assertEqual(motion.count("reduceMotion ? nil"), 4)
++        self.assertIn("guard !reduceMotion else { return .opacity }", motion)
++
++    def test_folder_backdrop_is_separate_from_moving_panel(self):
++        home = source("Anivibe/Features/Home/HomeView.swift")
++        overlay = home.split("        .overlay {", 1)[1].split(".confirmationDialog(", 1)[0]
++        self.assertIn("FolderBackdrop(close: closeFolder)", overlay)
++        self.assertIn("AppMotion.panelTransition(reduceMotion: reduceMotion)", overlay)
++        self.assertNotIn(".scale(scale: 0.86)", overlay)
++        self.assertIn(".accessibilityHidden(openedFolder != nil)", home)
++        self.assertIn("env.collections.activeAccountID == presentedAccountID", home)
++
++    def test_scrolling_folder_tiles_do_not_each_blur_and_double_shadow(self):
++        home = source("Anivibe/Features/Home/HomeView.swift")
++        background = home.split("struct FolderBackground:", 1)[1].split("struct NewFolderTile:", 1)[0]
++        self.assertIn("var usesMaterial = false", background)
++        self.assertIn("usesMaterial && !reduceTransparency", background)
++        self.assertEqual(background.count(".shadow("), 1)
++        self.assertIn("FolderBackground(cornerRadius: 34, usesMaterial: true)", home)
++
++    def test_posters_request_bucketed_actual_display_size(self):
++        poster = source("Anivibe/DesignSystem/Components/PosterImage.swift")
++        self.assertIn("GeometryReader { geometry in", poster)
++        self.assertIn("ImageDownsampling.targetSize(", poster)
++        self.assertIn("scale: Double(displayScale)", poster)
++        self.assertIn(".task(id: request)", poster)
++        self.assertIn("self.url == request.url", poster)
++
++    def test_image_decode_and_size_key_are_off_main_and_bounded(self):
++        pipeline = source("Anivibe/Core/ImagePipeline.swift")
++        self.assertIn("Task.detached(priority: .userInitiated)", pipeline)
++        self.assertIn("size.width", pipeline)
++        self.assertIn("size.height", pipeline)
++        self.assertIn("ImageDownsampling.thumbnailPixelSize(", pipeline)
++        self.assertIn("kCGImageSourceThumbnailMaxPixelSize: pixelSize", pipeline)
++        self.assertIn("memory.totalCostLimit = 64 * 1024 * 1024", pipeline)
++        self.assertIn("config.httpMaximumConnectionsPerHost = 4", pipeline)
++        self.assertIn("config.timeoutIntervalForResource = 40", pipeline)
++        self.assertIn("didReceiveMemoryWarningNotification", pipeline)
++        self.assertIn("if (5...8).contains(orientation)", pipeline)
++
++    def test_offscreen_image_cancel_keeps_other_consumers_and_rejects_old_flight(self):
++        pipeline = source("Anivibe/Core/ImagePipeline.swift")
++        self.assertIn("existing.subscribers.insert(subscriber)", pipeline)
++        self.assertIn("withTaskCancellationHandler", pipeline)
++        release = pipeline.split("private func release(", 1)[1]
++        self.assertIn("flight.id == flightID", release)
++        self.assertIn("flight.subscribers.remove(subscriber) != nil", release)
++        self.assertIn("if flight.subscribers.isEmpty", release)
++        self.assertLess(release.index("return nil"), release.index("abandoned?.cancel()"))
++
++    def test_different_decode_sizes_share_one_url_download(self):
++        pipeline = source("Anivibe/Core/ImagePipeline.swift")
++        self.assertIn("private var downloads: [URL: Download]", pipeline)
++        self.assertIn("let data = try await self.data(for: url)", pipeline)
++        self.assertIn("if var existing = downloads[url]", pipeline)
++        self.assertEqual(pipeline.count("session.data(from: url)"), 1)
++        self.assertIn("download.id == downloadID", pipeline)
++        self.assertIn("download.subscribers.remove(subscriber) != nil", pipeline)
++
++    def test_catalog_cancels_invisible_work_and_restarts_pending_query(self):
++        view = source("Anivibe/Features/Catalog/CatalogView.swift")
++        model = source("Anivibe/Features/Catalog/CatalogViewModel.swift")
++        self.assertIn(".onDisappear { model.cancelRequests() }", view)
++        self.assertIn("model.phase == .idle || model.needsReload", view)
++        cancel = model.split("func cancelRequests()", 1)[1].split("func loadGenres(", 1)[0]
++        self.assertIn("runner.cancel()", cancel)
++        self.assertIn("loadMoreTask?.cancel()", cancel)
++
++    def test_pagination_cleanup_is_owned_by_current_request(self):
++        model = source("Anivibe/Features/Catalog/CatalogViewModel.swift")
++        pagination = model.split("func loadMoreIfNeeded(", 1)[1].split("func cancelRequests()", 1)[0]
++        self.assertIn("!isReloading", pagination)
++        self.assertIn("self.loadMoreRequestID == requestID", pagination)
++        self.assertIn("defer {", pagination)
++        self.assertIn("known.insert($0.id).inserted", pagination)
++        self.assertNotIn("self?.isLoadingMore = false", pagination)
++
++    def test_cached_catalog_index_decodes_off_main(self):
++        model = source("Anivibe/Features/Catalog/CatalogViewModel.swift")
++        cached = model.split("func loadCachedAnime(", 1)[1].split("func resetFilters()", 1)[0]
++        self.assertLess(cached.index("Task.detached(priority: .utility)"), cached.index("JSONDecoder().decode"))
++        self.assertIn("guard !Task.isCancelled, let cached", cached)
++        self.assertIn("self.suggestions = Array(matches.prefix(10))", model)
++
++    def test_home_details_and_folder_search_reject_stale_results(self):
++        home = source("Anivibe/Features/Home/HomeViewModel.swift")
++        details = source("Anivibe/Features/AnimeDetails/AnimeDetailsViewModel.swift")
++        folder = source("Anivibe/Features/Home/HomeView.swift").split("struct AddToFolderSheet:", 1)[1]
++        self.assertIn("!Task.isCancelled, feedRequestID == requestID", home)
++        self.assertIn("!Task.isCancelled, recentRequestID == requestID", home)
++        self.assertIn("!Task.isCancelled, loadRequestID == requestID", details)
++        self.assertIn("defer { if searchRequestID == requestID { isLoading = false } }", folder)
++        self.assertIn(".refreshable { await search(debounce: false) }", folder)
++
++    def test_library_ui_reads_one_consistent_snapshot_and_skips_no_op_updates(self):
++        repository = source("Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryRepository.swift")
++        atomic_read = repository.split("public func viewState(", 1)[1].split("    /// Separate", 1)[0]
++        self.assertNotIn("await ", atomic_read)
++        store = source("Anivibe/Core/LibraryStore.swift")
++        self.assertIn("let view = await repository.viewState()", store)
++        self.assertIn("if snapshot != view.snapshot", store)
++        self.assertIn("if continueWatching != view.continueWatching", store)
++        self.assertIn("request == refreshGeneration", store)
++
++    def test_continue_row_does_not_rescan_all_progress_for_every_anime(self):
++        repository = source("Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryRepository.swift")
++        continuing = repository.split("static func continueWatching(in state:", 1)[1].split("// MARK: - History", 1)[0]
++        self.assertIn("guard limit > 0", continuing)
++        self.assertIn("uniquingKeysWith: { first, _ in first }", continuing)
++        self.assertIn("resumePoint(in: list,", continuing)
++        self.assertNotIn("state.entries.first(", continuing)
++        self.assertNotIn("resumePoint(in: state,", continuing)
++
++    def test_unchanged_folder_mutations_skip_disk_and_cloud_work(self):
++        store = source("Anivibe/App/AppEnvironment.swift")
++        self.assertIn("guard next != state || errorMessage != nil else { return }", store)
++        self.assertIn("if next != state { state = next }", store)
++
++    def test_seek_is_latest_only_and_old_item_events_are_guarded(self):
++        player = source("Anivibe/Features/Player/PlayerViewModel.swift")
++        seek = player.split("func seek(to seconds:", 1)[1].split("// MARK: - Episodes", 1)[0]
++        self.assertIn("seconds.isFinite", seek)
++        self.assertIn("item.cancelPendingSeeks()", seek)
++        self.assertIn("self.seekGeneration == requestID", seek)
++        self.assertIn("self.player.currentItem === item", seek)
++        self.assertIn("if !finished", seek)
++        observers = player.split("private func observe(item:", 1)[1].split("private func observeApp()", 1)[0]
++        self.assertGreaterEqual(observers.count("self.player.currentItem === item"), 7)
++
++    def test_drag_does_not_restart_hide_timer_for_every_pixel(self):
++        controls = source("Anivibe/Features/Player/PlayerControlsView.swift")
++        changed = controls.split(".onChanged { gesture in", 1)[1].split(".onEnded { gesture in", 1)[0]
++        self.assertIn("guard width.isFinite, width > 0", changed)
++        self.assertEqual(changed.count("interacted()"), 1)
++        self.assertIn("if dragPosition == nil", changed)
++
++    def test_initial_video_preparation_has_cancellable_current_item_timeout(self):
++        player = source("Anivibe/Features/Player/PlayerViewModel.swift")
++        loading = player.split("private func load(_ source:", 1)[1].split("// MARK: - Observers", 1)[0]
++        self.assertIn("30_000_000_000", loading)
++        self.assertIn("self.player.currentItem === item, self.phase == .preparing", loading)
++        self.assertIn("self.player.replaceCurrentItem(with: nil)", loading)
++        self.assertIn("self.phase = .failed(", loading)
++        cleanup = player.split("private func clearItemObservers()", 1)[1].split("private func updateLoadedTimeRanges", 1)[0]
++        self.assertIn("preparationTask?.cancel()", cleanup)
++        self.assertIn("player.currentItem?.asset.cancelLoading()", cleanup)
++        self.assertIn("player.currentItem?.cancelPendingSeeks()", cleanup)
++
++    def test_progress_writes_are_ordered_and_duplicate_final_save_is_skipped(self):
++        player = source("Anivibe/Features/Player/PlayerViewModel.swift")
++        progress = player.split("private func saveProgress(force:", 1)[1].split("// MARK: - Helpers", 1)[0]
++        self.assertIn("sample != lastSavedProgress || library.errorMessage != nil", progress)
++        self.assertLess(progress.index("await previousSave?.value"), progress.index("await library.recordProgress"))
++        screen = source("Anivibe/Features/Player/PlayerScreen.swift")
++        self.assertIn("scenePhase != .active", screen)
++
++    def test_new_files_are_in_automatic_xcode_and_package_source_groups(self):
++        project = source("Anivibe.xcodeproj/project.pbxproj")
++        self.assertIn("PBXFileSystemSynchronizedRootGroup", project)
++        self.assertTrue((ROOT / "Anivibe/DesignSystem/AppMotion.swift").is_file())
++        self.assertTrue((ROOT / "Packages/AnivibeCore/Sources/AnivibeCore/Support/ImageDownsampling.swift").is_file())
++        self.assertEqual(len(re.findall(r"func test\w+\(", source(
++            "Packages/AnivibeCore/Tests/AnivibeCoreTests/MotionPerformanceTests.swift"))), 14)
++
++
++if __name__ == "__main__":
++    unittest.main(verbosity=2)

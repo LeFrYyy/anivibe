@@ -201,7 +201,16 @@ final class CollectionsStore {
     func remove(_ animeID: Int, from id: UUID) { mutate { $0.remove(animeID, from: id) } }
     func toggle(_ anime: AnimeSnapshot, in id: UUID) { mutate { $0.toggle(anime, in: id) } }
     func move(in id: UUID, from source: IndexSet, to destination: Int) { mutate { $0.moveItems(in: id, from: source, to: destination) } }
-    private func mutate(_ work: (inout AnimeCollections) -> Void) { guard canSave else { return }; work(&state); saveLocal() }
+    private func mutate(_ work: (inout AnimeCollections) -> Void) {
+        guard canSave else { return }
+        var next = state
+        work(&next)
+        // Closing an unchanged folder or adding an existing item needs no disk write.
+        // Retry a failed save even if the visible state did not change.
+        guard next != state || errorMessage != nil else { return }
+        if next != state { state = next }
+        saveLocal()
+    }
     private func saveLocal() {
         document.capture(state)
         do { try persist(); onLocalChange?() }

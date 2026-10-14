@@ -56,7 +56,7 @@ echo cd /d "%TARGET%"
 echo git diff --stat
 echo git status --short
 echo git add -A
-echo git commit -m "Add avatars comments and restore quality controls"
+echo git commit -m "Improve animations and playback reliability"
 echo git push origin main
 pause
 exit /b 0

@@ -43,6 +43,8 @@ struct PlayerScreen: View {
 
 private struct PlayerContent: View {
     @Bindable var model: PlayerViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     let pip: PictureInPictureModel
     let close: () -> Void
 
@@ -51,7 +53,8 @@ private struct PlayerContent: View {
     @State private var webPlayback: WebPlaybackRequest?
     private var controlsVisible: Bool { controls.isVisible }
     private var interactionBlocked: Bool {
-        webPlayback != nil || showSettings || showSources || showEpisodes || model.isScrubbing || model.isBuffering || model.phase != .ready
+        scenePhase != .active || webPlayback != nil || showSettings || showSources || showEpisodes ||
+            model.isScrubbing || model.isBuffering || model.phase != .ready
     }
     @State private var hideTask: Task<Void, Never>?
     @State private var showSources = false
@@ -81,14 +84,11 @@ private struct PlayerContent: View {
                                 playNow: model.playNextEpisode, cancel: model.cancelCountdown)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(Theme.Spacing.xl)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .scale(scale: 0.9).combined(with: .opacity)
-                    ))
+                    .transition(AppMotion.panelTransition(reduceMotion: reduceMotion))
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: controlsVisible)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: model.nextEpisodeCountdown != nil)
+        .animation(AppMotion.fade(reduceMotion: reduceMotion), value: controlsVisible)
+        .animation(AppMotion.panel(reduceMotion: reduceMotion), value: model.nextEpisodeCountdown != nil)
         .sheet(item: $webPlayback) { request in
             NavigationStack {
                 WebPlayerView(url: request.url).background(Color.black)

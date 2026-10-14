@@ -5,6 +5,7 @@ struct AnimeDetailsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(LibraryStore.self) private var library
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model: AnimeDetailsViewModel
     @State private var playback: PlaybackRequest?
     @State private var descriptionExpanded = false
@@ -277,7 +278,7 @@ struct AnimeDetailsView: View {
                     .lineLimit(descriptionExpanded ? nil : 5)
                     .padding(.horizontal, Theme.Spacing.l)
                 Button(descriptionExpanded ? "Свернуть" : "Читать полностью") {
-                    withAnimation(.easeInOut(duration: 0.2)) { descriptionExpanded.toggle() }
+                    withAnimation(AppMotion.selection(reduceMotion: reduceMotion)) { descriptionExpanded.toggle() }
                 }
                 .font(.subheadline)
                 .padding(.horizontal, Theme.Spacing.l)

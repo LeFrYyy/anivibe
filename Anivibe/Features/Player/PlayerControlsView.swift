@@ -241,6 +241,7 @@ struct EpisodesSheet: View {
 private struct VideoTimelineSlider: View {
     @Bindable var model: PlayerViewModel
     let interacted: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var dragPosition: Double?
 
@@ -276,7 +277,7 @@ private struct VideoTimelineSlider: View {
                 Capsule()
                     .fill(Color.white.opacity(0.6))
                     .frame(width: max(0, min(width, width * bufferedFraction)), height: height)
-                    .animation(.linear(duration: 0.2), value: bufferedFraction)
+                    .animation(AppMotion.fade(reduceMotion: reduceMotion), value: bufferedFraction)
 
                 // Воспроизведённая часть
                 Capsule()
@@ -298,14 +299,22 @@ private struct VideoTimelineSlider: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
-                        model.isScrubbing = true
+                        guard width.isFinite, width > 0 else { return }
+                        if dragPosition == nil {
+                            model.isScrubbing = true
+                            interacted()
+                        }
                         let fraction = max(0, min(1, gesture.location.x / width))
                         let targetTime = fraction * duration
                         dragPosition = targetTime
                         model.currentTime = targetTime
-                        interacted()
                     }
                     .onEnded { gesture in
+                        guard width.isFinite, width > 0 else {
+                            dragPosition = nil
+                            model.isScrubbing = false
+                            return
+                        }
                         let fraction = max(0, min(1, gesture.location.x / width))
                         let targetTime = fraction * duration
                         dragPosition = nil
@@ -316,8 +325,20 @@ private struct VideoTimelineSlider: View {
         }
         .frame(height: 32)
         .disabled(model.duration <= 0)
+        .onDisappear {
+            dragPosition = nil
+            model.isScrubbing = false
+        }
         .accessibilityLabel("Позиция воспроизведения")
         .accessibilityValue("\(TimeFormat.string(model.currentTime)) из \(TimeFormat.string(model.duration)), прогружено \(Int(bufferedFraction * 100))%")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: model.skip(by: 10)
+            case .decrement: model.skip(by: -10)
+            @unknown default: break
+            }
+            interacted()
+        }
     }
 }
 

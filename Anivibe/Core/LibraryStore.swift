@@ -27,14 +27,16 @@ final class LibraryStore {
     func allowAccountStorage() { refreshGeneration = UUID(); isAccountStorageAvailable = true }
     func refresh() async {
         guard isAccountStorageAvailable else { return }
+        refreshGeneration = UUID()
         let request = refreshGeneration
+        let view = await repository.viewState()
         let account = await repository.activeAccountID
-        let next = await repository.snapshot()
-        let continuing = await repository.continueWatching()
-        let error = await repository.lastSaveError
         guard isAccountStorageAvailable, request == refreshGeneration,
-              account == (await repository.activeAccountID) else { return }
-        snapshot = next; continueWatching = continuing; errorMessage = error
+              view.accountID == account else { return }
+        // Observation otherwise invalidates every dependent list even on a no-op refresh.
+        if snapshot != view.snapshot { snapshot = view.snapshot }
+        if continueWatching != view.continueWatching { continueWatching = view.continueWatching }
+        if errorMessage != view.errorMessage { errorMessage = view.errorMessage }
     }
 
     // MARK: Queries

@@ -30,6 +30,8 @@ jobs:
         run: python3 scripts/check_project.py
       - name: Static Kodik routing regressions
         run: python3 scripts/test_kodik_routing.py
+      - name: Static motion and performance regressions
+        run: python3 scripts/test_motion_performance.py
       - name: Test build configuration scripts
         run: python3 scripts/test_build_scripts.py
       - name: Run AnivibeCore tests

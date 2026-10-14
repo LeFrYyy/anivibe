@@ -4,6 +4,7 @@ import AnivibeCore
 struct CatalogView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.dismissSearch) private var dismissSearch
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model = CatalogViewModel()
     @State private var showFilters = false
 
@@ -13,7 +14,7 @@ struct CatalogView: View {
         @Bindable var model = model
         NavigationStack {
             content
-                .animation(.easeInOut(duration: 0.25), value: model.phase)
+                .animation(AppMotion.fade(reduceMotion: reduceMotion), value: model.phase)
                 .screenBackground()
                 .navigationTitle("Каталог")
                 .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
@@ -45,11 +46,12 @@ struct CatalogView: View {
                     .presentationDetents([.medium, .large])
                 }
                 .task {
-                    if model.phase == .idle { model.reload(catalog: env.catalog) }
+                    if model.phase == .idle || model.needsReload { model.reload(catalog: env.catalog) }
                     await model.loadGenres(catalog: env.catalog)
                     await model.loadCachedAnime(cache: env.cache)
                 }
         }
+        .onDisappear { model.cancelRequests() }
     }
 
     @ViewBuilder private var suggestionsContent: some View {

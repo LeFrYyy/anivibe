@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SplashView: View {
     @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -9,7 +10,7 @@ struct SplashView: View {
             VStack(spacing: 16) {
                 AnivibeMark()
                     .frame(width: 140, height: 140)
-                    .scaleEffect(appeared ? 1 : 0.82)
+                    .scaleEffect(appeared || reduceMotion ? 1 : 0.92)
                 Text("Anivibe")
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .foregroundStyle(.white)
@@ -18,7 +19,7 @@ struct SplashView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Anivibe")
-        .onAppear { withAnimation(.spring(response: 0.52, dampingFraction: 0.72)) { appeared = true } }
+        .onAppear { withAnimation(AppMotion.panel(reduceMotion: reduceMotion)) { appeared = true } }
     }
 }
 

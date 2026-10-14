@@ -10,25 +10,48 @@ final class HomeViewModel {
     private(set) var recommendations: [Anime] = []
     private(set) var recommendationsBasis: String?
     private(set) var recentEpisodes: [AiredEpisode] = []
+    @ObservationIgnored private var feedRequestID: UUID?
+    @ObservationIgnored private var recentRequestID: UUID?
     @ObservationIgnored private var lastRecommendationSource: Int?
     @ObservationIgnored private var recommendationRequestID: UUID?
 
     func load(catalog: CatalogService, force: Bool = false) async {
         if case .loaded = state, !force { return }
+        guard force || feedRequestID == nil else { return }
+        let requestID = UUID()
+        feedRequestID = requestID
+        defer {
+            if feedRequestID == requestID {
+                feedRequestID = nil
+                if Task.isCancelled, case .loading = state { state = .idle }
+            }
+        }
         if case .idle = state { state = .loading }
         if force, case .failed = state { state = .loading }
         do {
-            state = .loaded(try await catalog.homeFeed())
-        } catch let e as APIError {
-            if e != .cancelled { state = .failed(e.userMessage) }
+            let feed = try await catalog.homeFeed()
+            guard !Task.isCancelled, feedRequestID == requestID else { return }
+            state = .loaded(feed)
         } catch {
-            state = .failed("Не удалось загрузить главную.")
+            guard feedRequestID == requestID else { return }
+            if Task.isCancelled || error is CancellationError || (error as? APIError) == .cancelled {
+                if case .loading = state { state = .idle }
+                return
+            }
+            state = .failed((error as? APIError)?.userMessage ?? "Не удалось загрузить главную.")
         }
     }
 
     /// «Недавно вышедшие» грузятся отдельно: их ошибка не ломает главную.
-    func loadRecentEpisodes(catalog: CatalogService) async {
-        if let list = try? await catalog.recentEpisodes() { recentEpisodes = list }
+    func loadRecentEpisodes(catalog: CatalogService, force: Bool = false) async {
+        guard force || recentRequestID == nil else { return }
+        let requestID = UUID()
+        recentRequestID = requestID
+        defer { if recentRequestID == requestID { recentRequestID = nil } }
+        if let list = try? await catalog.recentEpisodes(),
+           !Task.isCancelled, recentRequestID == requestID {
+            recentEpisodes = list
+        }
     }
 
     /// Рекомендации строятся от последнего просмотренного тайтла (данные AniList).

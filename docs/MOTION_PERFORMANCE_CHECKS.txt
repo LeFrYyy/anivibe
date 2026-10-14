@@ -1,0 +1,51 @@
+
+=== check_project.py ===
+Static project checks passed. Swift compilation and device checks are separate.
+
+=== test_build_scripts.py ===
+........
+----------------------------------------------------------------------
+Ran 8 tests in 0.240s
+
+OK
+
+=== test_kodik_routing.py ===
+test_default_player_does_not_exclude_kodik (__main__.KodikWiringTests.test_default_player_does_not_exclude_kodik) ... ok
+test_kodik_has_explicit_registry_priority (__main__.KodikWiringTests.test_kodik_has_explicit_registry_priority) ... ok
+test_online_buttons_share_native_source_identity (__main__.KodikWiringTests.test_online_buttons_share_native_source_identity) ... ok
+test_watch_waits_for_voice_lookup_before_routing (__main__.KodikWiringTests.test_watch_waits_for_voice_lookup_before_routing) ... ok
+test_web_fallback_is_offered_on_native_failure (__main__.KodikWiringTests.test_web_fallback_is_offered_on_native_failure) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.001s
+
+OK
+
+=== test_motion_performance.py ===
+test_cached_catalog_index_decodes_off_main (__main__.MotionPerformanceSourceTests.test_cached_catalog_index_decodes_off_main) ... ok
+test_catalog_cancels_invisible_work_and_restarts_pending_query (__main__.MotionPerformanceSourceTests.test_catalog_cancels_invisible_work_and_restarts_pending_query) ... ok
+test_continue_row_does_not_rescan_all_progress_for_every_anime (__main__.MotionPerformanceSourceTests.test_continue_row_does_not_rescan_all_progress_for_every_anime) ... ok
+test_different_decode_sizes_share_one_url_download (__main__.MotionPerformanceSourceTests.test_different_decode_sizes_share_one_url_download) ... ok
+test_drag_does_not_restart_hide_timer_for_every_pixel (__main__.MotionPerformanceSourceTests.test_drag_does_not_restart_hide_timer_for_every_pixel) ... ok
+test_every_explicit_ui_animation_uses_motion_policy (__main__.MotionPerformanceSourceTests.test_every_explicit_ui_animation_uses_motion_policy) ... ok
+test_folder_backdrop_is_separate_from_moving_panel (__main__.MotionPerformanceSourceTests.test_folder_backdrop_is_separate_from_moving_panel) ... ok
+test_home_details_and_folder_search_reject_stale_results (__main__.MotionPerformanceSourceTests.test_home_details_and_folder_search_reject_stale_results) ... ok
+test_image_decode_and_size_key_are_off_main_and_bounded (__main__.MotionPerformanceSourceTests.test_image_decode_and_size_key_are_off_main_and_bounded) ... ok
+test_initial_video_preparation_has_cancellable_current_item_timeout (__main__.MotionPerformanceSourceTests.test_initial_video_preparation_has_cancellable_current_item_timeout) ... ok
+test_library_ui_reads_one_consistent_snapshot_and_skips_no_op_updates (__main__.MotionPerformanceSourceTests.test_library_ui_reads_one_consistent_snapshot_and_skips_no_op_updates) ... ok
+test_motion_policy_respects_reduce_motion (__main__.MotionPerformanceSourceTests.test_motion_policy_respects_reduce_motion) ... ok
+test_new_files_are_in_automatic_xcode_and_package_source_groups (__main__.MotionPerformanceSourceTests.test_new_files_are_in_automatic_xcode_and_package_source_groups) ... ok
+test_no_endless_edit_mode_animation (__main__.MotionPerformanceSourceTests.test_no_endless_edit_mode_animation) ... ok
+test_no_routine_navigation_haptics (__main__.MotionPerformanceSourceTests.test_no_routine_navigation_haptics) ... ok
+test_offscreen_image_cancel_keeps_other_consumers_and_rejects_old_flight (__main__.MotionPerformanceSourceTests.test_offscreen_image_cancel_keeps_other_consumers_and_rejects_old_flight) ... ok
+test_pagination_cleanup_is_owned_by_current_request (__main__.MotionPerformanceSourceTests.test_pagination_cleanup_is_owned_by_current_request) ... ok
+test_posters_request_bucketed_actual_display_size (__main__.MotionPerformanceSourceTests.test_posters_request_bucketed_actual_display_size) ... ok
+test_progress_writes_are_ordered_and_duplicate_final_save_is_skipped (__main__.MotionPerformanceSourceTests.test_progress_writes_are_ordered_and_duplicate_final_save_is_skipped) ... ok
+test_scrolling_folder_tiles_do_not_each_blur_and_double_shadow (__main__.MotionPerformanceSourceTests.test_scrolling_folder_tiles_do_not_each_blur_and_double_shadow) ... ok
+test_seek_is_latest_only_and_old_item_events_are_guarded (__main__.MotionPerformanceSourceTests.test_seek_is_latest_only_and_old_item_events_are_guarded) ... ok
+test_unchanged_folder_mutations_skip_disk_and_cloud_work (__main__.MotionPerformanceSourceTests.test_unchanged_folder_mutations_skip_disk_and_cloud_work) ... ok
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.011s
+
+OK

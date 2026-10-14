@@ -93,12 +93,14 @@ struct ProgressBar: View {
     }
 }
 
-/// Тактильный пружинящий эффект нажатия для постеров и карточек аниме.
+/// Quiet visual press feedback; no vibration for routine navigation.
 struct PosterPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
             .opacity(configuration.isPressed ? 0.92 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+            .animation(AppMotion.press(reduceMotion: reduceMotion), value: configuration.isPressed)
     }
 }

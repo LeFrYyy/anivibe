@@ -32,6 +32,19 @@ public actor LibraryRepository {
 
     public func snapshot() -> LibrarySnapshot { state }
 
+    /// One actor read keeps the visible library, continue row and error consistent.
+    public struct ViewState: Sendable {
+        public let snapshot: LibrarySnapshot
+        public let continueWatching: [ContinueWatchingItem]
+        public let accountID: String?
+        public let errorMessage: String?
+    }
+
+    public func viewState(limit: Int = 20) -> ViewState {
+        ViewState(snapshot: state, continueWatching: Self.continueWatching(in: state, limit: limit),
+                  accountID: activeAccountID, errorMessage: lastSaveError)
+    }
+
     /// Separate local files per account. Legacy library.json is the guest library and is never auto-uploaded.
     public func switchAccount(userID: String?) throws {
         guard userID != activeAccountID else { return }
@@ -144,7 +157,12 @@ public actor LibraryRepository {
     }
 
     public static func resumePoint(in state: LibrarySnapshot, animeId: Int, lastAvailableEpisode: Int?) -> ResumePoint? {
-        guard let latest = state.progress.filter({ $0.animeId == animeId }).max(by: { $0.updatedAt < $1.updatedAt }) else { return nil }
+        resumePoint(in: state.progress.filter { $0.animeId == animeId },
+                    animeId: animeId, lastAvailableEpisode: lastAvailableEpisode)
+    }
+
+    private static func resumePoint(in progress: [WatchProgress], animeId: Int, lastAvailableEpisode: Int?) -> ResumePoint? {
+        guard let latest = progress.max(by: { $0.updatedAt < $1.updatedAt }) else { return nil }
         if let sourceKey = latest.sourceKey {
             guard !latest.isFinished else { return nil } // No guessed next episode/offset.
             return ResumePoint(animeId: animeId, episode: latest.episode, position: latest.position,
@@ -153,9 +171,10 @@ public actor LibraryRepository {
         if !latest.isFinished {
             return ResumePoint(animeId: animeId, episode: latest.episode, position: latest.position, fraction: latest.fraction, isNextEpisode: false)
         }
+        guard latest.episode < Int.max else { return nil }
         let next = latest.episode + 1
         if let last = lastAvailableEpisode, next > last { return nil }
-        let nextProgress = state.progress(animeId: animeId, episode: next)
+        let nextProgress = progress.first { $0.episode == next && $0.sourceKey == nil }
         return ResumePoint(animeId: animeId, episode: next, position: nextProgress?.isFinished == false ? nextProgress?.position ?? 0 : 0,
                            fraction: nextProgress?.isFinished == false ? nextProgress?.fraction ?? 0 : 0, isNextEpisode: true)
     }
@@ -166,16 +185,21 @@ public actor LibraryRepository {
     }
 
     static func continueWatching(in state: LibrarySnapshot, limit: Int) -> [ContinueWatchingItem] {
+        guard limit > 0 else { return [] }
         let byAnime = Dictionary(grouping: state.progress, by: \.animeId)
+        // Keep the first entry, as the old first(where:) lookup did; tolerate old duplicates.
+        let entries = Dictionary(state.entries.map { ($0.anime.id, $0) }, uniquingKeysWith: { first, _ in first })
         var items: [ContinueWatchingItem] = []
         for (animeId, list) in byAnime {
-            guard let entry = state.entries.first(where: { $0.anime.id == animeId }), !entry.isDeleted,
+            guard let entry = entries[animeId], !entry.isDeleted,
                   entry.status != .completed,
-                  let resume = resumePoint(in: state, animeId: animeId, lastAvailableEpisode: entry.anime.episodeCount),
-                  let updated = list.map(\.updatedAt).max() else { continue }
+                  let resume = resumePoint(in: list, animeId: animeId, lastAvailableEpisode: entry.anime.episodeCount),
+                  let updated = list.max(by: { $0.updatedAt < $1.updatedAt })?.updatedAt else { continue }
             items.append(ContinueWatchingItem(anime: entry.anime, resume: resume, updatedAt: updated))
         }
-        return Array(items.sorted { $0.updatedAt > $1.updatedAt }.prefix(limit))
+        return Array(items.sorted {
+            $0.updatedAt == $1.updatedAt ? $0.anime.id < $1.anime.id : $0.updatedAt > $1.updatedAt
+        }.prefix(limit))
     }
 
     // MARK: - History

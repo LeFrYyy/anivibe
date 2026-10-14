@@ -27,6 +27,8 @@ enum LibrarySection: Hashable, CaseIterable, Identifiable {
 
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var library
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var selectionNamespace
     @State private var section: LibrarySection = .list(.watching)
     @State private var confirmClear = false
 
@@ -49,23 +51,30 @@ struct LibraryView: View {
                     HStack(spacing: Theme.Spacing.s) {
                         ForEach(LibrarySection.allCases) { s in
                             Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) { section = s }
+                                section = s
                             } label: {
                                 Text("\(s.title) \(count(s))")
                                     .font(.subheadline.weight(.medium))
                                     .padding(.horizontal, 14).frame(minHeight: 44)
-                                    .background(section == s ? Theme.accent : Theme.surfaceElevated, in: Capsule())
+                                    .background {
+                                        Capsule().fill(Theme.surfaceElevated)
+                                        if section == s {
+                                            Capsule().fill(Theme.accent)
+                                                .matchedGeometryEffect(id: "library.selection", in: selectionNamespace)
+                                        }
+                                    }
                                     .foregroundStyle(section == s ? Theme.onAccent : Theme.textPrimary)
                             }
                             .buttonStyle(PosterPressStyle())
                             .accessibilityAddTraits(section == s ? .isSelected : [])
                         }
                     }
+                    .animation(AppMotion.selection(reduceMotion: reduceMotion), value: section)
                     .padding(.horizontal, Theme.Spacing.l)
                     .padding(.vertical, Theme.Spacing.s)
                 }
                 content
-                    .animation(.spring(response: 0.32, dampingFraction: 0.85), value: section)
+                    .animation(AppMotion.fade(reduceMotion: reduceMotion), value: section)
             }
             .screenBackground()
             .navigationTitle("Библиотека")
@@ -85,8 +94,8 @@ struct LibraryView: View {
     private func count(_ s: LibrarySection) -> String {
         let n: Int
         switch s {
-        case .list(let status): n = library.snapshot.entries(in: status).count
-        case .favorites: n = library.snapshot.favorites.count
+        case .list(let status): n = library.snapshot.entries.lazy.filter { !$0.isDeleted && $0.status == status }.count
+        case .favorites: n = library.snapshot.entries.lazy.filter { !$0.isDeleted && $0.isFavorite }.count
         case .history: n = library.snapshot.history.count
         }
         return n > 0 ? "· \(n)" : ""

@@ -14,9 +14,13 @@ final class CatalogViewModel {
     private(set) var isLoadingMore = false
     private(set) var hasNextPage = false
     private(set) var genres: [String] = []
+    private(set) var needsReload = true
 
     private let runner = LatestTaskRunner()
     @ObservationIgnored private var loadMoreTask: Task<Void, Never>?
+    @ObservationIgnored private var loadMoreRequestID: UUID?
+    @ObservationIgnored private var reloadRequestID: UUID?
+    @ObservationIgnored private var isReloading = false
     @ObservationIgnored private var page = 1
     @ObservationIgnored private var knownAnimePool: [Anime] = []
 
@@ -37,9 +41,8 @@ final class CatalogViewModel {
             .filter { $0.1 > 0 }
             .sorted { $0.1 > $1.1 }
             .map(\.0)
-        if !matches.isEmpty {
-            self.suggestions = Array(matches.prefix(10))
-        }
+        // A query with no local matches must not keep suggestions from the previous text.
+        self.suggestions = Array(matches.prefix(10))
 
         // 2. Сетевой поиск с минимальным дебаунсом (0.25 сек)
         isSearchingLive = true
@@ -49,25 +52,37 @@ final class CatalogViewModel {
     /// Новый поиск. Предыдущий запрос (и подгрузка страниц) отменяется.
     func reload(catalog: CatalogService, debounce: TimeInterval = 0) {
         loadMoreTask?.cancel()
+        loadMoreTask = nil
+        loadMoreRequestID = nil
         isLoadingMore = false
+        hasNextPage = false
+        isReloading = true
+        needsReload = true
+        let requestID = UUID()
+        reloadRequestID = requestID
         var q = query.withPage(1)
         // При вводе текста логичнее «по совпадению», если пользователь не выбрал иное.
         if !q.trimmedSearch.isEmpty && q.sort == .popularity { q.sort = .relevance }
         if phase != .loaded || items.isEmpty { phase = .loading }
         let searchQuery = q
         runner.run(debounce: debounce, operation: { try await catalog.search(searchQuery) }) { [weak self] result in
-            guard let self else { return }
+            guard let self, self.reloadRequestID == requestID else { return }
+            self.reloadRequestID = nil
+            self.isReloading = false
+            self.needsReload = false
             self.isSearchingLive = false
             switch result {
             case .success(let page):
+                var seen = Set<Int>()
+                let uniqueItems = page.items.filter { seen.insert($0.id).inserted }
                 self.page = 1
-                self.items = page.items
+                self.items = uniqueItems
                 if !searchQuery.trimmedSearch.isEmpty {
-                    self.suggestions = page.items
+                    self.suggestions = uniqueItems
                 }
-                self.remember(page.items)
+                self.remember(uniqueItems)
                 self.hasNextPage = page.hasNextPage
-                self.phase = page.items.isEmpty ? .empty : .loaded
+                self.phase = uniqueItems.isEmpty ? .empty : .loaded
             case .failure(let error):
                 self.phase = .failed((error as? APIError)?.userMessage ?? "Не удалось загрузить каталог.")
             }
@@ -83,17 +98,28 @@ final class CatalogViewModel {
 
     /// Постраничная подгрузка при прокрутке к концу списка.
     func loadMoreIfNeeded(current anime: Anime, catalog: CatalogService) {
-        guard hasNextPage, !isLoadingMore, phase == .loaded,
+        guard hasNextPage, !isReloading, !isLoadingMore, phase == .loaded,
               let index = items.firstIndex(of: anime), index >= items.count - 6 else { return }
         isLoadingMore = true
+        let requestID = UUID()
+        loadMoreRequestID = requestID
         var q = query.withPage(page + 1)
         if !q.trimmedSearch.isEmpty && q.sort == .popularity { q.sort = .relevance }
+        let searchQuery = q
         loadMoreTask = Task { [weak self] in
+            defer {
+                // An old cancelled page must never clear a newer page's loading flag.
+                if let self, self.loadMoreRequestID == requestID {
+                    self.loadMoreRequestID = nil
+                    self.loadMoreTask = nil
+                    self.isLoadingMore = false
+                }
+            }
             do {
-                let next = try await catalog.search(q)
-                guard !Task.isCancelled, let self else { return }
-                let known = Set(self.items.map(\.id))
-                let newItems = next.items.filter { !known.contains($0.id) }
+                let next = try await catalog.search(searchQuery)
+                guard !Task.isCancelled, let self, self.loadMoreRequestID == requestID else { return }
+                var known = Set(self.items.map(\.id))
+                let newItems = next.items.filter { known.insert($0.id).inserted }
                 self.items.append(contentsOf: newItems)
                 self.remember(newItems)
                 self.page = next.page
@@ -101,8 +127,20 @@ final class CatalogViewModel {
             } catch {
                 // Ошибку подгрузки не показываем на весь экран — можно прокрутить ещё раз.
             }
-            self?.isLoadingMore = false
         }
+    }
+
+    func cancelRequests() {
+        runner.cancel()
+        reloadRequestID = nil
+        isReloading = false
+        loadMoreRequestID = nil
+        loadMoreTask?.cancel()
+        loadMoreTask = nil
+        isLoadingMore = false
+        isSearchingLive = false
+        if items.isEmpty, phase == .loading { phase = .idle }
+        // needsReload remains true when a pending new query was interrupted.
     }
 
     func loadGenres(catalog: CatalogService) async {
@@ -113,10 +151,13 @@ final class CatalogViewModel {
     /// Загружает локально сохранённые тайтлы для мгновенного поиска по мере ввода.
     func loadCachedAnime(cache: MetadataCache) async {
         guard knownAnimePool.isEmpty else { return }
-        if let data = await cache.data(for: "russian-name-index"),
-           let cached = try? JSONDecoder().decode([Anime].self, from: data) {
-            remember(cached)
-        }
+        guard let data = await cache.data(for: "russian-name-index"), !Task.isCancelled else { return }
+        // A large name index used to be decoded on MainActor during screen presentation.
+        let cached = await Task.detached(priority: .utility) {
+            try? JSONDecoder().decode([Anime].self, from: data)
+        }.value
+        guard !Task.isCancelled, let cached else { return }
+        remember(cached)
     }
 
     func resetFilters() {

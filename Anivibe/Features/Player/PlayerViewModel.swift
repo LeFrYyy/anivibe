@@ -59,7 +59,11 @@ final class PlayerViewModel {
     @ObservationIgnored private var audioGroup: AVMediaSelectionGroup?
     @ObservationIgnored private var subtitleGroup: AVMediaSelectionGroup?
     @ObservationIgnored private var loadTask: Task<Void, Never>?
+    @ObservationIgnored private var preparationTask: Task<Void, Never>?
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
+    @ObservationIgnored private var progressSaveTask: Task<Void, Never>?
+    @ObservationIgnored private var seekGeneration = UUID()
+    @ObservationIgnored private var lastSavedProgress: SavedProgress?
     @ObservationIgnored private var lastSaveDate = Date.distantPast
     @ObservationIgnored private var didStart = false
     @ObservationIgnored private var isTornDown = false
@@ -68,6 +72,13 @@ final class PlayerViewModel {
     @ObservationIgnored private var hasActuallyPlayed = false
 
     static let saveInterval: TimeInterval = 5
+
+    private struct SavedProgress: Equatable {
+        let episode: Int
+        let position: Double
+        let duration: Double
+        let sourceKey: String?
+    }
 
     init(request: PlaybackRequest, registry: ProviderRegistry, library: LibraryStore, accountID: String?, autoplayNext: @escaping () -> Bool) {
         anime = request.anime
@@ -127,6 +138,7 @@ final class PlayerViewModel {
     // MARK: - Sources
 
     func findSources() {
+        guard !isTornDown else { return }
         loadTask?.cancel()
         cancelCountdown()
         phase = .searchingSources
@@ -142,7 +154,7 @@ final class PlayerViewModel {
             } else {
                 found = await registry.candidates(for: anime, season: self.currentEpisode?.season ?? 1, episode: episode)
             }
-            guard !Task.isCancelled, episode == self.episodeNumber else { return }
+            guard !Task.isCancelled, !self.isTornDown, episode == self.episodeNumber else { return }
             self.candidates = found
             if let first = found.first(where: { $0.availability.isAvailable }) {
                 await self.play(candidate: first)
@@ -153,7 +165,7 @@ final class PlayerViewModel {
     }
 
     func select(candidate: SourceCandidate) {
-        guard candidate.availability.isAvailable else { return }
+        guard !isTornDown, candidate.availability.isAvailable else { return }
         saveProgress(force: true)
         resumeAfterLoad = isPlaying || isBuffering
         startPosition = currentTime > 1 ? currentTime : startPosition
@@ -163,6 +175,7 @@ final class PlayerViewModel {
 
     /// Повтор: заново получаем ссылку (временные ссылки не переиспользуются).
     func retry() {
+        guard !isTornDown else { return }
         if let activeCandidate {
             startPosition = max(startPosition, currentTime)
             loadTask?.cancel()
@@ -180,12 +193,13 @@ final class PlayerViewModel {
         activeCandidate = candidate
         phase = .preparing
         guard let episode = candidate.episode, let provider = await registry.provider(candidate.providerID) else {
-            phase = .failed("Источник недоступен.")
+            if !Task.isCancelled, !isTornDown { phase = .failed("Источник недоступен.") }
             return
         }
+        guard !Task.isCancelled, !isTornDown else { return }
         do {
             let resolved = try await provider.resolve(episode)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, !isTornDown else { return }
             guard !resolved.isExpired() else { throw VideoSourceError.linkExpired }
             source = resolved
             load(resolved)
@@ -198,6 +212,7 @@ final class PlayerViewModel {
 
     private func load(_ source: PlaybackSource) {
         clearItemObservers()
+        hasActuallyPlayed = false
         audioOptions = []
         subtitleOptions = []
         duration = 0
@@ -207,6 +222,18 @@ final class PlayerViewModel {
         let item = AVPlayerItem(url: source.url)
         observe(item: item)
         player.replaceCurrentItem(with: item)
+        preparationTask = Task { [weak self, weak item] in
+            do { try await Task.sleep(nanoseconds: 30_000_000_000) }
+            catch { return }
+            guard !Task.isCancelled, let self, let item, !self.isTornDown,
+                  self.player.currentItem === item, self.phase == .preparing else { return }
+            // A stalled asset/track/initial-seek load must offer Retry, not spin forever.
+            self.player.pause()
+            self.clearItemObservers()
+            self.player.replaceCurrentItem(with: nil)
+            self.restoringPosition = false
+            self.phase = .failed("Видео не удалось подготовить за 30 секунд. Проверьте сеть или выберите другой источник.")
+        }
     }
 
     // MARK: - Observers
@@ -215,17 +242,18 @@ final class PlayerViewModel {
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             MainActor.assumeIsolated {
-                guard let self, !self.isScrubbing, !self.restoringPosition, self.phase == .ready else { return }
+                guard let self, !self.isTornDown, !self.isScrubbing, !self.restoringPosition, self.phase == .ready else { return }
                 let seconds = time.seconds
-                if seconds.isFinite { self.currentTime = seconds }
+                if seconds.isFinite, seconds >= 0, self.currentTime != seconds { self.currentTime = seconds }
                 if self.isPlaying && seconds > 0 { self.hasActuallyPlayed = true }
                 self.saveProgress(force: false)
             }
         }
         playerObservations.append(player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
-            let status = player.timeControlStatus
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, !self.isTornDown else { return }
+                // Read the latest status instead of applying a queued, stale KVO value.
+                let status = self.player.timeControlStatus
                 self.isPlaying = status == .playing
                 switch status {
                 case .playing:
@@ -250,10 +278,13 @@ final class PlayerViewModel {
             let status = item.status
             let message = item.error.map(Self.describe)
             Task { @MainActor [weak self] in
-                guard let self, self.player.currentItem === item else { return }
+                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
                 switch status {
                 case .readyToPlay: await self.itemBecameReady(item)
-                case .failed: self.phase = .failed(message ?? "Не удалось воспроизвести поток.")
+                case .failed:
+                    self.preparationTask?.cancel()
+                    self.preparationTask = nil
+                    self.phase = .failed(message ?? "Не удалось воспроизвести поток.")
                 default: break
                 }
             }
@@ -261,7 +292,7 @@ final class PlayerViewModel {
         itemObservations.append(item.observe(\.isPlaybackBufferEmpty, options: [.new]) { [weak self] item, _ in
             let empty = item.isPlaybackBufferEmpty
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
                 if empty {
                     self.isBuffering = true
                 } else if item.isPlaybackLikelyToKeepUp || item.isPlaybackBufferFull {
@@ -272,7 +303,7 @@ final class PlayerViewModel {
         itemObservations.append(item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { [weak self] item, _ in
             let likely = item.isPlaybackLikelyToKeepUp
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
                 if likely {
                     self.isBuffering = false
                 }
@@ -281,7 +312,7 @@ final class PlayerViewModel {
         itemObservations.append(item.observe(\.isPlaybackBufferFull, options: [.new]) { [weak self] item, _ in
             let full = item.isPlaybackBufferFull
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
                 if full {
                     self.isBuffering = false
                 }
@@ -290,18 +321,23 @@ final class PlayerViewModel {
         itemObservations.append(item.observe(\.loadedTimeRanges, options: [.initial, .new]) { [weak self] item, _ in
             let ranges = item.loadedTimeRanges
             Task { @MainActor [weak self] in
-                self?.updateLoadedTimeRanges(ranges)
+                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
+                self.updateLoadedTimeRanges(ranges)
             }
         })
         let center = NotificationCenter.default
         itemTokens.append(center.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.playbackEnded() }
+            MainActor.assumeIsolated {
+                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
+                self.playbackEnded()
+            }
         })
         itemTokens.append(center.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main) { [weak self] note in
             let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
             MainActor.assumeIsolated {
-                self?.saveProgress(force: true)
-                self?.phase = .failed(error.map(Self.describe) ?? "Воспроизведение прервано.")
+                guard let self, !self.isTornDown, self.player.currentItem === item else { return }
+                self.saveProgress(force: true)
+                self.phase = .failed(error.map(Self.describe) ?? "Воспроизведение прервано.")
             }
         })
     }
@@ -320,10 +356,16 @@ final class PlayerViewModel {
     }
 
     private func clearItemObservers() {
+        preparationTask?.cancel()
+        preparationTask = nil
+        seekGeneration = UUID()
+        isScrubbing = false
         itemObservations.forEach { $0.invalidate() }
         itemObservations.removeAll()
         itemTokens.forEach { NotificationCenter.default.removeObserver($0) }
         itemTokens.removeAll()
+        player.currentItem?.cancelPendingSeeks()
+        player.currentItem?.asset.cancelLoading()
         bufferedTime = 0
     }
 
@@ -338,7 +380,7 @@ final class PlayerViewModel {
                 if end > maxLoaded { maxLoaded = end }
             }
         }
-        self.bufferedTime = maxLoaded
+        if bufferedTime != maxLoaded { bufferedTime = maxLoaded }
         if let item = player.currentItem, (item.isPlaybackLikelyToKeepUp || item.isPlaybackBufferFull) {
             self.isBuffering = false
         }
@@ -359,6 +401,8 @@ final class PlayerViewModel {
         }
         startPosition = 0
         restoringPosition = false
+        preparationTask?.cancel()
+        preparationTask = nil
         phase = .ready
         if resumeAfterLoad { player.playImmediately(atRate: playbackSpeed) } else { player.pause() }
     }
@@ -482,20 +526,27 @@ final class PlayerViewModel {
     }
 
     func seek(to seconds: Double) {
+        guard !isTornDown, phase == .ready, seconds.isFinite, let item = player.currentItem else { return }
         let upper = duration > 0 ? duration : seconds
         let target = min(max(0, seconds), upper)
+        let requestID = UUID()
+        seekGeneration = requestID
+        item.cancelPendingSeeks()
+        isScrubbing = true
         currentTime = target
-        if let item = player.currentItem, !item.isPlaybackLikelyToKeepUp {
+        if !item.isPlaybackLikelyToKeepUp {
             isBuffering = true
         }
-        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak item] finished in
+            Task { @MainActor [weak self, weak item] in
+                guard let self, let item, !self.isTornDown,
+                      self.player.currentItem === item, self.seekGeneration == requestID else { return }
                 self.isScrubbing = false
-                if let item = self.player.currentItem {
-                    self.isBuffering = item.isPlaybackBufferEmpty && !item.isPlaybackLikelyToKeepUp && !item.isPlaybackBufferFull
-                } else {
-                    self.isBuffering = false
+                self.isBuffering = item.isPlaybackBufferEmpty && !item.isPlaybackLikelyToKeepUp && !item.isPlaybackBufferFull
+                if !finished {
+                    let actual = self.player.currentTime().seconds
+                    if actual.isFinite, actual >= 0 { self.currentTime = actual }
+                    return
                 }
                 self.saveProgress(force: true)
             }
@@ -505,11 +556,12 @@ final class PlayerViewModel {
     // MARK: - Episodes
 
     func selectEpisode(_ number: Int) {
-        guard number != episodeNumber || phase != .ready, episodes.contains(where: { $0.number == number }) else { return }
+        guard !isTornDown, number != episodeNumber || phase != .ready,
+              episodes.contains(where: { $0.number == number }) else { return }
         saveProgress(force: true)
         player.pause()
-        player.replaceCurrentItem(with: nil)
         clearItemObservers()
+        player.replaceCurrentItem(with: nil)
         source = nil
         hasActuallyPlayed = false
         resumeAfterLoad = true
@@ -556,12 +608,21 @@ final class PlayerViewModel {
         let now = Date()
         guard force || now.timeIntervalSince(lastSaveDate) >= Self.saveInterval else { return }
         guard force || isPlaying else { return }
-        lastSaveDate = now
         let snapshot = anime.snapshot
         let kodikEpisode = activeCandidate?.providerID == KodikProvider.providerID ? activeCandidate?.episode : nil
         let (episode, position, total) = (kodikEpisode?.number ?? currentEpisode?.progressNumber ?? episodeNumber, currentTime, duration)
         let key = kodikEpisode?.id ?? currentEpisode?.sourceKey
-        Task { await library.recordProgress(anime: snapshot, episode: episode, position: position, duration: total, sourceKey: key, accountID: progressAccountID) }
+        let sample = SavedProgress(episode: episode, position: position, duration: total, sourceKey: key)
+        guard sample != lastSavedProgress || library.errorMessage != nil else { return }
+        lastSaveDate = now
+        lastSavedProgress = sample
+        let previousSave = progressSaveTask
+        // Preserve pause/seek/exit ordering. The final save deliberately survives teardown.
+        progressSaveTask = Task { [library, progressAccountID] in
+            await previousSave?.value
+            await library.recordProgress(anime: snapshot, episode: episode, position: position,
+                                         duration: total, sourceKey: key, accountID: progressAccountID)
+        }
     }
 
     // MARK: - Helpers
