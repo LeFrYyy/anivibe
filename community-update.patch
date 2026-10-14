@@ -1,17 +1,19 @@
 diff --git a/.github/workflows/ios.yml b/.github/workflows/ios.yml
-index 76c4ea166029f2e1c2e1462f372387562fbe0834..dcae0f0e623984dce2708bc8d0a133a64147477c 100644
+index 76c4ea166029f2e1c2e1462f372387562fbe0834..0edd75b3522d131444dcd20aea921f51da1c2ba2 100644
 --- a/.github/workflows/ios.yml
 +++ b/.github/workflows/ios.yml
-@@ -34,6 +34,8 @@ jobs:
+@@ -34,6 +34,10 @@ jobs:
          run: python3 scripts/test_motion_performance.py
        - name: Test build configuration scripts
          run: python3 scripts/test_build_scripts.py
 +      - name: Community source contracts
 +        run: python3 scripts/test_community_source.py
++      - name: Swift catch shadowing regression
++        run: python3 scripts/test_swift_error_shadowing.py
        - name: Run AnivibeCore tests
          shell: bash
          run: |
-@@ -81,6 +83,22 @@ jobs:
+@@ -81,6 +85,22 @@ jobs:
            set -o pipefail
            python3 supabase/tests/social_test.py 2>&1 | tee social-database-tests.log
            python3 supabase/tests/comments_test.py 2>&1 | tee -a social-database-tests.log
@@ -824,7 +826,7 @@ index 0000000000000000000000000000000000000000..0f30361955730333314bb537e1791cd9
 +}
 diff --git a/Anivibe/Features/Community/WatchRoomViews.swift b/Anivibe/Features/Community/WatchRoomViews.swift
 new file mode 100644
-index 0000000000000000000000000000000000000000..795fac7a1c39c07a0c941463340309fc1e9d12b7
+index 0000000000000000000000000000000000000000..3953279b9249bd2f87aaed30b8f13a564c711752
 --- /dev/null
 +++ b/Anivibe/Features/Community/WatchRoomViews.swift
 @@ -0,0 +1,236 @@
@@ -917,7 +919,7 @@ index 0000000000000000000000000000000000000000..795fac7a1c39c07a0c941463340309fc
 +            try await Task.sleep(nanoseconds: 350_000_000)
 +            let page = try await env.catalog.search(CatalogQuery(search: term, sort: .relevance, perPage: 10))
 +            guard !Task.isCancelled, search == term else { return }; animeResults = page.items
-+        } catch { if !Task.isCancelled { error = CommunityStore.message(error) } }
++        } catch { if !Task.isCancelled { self.error = CommunityStore.message(error) } }
 +    }
 +    private func loadEpisodes() async {
 +        episodes = []; selectedEpisode = ""; selectedMapping = ""; loading = false; hasMoreEpisodes = false
@@ -928,7 +930,7 @@ index 0000000000000000000000000000000000000000..795fac7a1c39c07a0c941463340309fc
 +            let result = try await service.episodes(anilistId: id, userId: user)
 +            guard !Task.isCancelled, session.user?.id == user, selectedAnime == id else { return }
 +            episodes = result; hasMoreEpisodes = result.count == 100; error = nil
-+        } catch { if !Task.isCancelled { error = CommunityStore.message(error) } }
++        } catch { if !Task.isCancelled { self.error = CommunityStore.message(error) } }
 +    }
 +    private func loadMoreEpisodes() async {
 +        guard !loading, let id = selectedAnime, let user = session.user?.id, let service = env.communityService else { return }
@@ -939,7 +941,7 @@ index 0000000000000000000000000000000000000000..795fac7a1c39c07a0c941463340309fc
 +            guard !Task.isCancelled, session.user?.id == user, selectedAnime == id else { return }
 +            let known = Set(episodes.map(\.id)); episodes += result.filter { !known.contains($0.id) }
 +            hasMoreEpisodes = result.count == 100
-+        } catch { if !Task.isCancelled { error = CommunityStore.message(error) } }
++        } catch { if !Task.isCancelled { self.error = CommunityStore.message(error) } }
 +    }
 +    private func invite() async {
 +        guard let user = session.user?.id, user == owner, let service = env.communityService, !busy else { return }
@@ -949,7 +951,7 @@ index 0000000000000000000000000000000000000000..795fac7a1c39c07a0c941463340309fc
 +            let room = try await service.invite(peerId: selectedPeer, episodeId: selectedEpisode, mappingId: selectedMapping, requestId: requestId, userId: user)
 +            guard session.user?.id == user else { return }; createdRoom = room.id
 +            await env.community.refresh(service: service, userId: user)
-+        } catch { error = CommunityStore.message(error) }
++        } catch { self.error = CommunityStore.message(error) }
 +    }
 +}
 +
@@ -1039,7 +1041,7 @@ index 0000000000000000000000000000000000000000..795fac7a1c39c07a0c941463340309fc
 +                selectedMapping = latest.member(user)?.mappingId ?? ""
 +            }
 +            error = nil
-+        } catch { if !Task.isCancelled { error = CommunityStore.message(error) } }
++        } catch { if !Task.isCancelled { self.error = CommunityStore.message(error) } }
 +    }
 +    private func act(_ action: String) async {
 +        guard let service = env.communityService, let user = session.user?.id, !busy else { return }
@@ -1048,7 +1050,7 @@ index 0000000000000000000000000000000000000000..795fac7a1c39c07a0c941463340309fc
 +            let value = try await service.action(roomId: roomId, action: action, mappingId: selectedMapping.isEmpty ? nil : selectedMapping, userId: user)
 +            guard session.user?.id == user else { return }; room = value; error = nil
 +            await env.community.refresh(service: service, userId: user)
-+        } catch { error = CommunityStore.message(error) }
++        } catch { self.error = CommunityStore.message(error) }
 +    }
 +    private func openPlayer() async {
 +        guard let service = env.communityService, let user = session.user?.id, let episode, let mapping, let animeId = episode.anilistId, !busy else { return }
@@ -1061,7 +1063,7 @@ index 0000000000000000000000000000000000000000..795fac7a1c39c07a0c941463340309fc
 +            let localEpisode = Episode(animeId: animeId, season: source.season ?? 1, number: source.number, title: episode.label, sourceEpisode: source)
 +            playback = PlaybackRequest(anime: anime, episodes: [localEpisode], episode: localEpisode.number,
 +                startPosition: max(0, value.position + mapping.sourceOffset), sharedWatch: SharedWatchPlayback(roomId: roomId, episode: episode, mapping: mapping, userId: user))
-+        } catch { error = CommunityStore.message(error) }
++        } catch { self.error = CommunityStore.message(error) }
 +    }
 +}
 diff --git a/Anivibe/Features/Player/PlayerScreen.swift b/Anivibe/Features/Player/PlayerScreen.swift
@@ -4266,10 +4268,18 @@ index 0000000000000000000000000000000000000000..ada0f4c2c4eeb831ca53c6616ee7af95
 +    }
 +}
 diff --git a/README.md b/README.md
-index c5676c6e307efd49e53987b8b7c1ff928fd044c4..9a0a382ddbf8e5d90d34d07e6a62f7a177e2a856 100644
+index c5676c6e307efd49e53987b8b7c1ff928fd044c4..8fc3145d136e6509bbe21aa6c8df0718bbbea71d 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,3 +1,19 @@
+@@ -1,3 +1,27 @@
++# Исправление ошибки сборки Swift
++
++Исправлены все 7 обработчиков `catch` в `WatchRoomViews.swift` из присланного лога: теперь изменяется `self.error`, а не локальная неизменяемая ошибка. Для этой правки **не нужны новые миграции Supabase**.
++
++[Как установить минимальную правку и повторить CI](docs/BUILD_FIX_RU.md). Здесь прошли 54 проверки исходников/инструментов; повторную компиляцию iOS должен подтвердить новый запуск CI.
++
++---
++
 +# Anivibe · социальная система, этап 1
 +
 +Добавлены серверные комнаты совместного просмотра, XP/уровни дружбы, ежедневные задания, кошелёк, магазин, инвентарь, косметика и уведомления. Прежние улучшения анимаций/производительности сохранены. **Админка отложена**, как договорились.
@@ -4302,11 +4312,57 @@ index 3d408aa92db93caa5f4e2154fbc372e40d774b22..3f36890baa2afe731f44c7b52b25c670
  echo git push origin main
  pause
  exit /b 0
+diff --git a/docs/BUILD_FIX_RU.md b/docs/BUILD_FIX_RU.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..182a0f69023d8086542ddf44c2a4cd8d3ce73547
+--- /dev/null
++++ b/docs/BUILD_FIX_RU.md
+@@ -0,0 +1,34 @@
++# Исправление сборки общего просмотра
++
++В присланном логе GitHub Actions сборка Debug Simulator завершается с exit code 65. Все 14 сообщений компилятора относятся к 7 обработчикам в `Anivibe/Features/Community/WatchRoomViews.swift`.
++
++Внутри `catch` Swift автоматически объявляет неизменяемую локальную `error: Error`. Выражение `error = CommunityStore.message(error)` пыталось присвоить ей строку, а не обновить одноимённое поле `@State`. Исправлено во всех семи местах:
++
++```swift
++} catch {
++    self.error = CommunityStore.message(error)
++}
++```
++
++## Как обновить
++
++- Для самой ошибки достаточно заменить **один** файл `Anivibe/Features/Community/WatchRoomViews.swift` в своём проекте на файл из этого архива.
++- Либо применить `git apply --check build-fix.patch`, затем `git apply build-fix.patch` поверх предыдущей поставки `Anivibe-social.zip`. Не применять эту маленькую правку повторно поверх уже исправленного файла.
++- Для постоянной защиты также добавить `scripts/test_swift_error_shadowing.py` и обновлённый `.github/workflows/ios.yml`. Полный архив включает оба файла.
++- Сделать commit/push и дождаться нового результата GitHub Actions. Старый упавший запуск сам по себе не проверяет новые исходники.
++
++`community-update.patch` в полном архиве тоже обновлён, но он рассчитан на **более старую базу** `Anivibe-improved.zip`. Не путать его с `build-fix.patch`, предназначенным для уже установленной социальной версии.
++
++## База данных
++
++SQL и все миграции сохранены побайтово. Эта ошибка не требует новых миграций Supabase. Если три миграции социальной системы уже применены, повторять их из-за этой правки не нужно.
++
++## Проверки
++
++- 54/54 source/config/tool tests прошли здесь, включая две новые регрессионные проверки.
++- `scripts/check_project.py` прошёл.
++- Регрессионный guard воспроизводит старую ошибочную запись и допускает исправленную.
++- Маленький patch проверяется применением к точной предыдущей версии; полный patch проверяется отдельно.
++- Сборку Swift/Xcode здесь повторить нельзя: соответствующих инструментов нет. Исправлены все диагностированные места из присланного лога, но успешную сборку должен подтвердить новый CI.
++
++Остальные ограничения социальной системы остаются прежними: `COMMUNITY_SETUP_RU.md` и `COMMUNITY_QA.md`.
 diff --git a/docs/BUILD_STATUS.md b/docs/BUILD_STATUS.md
-index 84b498820aa6f2135d3d3dfe6098732d230ef0b0..bac124c11631fe012e4b9b7907ea8765d751e5e5 100644
+index 84b498820aa6f2135d3d3dfe6098732d230ef0b0..6e48c049e6d0531d1000b2e7ebdfa0b3653206de 100644
 --- a/docs/BUILD_STATUS.md
 +++ b/docs/BUILD_STATUS.md
-@@ -1,3 +1,9 @@
+@@ -1,3 +1,15 @@
++# Исправление присланной ошибки Swift
++
++Исправлены 7 мест в `WatchRoomViews.swift`, вызвавших 14 сообщений компилятора. 54/54 source/config/tool проверки прошли; повторный xcodebuild здесь недоступен. См. `BUILD_FIX_RU.md`. SQL не изменялся.
++
++---
++
 +# Обновление Community (2026-10-14)
 +
 +Новый социальный модуль НЕ компилировался и НЕ запускался на iOS/PG в среде подготовки. Старые результаты ниже относятся к предыдущим версиям. Смотрите `COMMUNITY_QA.md` и дождитесь реального зелёного CI.
@@ -4519,10 +4575,18 @@ index 0000000000000000000000000000000000000000..34a41f9c69dd41255d25757b57eafc4b
 +}
 diff --git a/docs/COMMUNITY_QA.md b/docs/COMMUNITY_QA.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..6c9c815c15d05fe70d524cfda7a7950fe505d1ef
+index 0000000000000000000000000000000000000000..696d720758d5408a9d145a22fe5d25a43c925d56
 --- /dev/null
 +++ b/docs/COMMUNITY_QA.md
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,48 @@
++# Дополнение: исправление ошибки сборки
++
++По присланному реальному логу исправлены 7 конфликтов имён в `WatchRoomViews.swift`. Текущий результат source/config/tool suite — **54/54 PASS**. Сборка iOS после исправления здесь не выполнялась. Новые логи: `community-qa-results/build-fix-*.txt`; установка — `BUILD_FIX_RU.md`.
++
++Ниже сохранён исторический статус исходной социальной поставки, а не утверждение о прохождении нативной сборки.
++
++---
++
 +# Community QA — 2026-10-14
 +
 +## Выполнено здесь
@@ -5848,6 +5912,24 @@ JK=JhZe*qSP=~e&$
 literal 0
 HcmV?d00001
 
+diff --git a/docs/community-qa-results/build-fix-project-checks.txt b/docs/community-qa-results/build-fix-project-checks.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..2dca2cd9ee4d1547687ba439e554d2fef38b42dd
+--- /dev/null
++++ b/docs/community-qa-results/build-fix-project-checks.txt
+@@ -0,0 +1 @@
++Static project checks passed. Swift compilation and device checks are separate.
+diff --git a/docs/community-qa-results/build-fix-source-regressions.txt b/docs/community-qa-results/build-fix-source-regressions.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..bba643bd8ee404400a318138d12ec9ae0168127b
+--- /dev/null
++++ b/docs/community-qa-results/build-fix-source-regressions.txt
+@@ -0,0 +1,5 @@
++......................................................
++----------------------------------------------------------------------
++Ran 54 tests in 0.247s
++
++OK
 diff --git a/docs/community-qa-results/lexical-checks.txt b/docs/community-qa-results/lexical-checks.txt
 new file mode 100644
 index 0000000000000000000000000000000000000000..11c28dbaa71b9756e8de48660633363c5efb0c52
@@ -6062,6 +6144,56 @@ index 0000000000000000000000000000000000000000..91e0a060ee319eaac77b152142680768
 +        self.assertIn('--verify-persistence',ci)
 +
 +if __name__=='__main__':unittest.main(verbosity=2)
+diff --git a/scripts/test_swift_error_shadowing.py b/scripts/test_swift_error_shadowing.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3504ecbf1ccba24efa8ac4459f8679b8e04ee54a
+--- /dev/null
++++ b/scripts/test_swift_error_shadowing.py
+@@ -0,0 +1,44 @@
++#!/usr/bin/env python3
++"""Source regression for the reported Swift catch shadowing failure; not a Swift compiler."""
++from pathlib import Path
++import re
++import unittest
++
++ROOT = Path(__file__).resolve().parents[1]
++TARGET = ROOT / 'Anivibe/Features/Community/WatchRoomViews.swift'
++
++
++def shadowed_assignments(source):
++    """Check the simple default-catch blocks used by this view for bare error assignments."""
++    result = []
++    for match in re.finditer(r'\bcatch\s*\{', source):
++        start = match.end()
++        depth, end = 1, start
++        while end < len(source) and depth:
++            if source[end] == '{':
++                depth += 1
++            elif source[end] == '}':
++                depth -= 1
++            end += 1
++        body = source[start:end - 1]
++        for assignment in re.finditer(r'(?<![\w.])error\s*=(?!=)', body):
++            result.append(source.count('\n', 0, start + assignment.start()) + 1)
++    return result
++
++
++class SwiftCatchShadowingTests(unittest.TestCase):
++    def test_watch_room_never_assigns_to_implicit_catch_error(self):
++        source = TARGET.read_text(encoding='utf-8')
++        self.assertTrue(re.search(r'\bcatch\s*\{', source))
++        self.assertEqual(shadowed_assignments(source), [], 'Use self.error for the @State property inside catch')
++        self.assertIn('self.error = CommunityStore.message(error)', source)
++
++    def test_guard_detects_the_reported_failure(self):
++        broken = '} catch { if !Task.isCancelled { error = CommunityStore.message(error) } }'
++        fixed = '} catch { if !Task.isCancelled { self.error = CommunityStore.message(error) } }'
++        self.assertEqual(len(shadowed_assignments(broken)), 1)
++        self.assertEqual(shadowed_assignments(fixed), [])
++
++
++if __name__ == '__main__':
++    unittest.main(verbosity=2)
 diff --git a/scripts/validate_community_media.py b/scripts/validate_community_media.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..dd4424358d2927a92fdf072eb49bdb76618c07ba

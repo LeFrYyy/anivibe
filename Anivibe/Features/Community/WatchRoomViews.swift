@@ -87,7 +87,7 @@ struct WatchInviteView: View {
             try await Task.sleep(nanoseconds: 350_000_000)
             let page = try await env.catalog.search(CatalogQuery(search: term, sort: .relevance, perPage: 10))
             guard !Task.isCancelled, search == term else { return }; animeResults = page.items
-        } catch { if !Task.isCancelled { error = CommunityStore.message(error) } }
+        } catch { if !Task.isCancelled { self.error = CommunityStore.message(error) } }
     }
     private func loadEpisodes() async {
         episodes = []; selectedEpisode = ""; selectedMapping = ""; loading = false; hasMoreEpisodes = false
@@ -98,7 +98,7 @@ struct WatchInviteView: View {
             let result = try await service.episodes(anilistId: id, userId: user)
             guard !Task.isCancelled, session.user?.id == user, selectedAnime == id else { return }
             episodes = result; hasMoreEpisodes = result.count == 100; error = nil
-        } catch { if !Task.isCancelled { error = CommunityStore.message(error) } }
+        } catch { if !Task.isCancelled { self.error = CommunityStore.message(error) } }
     }
     private func loadMoreEpisodes() async {
         guard !loading, let id = selectedAnime, let user = session.user?.id, let service = env.communityService else { return }
@@ -109,7 +109,7 @@ struct WatchInviteView: View {
             guard !Task.isCancelled, session.user?.id == user, selectedAnime == id else { return }
             let known = Set(episodes.map(\.id)); episodes += result.filter { !known.contains($0.id) }
             hasMoreEpisodes = result.count == 100
-        } catch { if !Task.isCancelled { error = CommunityStore.message(error) } }
+        } catch { if !Task.isCancelled { self.error = CommunityStore.message(error) } }
     }
     private func invite() async {
         guard let user = session.user?.id, user == owner, let service = env.communityService, !busy else { return }
@@ -119,7 +119,7 @@ struct WatchInviteView: View {
             let room = try await service.invite(peerId: selectedPeer, episodeId: selectedEpisode, mappingId: selectedMapping, requestId: requestId, userId: user)
             guard session.user?.id == user else { return }; createdRoom = room.id
             await env.community.refresh(service: service, userId: user)
-        } catch { error = CommunityStore.message(error) }
+        } catch { self.error = CommunityStore.message(error) }
     }
 }
 
@@ -209,7 +209,7 @@ struct WatchRoomView: View {
                 selectedMapping = latest.member(user)?.mappingId ?? ""
             }
             error = nil
-        } catch { if !Task.isCancelled { error = CommunityStore.message(error) } }
+        } catch { if !Task.isCancelled { self.error = CommunityStore.message(error) } }
     }
     private func act(_ action: String) async {
         guard let service = env.communityService, let user = session.user?.id, !busy else { return }
@@ -218,7 +218,7 @@ struct WatchRoomView: View {
             let value = try await service.action(roomId: roomId, action: action, mappingId: selectedMapping.isEmpty ? nil : selectedMapping, userId: user)
             guard session.user?.id == user else { return }; room = value; error = nil
             await env.community.refresh(service: service, userId: user)
-        } catch { error = CommunityStore.message(error) }
+        } catch { self.error = CommunityStore.message(error) }
     }
     private func openPlayer() async {
         guard let service = env.communityService, let user = session.user?.id, let episode, let mapping, let animeId = episode.anilistId, !busy else { return }
@@ -231,6 +231,6 @@ struct WatchRoomView: View {
             let localEpisode = Episode(animeId: animeId, season: source.season ?? 1, number: source.number, title: episode.label, sourceEpisode: source)
             playback = PlaybackRequest(anime: anime, episodes: [localEpisode], episode: localEpisode.number,
                 startPosition: max(0, value.position + mapping.sourceOffset), sharedWatch: SharedWatchPlayback(roomId: roomId, episode: episode, mapping: mapping, userId: user))
-        } catch { error = CommunityStore.message(error) }
+        } catch { self.error = CommunityStore.message(error) }
     }
 }

@@ -36,6 +36,8 @@ jobs:
         run: python3 scripts/test_build_scripts.py
       - name: Community source contracts
         run: python3 scripts/test_community_source.py
+      - name: Swift catch shadowing regression
+        run: python3 scripts/test_swift_error_shadowing.py
       - name: Run AnivibeCore tests
         shell: bash
         run: |
