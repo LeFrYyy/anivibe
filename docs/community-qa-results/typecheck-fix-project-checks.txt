@@ -1,0 +1,1 @@
+Static project checks passed. Swift compilation and device checks are separate.

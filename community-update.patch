@@ -510,10 +510,10 @@ index 0000000000000000000000000000000000000000..fbf9b94a119e33d0ac943a1acc425e77
 +}
 diff --git a/Anivibe/Features/Community/CosmeticMediaView.swift b/Anivibe/Features/Community/CosmeticMediaView.swift
 new file mode 100644
-index 0000000000000000000000000000000000000000..efd74b3447757c00caa2edfd7737864517089064
+index 0000000000000000000000000000000000000000..6d697c68151ae4e9d1a3357180f0dba5da7d09f3
 --- /dev/null
 +++ b/Anivibe/Features/Community/CosmeticMediaView.swift
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,135 @@
 +import SwiftUI
 +import AVFoundation
 +import AnivibeCore
@@ -606,8 +606,23 @@ index 0000000000000000000000000000000000000000..efd74b3447757c00caa2edfd77378645
 +    @State private var presentation: CosmeticPresentation?
 +    @State private var loadedIdentity = ""
 +    private var identity: String {
-+        (session.user?.id ?? "guest") + ":" + profile.userID + ":" + profile.updatedAt + ":" +
-+        (profile.userID == session.user?.id ? (env.community.hub?.items.filter(\.equipped).map(\.id).sorted().joined(separator: ",") ?? "") : "")
++        let viewerID: String = session.user?.id ?? "guest"
++        let targetID: String = profile.userID
++        let profileRevision: String = profile.updatedAt
++        var equippedIDs: [String] = []
++
++        if viewerID == targetID, let hub = env.community.hub {
++            for item in hub.items {
++                if item.equipped {
++                    equippedIDs.append(item.id)
++                }
++            }
++        }
++
++        equippedIDs.sort()
++        let equipmentRevision: String = equippedIDs.joined(separator: ",")
++        let parts: [String] = [viewerID, targetID, profileRevision, equipmentRevision]
++        return parts.joined(separator: ":")
 +    }
 +    var body: some View {
 +        VStack(spacing: 16) {
@@ -4268,10 +4283,18 @@ index 0000000000000000000000000000000000000000..ada0f4c2c4eeb831ca53c6616ee7af95
 +    }
 +}
 diff --git a/README.md b/README.md
-index c5676c6e307efd49e53987b8b7c1ff928fd044c4..8fc3145d136e6509bbe21aa6c8df0718bbbea71d 100644
+index c5676c6e307efd49e53987b8b7c1ff928fd044c4..fa5cdd693cf7e578b22c1788808aecd57526e22f 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,3 +1,27 @@
+@@ -1,3 +1,35 @@
++# Исправление сборки: типизация ключа косметики
++
++Вторая правка устраняет диагностированную слишком сложную строку `CosmeticProfileIdentity.identity` в `CosmeticMediaView.swift`. Предыдущие 7 исправлений `self.error` сохранены. Новых SQL-миграций нет.
++
++[Минимальное обновление одного файла и запуск CI](docs/TYPECHECK_FIX_RU.md). Здесь прошли 55 source/config/tool проверок; компиляцию iOS после правки ещё должен подтвердить CI.
++
++---
++
 +# Исправление ошибки сборки Swift
 +
 +Исправлены все 7 обработчиков `catch` в `WatchRoomViews.swift` из присланного лога: теперь изменяется `self.error`, а не локальная неизменяемая ошибка. Для этой правки **не нужны новые миграции Supabase**.
@@ -4353,10 +4376,18 @@ index 0000000000000000000000000000000000000000..182a0f69023d8086542ddf44c2a4cd8d
 +
 +Остальные ограничения социальной системы остаются прежними: `COMMUNITY_SETUP_RU.md` и `COMMUNITY_QA.md`.
 diff --git a/docs/BUILD_STATUS.md b/docs/BUILD_STATUS.md
-index 84b498820aa6f2135d3d3dfe6098732d230ef0b0..6e48c049e6d0531d1000b2e7ebdfa0b3653206de 100644
+index 84b498820aa6f2135d3d3dfe6098732d230ef0b0..dcf6e86b85e88d1089f930fcfe9cf79b2fae899f 100644
 --- a/docs/BUILD_STATUS.md
 +++ b/docs/BUILD_STATUS.md
-@@ -1,3 +1,15 @@
+@@ -1,3 +1,23 @@
++# Дополнение: type-check timeout
++
++Длинное выражение `CosmeticProfileIdentity.identity` в `CosmeticMediaView.swift` разбито на простые типизированные шаги. Текущие source/config/tool проверки: **55/55 PASS**, `check_project.py`: PASS. Swift/Xcode здесь недоступны; зелёный native build пока не подтверждён. Инструкция: `TYPECHECK_FIX_RU.md`. Логи: `community-qa-results/typecheck-fix-*.txt`.
++
++Предыдущие результаты ниже — история отдельных этапов, не доказательство успешной новой iOS-сборки.
++
++---
++
 +# Исправление присланной ошибки Swift
 +
 +Исправлены 7 мест в `WatchRoomViews.swift`, вызвавших 14 сообщений компилятора. 54/54 source/config/tool проверки прошли; повторный xcodebuild здесь недоступен. См. `BUILD_FIX_RU.md`. SQL не изменялся.
@@ -4575,10 +4606,18 @@ index 0000000000000000000000000000000000000000..34a41f9c69dd41255d25757b57eafc4b
 +}
 diff --git a/docs/COMMUNITY_QA.md b/docs/COMMUNITY_QA.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..696d720758d5408a9d145a22fe5d25a43c925d56
+index 0000000000000000000000000000000000000000..5fbc5d3cdd543698eeff580bcbaa04ecc6b9980c
 --- /dev/null
 +++ b/docs/COMMUNITY_QA.md
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,56 @@
++# Дополнение: type-check timeout
++
++Длинное выражение `CosmeticProfileIdentity.identity` в `CosmeticMediaView.swift` разбито на простые типизированные шаги. Текущие source/config/tool проверки: **55/55 PASS**, `check_project.py`: PASS. Swift/Xcode здесь недоступны; зелёный native build пока не подтверждён. Инструкция: `TYPECHECK_FIX_RU.md`. Логи: `community-qa-results/typecheck-fix-*.txt`.
++
++Предыдущие результаты ниже — история отдельных этапов, не доказательство успешной новой iOS-сборки.
++
++---
++
 +# Дополнение: исправление ошибки сборки
 +
 +По присланному реальному логу исправлены 7 конфликтов имён в `WatchRoomViews.swift`. Текущий результат source/config/tool suite — **54/54 PASS**. Сборка iOS после исправления здесь не выполнялась. Новые логи: `community-qa-results/build-fix-*.txt`; установка — `BUILD_FIX_RU.md`.
@@ -5176,6 +5215,29 @@ index 0000000000000000000000000000000000000000..8bcb3f2fe74649ec6a966e132676f03a
 +`COMMUNITY_QA.md` содержит точный список выполненного и невыполненного. Подготовлены 11 XCTest, 24 PostgreSQL-сценария, реальный CI restart-checkpoint и 17 новых source/tool tests. Старые 35 source/config проверок сохранены.
 +
 +На staging обязательно проверить два аккаунта и оба направления управления, плохую сеть, холодный reconnect, buffer у одного, смену серии/special/озвучки, logout во время покупки, сверку ledger с балансами, приватность бывшего друга, Reduce Motion, светлую/тёмную тему, Dynamic Type и VoiceOver. Только после этого переносить проверенные миграции на production.
+diff --git a/docs/TYPECHECK_FIX_RU.md b/docs/TYPECHECK_FIX_RU.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..f30d63ca4f65a47e401899ed42b2e18ea0f11870
+--- /dev/null
++++ b/docs/TYPECHECK_FIX_RU.md
+@@ -0,0 +1,17 @@
++# Исправление type-check timeout в CosmeticMediaView
++
++В новом присланном логе единственная диагностика Swift — `CosmeticMediaView.swift:93:9: the compiler is unable to type-check this expression in reasonable time`. Она указывает на вычисление `CosmeticProfileIdentity.identity`, а не на SQL и не на обработчики `catch`.
++
++Убрана одна длинная цепочка перегруженных `+`, optional chaining, тернарного оператора, `filter/map/sorted/joined`. Вместо неё используются отдельно типизированные строки, простой цикл по надетым предметам, сортировка массива ID и `joined` для четырёх частей ключа. Состав ключа прежний: текущий аккаунт, целевой профиль, версия профиля и отсортированные ID собственной косметики. Проверки приватности, сброс кэша при смене аккаунта, медиа и внешний вид не менялись.
++
++## Минимальное обновление
++
++1. Заменить только `Anivibe/Features/Community/CosmeticMediaView.swift` в своём репозитории на новый файл. Предыдущую правку `WatchRoomViews.swift` оставить: она сохранена и в полном архиве.
++2. Либо выполнить `git apply --check typecheck-fix.patch`, затем `git apply typecheck-fix.patch` поверх предыдущей социальной версии. Этот patch меняет только один Swift-файл.
++3. Сделать commit/push и проверить **новый** запуск GitHub Actions. Перезапуск старого упавшего job без нового коммита может снова собирать прежние исходники.
++
++Новых миграций нет; существующие SQL сохранены побайтово. Повторно запускать уже применённые миграции из-за этой правки не нужно.
++
++В полном архиве также обновлён source-regression guard в `scripts/test_swift_error_shadowing.py`; существующий CI уже вызывает этот скрипт. Здесь прошли 55/55 source/config/tool проверок и `check_project.py`. Это не результат компиляции Swift: `swift` и Xcode в среде подготовки отсутствуют. Успешную нативную сборку пока должен подтвердить CI.
++
++`community-update.patch` заново собран для исходной базы `Anivibe-improved.zip` и включает оба исправления. `build-fix.patch` — только предыдущая правка 7 обработчиков; `typecheck-fix.patch` — только новая правка ключа. Не применять patch повторно поверх уже исправленных файлов.
 diff --git a/docs/canonical-catalog.example.json b/docs/canonical-catalog.example.json
 new file mode 100644
 index 0000000000000000000000000000000000000000..d90d7a30be865c52843d70b86ec78e2805a0e4c3
@@ -5967,6 +6029,24 @@ index 0000000000000000000000000000000000000000..8f65443d17ab5ec4b9e14e698d6802f5
 +Ran 52 tests in 0.318s
 +
 +OK
+diff --git a/docs/community-qa-results/typecheck-fix-project-checks.txt b/docs/community-qa-results/typecheck-fix-project-checks.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..2dca2cd9ee4d1547687ba439e554d2fef38b42dd
+--- /dev/null
++++ b/docs/community-qa-results/typecheck-fix-project-checks.txt
+@@ -0,0 +1 @@
++Static project checks passed. Swift compilation and device checks are separate.
+diff --git a/docs/community-qa-results/typecheck-fix-source-regressions.txt b/docs/community-qa-results/typecheck-fix-source-regressions.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..4b140f951f71e51a335dc5060bf29b9991cae120
+--- /dev/null
++++ b/docs/community-qa-results/typecheck-fix-source-regressions.txt
+@@ -0,0 +1,5 @@
++.......................................................
++----------------------------------------------------------------------
++Ran 55 tests in 0.271s
++
++OK
 diff --git a/scripts/import_canonical_catalog.py b/scripts/import_canonical_catalog.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..9e7155aa7b8cb3bc35ad62ddf99133f9a55f7084
@@ -6146,10 +6226,10 @@ index 0000000000000000000000000000000000000000..91e0a060ee319eaac77b152142680768
 +if __name__=='__main__':unittest.main(verbosity=2)
 diff --git a/scripts/test_swift_error_shadowing.py b/scripts/test_swift_error_shadowing.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..3504ecbf1ccba24efa8ac4459f8679b8e04ee54a
+index 0000000000000000000000000000000000000000..0be396de95a64cc08773a656bbf238424394a5f6
 --- /dev/null
 +++ b/scripts/test_swift_error_shadowing.py
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,63 @@
 +#!/usr/bin/env python3
 +"""Source regression for the reported Swift catch shadowing failure; not a Swift compiler."""
 +from pathlib import Path
@@ -6190,6 +6270,25 @@ index 0000000000000000000000000000000000000000..3504ecbf1ccba24efa8ac4459f8679b8
 +        fixed = '} catch { if !Task.isCancelled { self.error = CommunityStore.message(error) } }'
 +        self.assertEqual(len(shadowed_assignments(broken)), 1)
 +        self.assertEqual(shadowed_assignments(fixed), [])
++
++
++class SwiftIdentityExpressionTests(unittest.TestCase):
++    def test_profile_identity_uses_small_explicitly_typed_steps(self):
++        path = ROOT / 'Anivibe/Features/Community/CosmeticMediaView.swift'
++        source = path.read_text(encoding='utf-8')
++        start = source.index('    private var identity: String {', source.index('struct CosmeticProfileIdentity'))
++        end = source.index('    var body: some View {', start)
++        getter = source[start:end]
++        self.assertIn('let viewerID: String = session.user?.id ?? "guest"', getter)
++        self.assertIn('let targetID: String = profile.userID', getter)
++        self.assertIn('let profileRevision: String = profile.updatedAt', getter)
++        self.assertIn('if viewerID == targetID, let hub = env.community.hub', getter)
++        self.assertIn('equippedIDs.sort()', getter)
++        self.assertIn('let parts: [String]', getter)
++        self.assertIn('return parts.joined(separator: ":")', getter)
++        self.assertNotIn(' + ', getter)
++        self.assertNotIn('.filter(', getter)
++        self.assertNotIn('.map(', getter)
 +
 +
 +if __name__ == '__main__':

@@ -90,8 +90,23 @@ struct CosmeticProfileIdentity: View {
     @State private var presentation: CosmeticPresentation?
     @State private var loadedIdentity = ""
     private var identity: String {
-        (session.user?.id ?? "guest") + ":" + profile.userID + ":" + profile.updatedAt + ":" +
-        (profile.userID == session.user?.id ? (env.community.hub?.items.filter(\.equipped).map(\.id).sorted().joined(separator: ",") ?? "") : "")
+        let viewerID: String = session.user?.id ?? "guest"
+        let targetID: String = profile.userID
+        let profileRevision: String = profile.updatedAt
+        var equippedIDs: [String] = []
+
+        if viewerID == targetID, let hub = env.community.hub {
+            for item in hub.items {
+                if item.equipped {
+                    equippedIDs.append(item.id)
+                }
+            }
+        }
+
+        equippedIDs.sort()
+        let equipmentRevision: String = equippedIDs.joined(separator: ",")
+        let parts: [String] = [viewerID, targetID, profileRevision, equipmentRevision]
+        return parts.joined(separator: ":")
     }
     var body: some View {
         VStack(spacing: 16) {

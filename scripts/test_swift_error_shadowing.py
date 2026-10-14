@@ -40,5 +40,24 @@ class SwiftCatchShadowingTests(unittest.TestCase):
         self.assertEqual(shadowed_assignments(fixed), [])
 
 
+class SwiftIdentityExpressionTests(unittest.TestCase):
+    def test_profile_identity_uses_small_explicitly_typed_steps(self):
+        path = ROOT / 'Anivibe/Features/Community/CosmeticMediaView.swift'
+        source = path.read_text(encoding='utf-8')
+        start = source.index('    private var identity: String {', source.index('struct CosmeticProfileIdentity'))
+        end = source.index('    var body: some View {', start)
+        getter = source[start:end]
+        self.assertIn('let viewerID: String = session.user?.id ?? "guest"', getter)
+        self.assertIn('let targetID: String = profile.userID', getter)
+        self.assertIn('let profileRevision: String = profile.updatedAt', getter)
+        self.assertIn('if viewerID == targetID, let hub = env.community.hub', getter)
+        self.assertIn('equippedIDs.sort()', getter)
+        self.assertIn('let parts: [String]', getter)
+        self.assertIn('return parts.joined(separator: ":")', getter)
+        self.assertNotIn(' + ', getter)
+        self.assertNotIn('.filter(', getter)
+        self.assertNotIn('.map(', getter)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

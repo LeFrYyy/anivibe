@@ -1,3 +1,11 @@
+# Дополнение: type-check timeout
+
+Длинное выражение `CosmeticProfileIdentity.identity` в `CosmeticMediaView.swift` разбито на простые типизированные шаги. Текущие source/config/tool проверки: **55/55 PASS**, `check_project.py`: PASS. Swift/Xcode здесь недоступны; зелёный native build пока не подтверждён. Инструкция: `TYPECHECK_FIX_RU.md`. Логи: `community-qa-results/typecheck-fix-*.txt`.
+
+Предыдущие результаты ниже — история отдельных этапов, не доказательство успешной новой iOS-сборки.
+
+---
+
 # Дополнение: исправление ошибки сборки
 
 По присланному реальному логу исправлены 7 конфликтов имён в `WatchRoomViews.swift`. Текущий результат source/config/tool suite — **54/54 PASS**. Сборка iOS после исправления здесь не выполнялась. Новые логи: `community-qa-results/build-fix-*.txt`; установка — `BUILD_FIX_RU.md`.
