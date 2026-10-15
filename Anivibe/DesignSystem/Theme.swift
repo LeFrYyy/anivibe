@@ -9,16 +9,16 @@ final class AccentPalette {
 
 enum Theme {
     static let palette = AccentPalette()
-    // Графитовый фон, глубокий фиолетовый акцент, холодный голубой второстепенный акцент.
-    static let background = Color(light: 0xF5F5F8, dark: 0x111114)
-    static let surface = Color(light: 0xFFFFFF, dark: 0x1B1B20)
-    static let surfaceElevated = Color(light: 0xECECF1, dark: 0x25252C)
-    static let separator = Color(light: 0xDADAE2, dark: 0x2E2E36)
-    static let textPrimary = Color(light: 0x15151A, dark: 0xF2F2F5)
-    static let textSecondary = Color(light: 0x5E5E6B, dark: 0xA0A0AE)
+    // Нейтральные непрозрачные поверхности и один спокойный цвет действия.
+    static let background = Color(light: 0xF4F4F2, dark: 0x141415)
+    static let surface = Color(light: 0xFFFFFF, dark: 0x1C1C1E)
+    static let surfaceElevated = Color(light: 0xEBEBE8, dark: 0x28282B)
+    static let separator = Color(light: 0xD6D6D1, dark: 0x39393D)
+    static let textPrimary = Color(light: 0x202020, dark: 0xF2F2EF)
+    static let textSecondary = Color(light: 0x5F5F5A, dark: 0xA8A8A2)
     static var accent: Color {
         if let hex = palette.hex, let color = UIColor(hexString: hex) { return Color(color) }
-        return Color(light: 0x5B3FE0, dark: 0x8467FF)
+        return Color(light: 0x275D8C, dark: 0x9CBADD)
     }
     static var onAccent: Color {
         guard let hex = palette.hex, let color = UIColor(hexString: hex) else { return Color(light: 0xFFFFFF, dark: 0x000000) }
@@ -28,9 +28,9 @@ enum Theme {
         let luminance = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
         return luminance > 0.179 ? .black : .white
     }
-    static let secondaryAccent = Color(light: 0x0E8FC2, dark: 0x5CC8F2)
+    static var secondaryAccent: Color { accent }
     static let danger = Color(light: 0xC62E3A, dark: 0xFF6B6B)
-    static let success = Color(light: 0x1E8E5A, dark: 0x4CD18F)
+    static let success = Color(light: 0x1D7049, dark: 0x4CD18F)
 
     enum Spacing {
         static let xs: CGFloat = 4
@@ -42,9 +42,9 @@ enum Theme {
     }
 
     enum Radius {
-        static let card: CGFloat = 16
-        static let panel: CGFloat = 24
-        static let chip: CGFloat = 10
+        static let card: CGFloat = 12
+        static let panel: CGFloat = 16
+        static let chip: CGFloat = 8
     }
 
     /// Пропорция постера (2:3).
@@ -80,20 +80,14 @@ extension View {
     }
 }
 
-/// Material only on panels, never repeated across every scrolling poster.
-/// Opaque fallback respects Reduce Transparency and custom background readability.
+/// Opaque panels keep text legible over both standard and user-supplied backgrounds.
 private struct ProfilePanelModifier: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content: Content) -> some View {
         content.padding(Theme.Spacing.l)
-            .background {
-                let shape = RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                if reduceTransparency { shape.fill(Theme.surface) }
-                else { shape.fill(.regularMaterial) }
-            }
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                    .strokeBorder(Theme.separator.opacity(0.7), lineWidth: 0.5)
+                    .strokeBorder(Theme.separator, lineWidth: 1)
             }
     }
 }

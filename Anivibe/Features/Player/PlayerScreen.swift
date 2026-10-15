@@ -127,7 +127,7 @@ private struct PlayerContent: View {
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Закрыть") { webPlayback = nil } } }
                     .safeAreaInset(edge: .bottom) {
                         Text("Прогресс и настройки веб-плеера управляются Kodik; Anivibe не сохраняет их автоматически.")
-                            .font(.footnote).padding(12).background(.regularMaterial)
+                            .font(.footnote).padding(12).background(Theme.surface)
                     }
             }.preferredColorScheme(.dark).presentationDetents([.large])
         }
@@ -296,7 +296,8 @@ private struct NextEpisodeCard: View {
             }
         }
         .padding(Theme.Spacing.l)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.panel))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.panel))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.panel).strokeBorder(Theme.separator, lineWidth: 1))
         .environment(\.colorScheme, .dark)
     }
 }

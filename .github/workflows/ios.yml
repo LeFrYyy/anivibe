@@ -40,6 +40,8 @@ jobs:
         run: python3 scripts/test_swift_error_shadowing.py
       - name: Bugfix navigation, progress and hidden-feature contracts
         run: python3 scripts/test_bugfix_update.py
+      - name: Flat design, folder interactions and color contrast contracts
+        run: python3 scripts/test_flat_design.py
       - name: Run AnivibeCore tests
         shell: bash
         run: |

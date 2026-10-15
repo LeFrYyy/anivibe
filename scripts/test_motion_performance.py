@@ -41,15 +41,17 @@ class MotionPerformanceSourceTests(unittest.TestCase):
         self.assertIn("AppMotion.panelTransition(reduceMotion: reduceMotion)", overlay)
         self.assertNotIn(".scale(scale: 0.86)", overlay)
         self.assertIn(".accessibilityHidden(openedFolder != nil)", home)
-        self.assertIn("env.collections.activeAccountID == presentedAccountID", home)
+        folders = source("Anivibe/Features/Home/FolderViews.swift")
+        self.assertIn("env.collections.activeAccountID == presentedAccountID", folders)
 
     def test_scrolling_folder_tiles_do_not_each_blur_and_double_shadow(self):
-        home = source("Anivibe/Features/Home/HomeView.swift")
-        background = home.split("struct FolderBackground:", 1)[1].split("struct NewFolderTile:", 1)[0]
-        self.assertIn("var usesMaterial = false", background)
-        self.assertIn("usesMaterial && !reduceTransparency", background)
-        self.assertEqual(background.count(".shadow("), 1)
-        self.assertIn("FolderBackground(cornerRadius: 34, usesMaterial: true)", home)
+        folders = source("Anivibe/Features/Home/FolderViews.swift")
+        background = folders.split("struct FolderBackground:", 1)[1].split("struct NewFolderTile:", 1)[0]
+        self.assertIn(".fill(Theme.surface)", background)
+        self.assertIn(".strokeBorder(Theme.separator, lineWidth: 1)", background)
+        self.assertNotIn("Material", background)
+        self.assertNotIn(".shadow(", background)
+        self.assertIn("FolderBackground(cornerRadius: 16)", folders)
 
     def test_posters_request_bucketed_actual_display_size(self):
         poster = source("Anivibe/DesignSystem/Components/PosterImage.swift")

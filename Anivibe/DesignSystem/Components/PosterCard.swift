@@ -18,8 +18,9 @@ struct PosterCard: View {
                     if let badge {
                         Text(badge)
                             .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
                             .padding(.horizontal, 8).padding(.vertical, 5)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 6))
                             .padding(6)
                     }
                 }
@@ -86,7 +87,7 @@ struct ProgressBar: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.black.opacity(0.45))
                 Capsule().fill(Theme.secondaryAccent)
-                    .frame(width: max(4, geo.size.width * safeValue))
+                    .frame(width: geo.size.width * safeValue)
             }
         }
         .accessibilityLabel("Просмотрено \(Int(safeValue * 100))%")

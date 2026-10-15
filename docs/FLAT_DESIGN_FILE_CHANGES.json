@@ -1,0 +1,55 @@
+{
+  "version": "v4-flat-design",
+  "baseline_archive": "Anivibe-bugfix-v3.zip",
+  "baseline_sha256": "427314fbf6fd9a47d137c9c9e97ca7976bbdc7473c69623d2b9534acc763467f",
+  "content": "Full source project, not an IPA",
+  "changed": [
+    ".github/workflows/ios.yml",
+    "Anivibe/App/SplashView.swift",
+    "Anivibe/DesignSystem/Components/PosterCard.swift",
+    "Anivibe/DesignSystem/Components/StateViews.swift",
+    "Anivibe/DesignSystem/Theme.swift",
+    "Anivibe/Features/AnimeDetails/AnimeDetailsView.swift",
+    "Anivibe/Features/Home/HomeView.swift",
+    "Anivibe/Features/Player/PlayerControlsView.swift",
+    "Anivibe/Features/Player/PlayerScreen.swift",
+    "Anivibe/Features/Settings/SettingsView.swift",
+    "Anivibe/Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
+    "Anivibe/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
+    "Anivibe/Resources/Assets.xcassets/AppLogo.imageset/AppLogo.png",
+    "Anivibe/Resources/Assets.xcassets/LaunchBackground.colorset/Contents.json",
+    "README.md",
+    "scripts/test_motion_performance.py"
+  ],
+  "added": [
+    "Anivibe/Features/Home/FolderViews.swift",
+    "DesignPreview/flat-folder-dark-390.png",
+    "DesignPreview/flat-folder-dark-760.png",
+    "DesignPreview/flat-folder-edit-390.png",
+    "DesignPreview/flat-folder-empty-390.png",
+    "DesignPreview/flat-folder-light-390.png",
+    "DesignPreview/flat-folder-light-760.png",
+    "DesignPreview/flat-folder-menu-320.png",
+    "DesignPreview/flat-folder-menu-390.png",
+    "DesignPreview/flat-folders.html",
+    "DesignPreview/flat-home-dark-390.png",
+    "DesignPreview/flat-home-light-390.png",
+    "docs/FLAT_DESIGN_CHECKS.txt",
+    "docs/FLAT_DESIGN_FILE_CHANGES.json",
+    "docs/FLAT_DESIGN_RU.md",
+    "scripts/test_flat_design.py"
+  ],
+  "deleted": [],
+  "validation": {
+    "python_source_checks_passed": 82,
+    "native_build_run": false,
+    "swift_tests_run": false,
+    "database_tests_run": false,
+    "supplemental_html_visual_review": true
+  },
+  "notes": [
+    "Prior core/server/feature flags/library/profile source files preserved byte-for-byte.",
+    "Native Xcode/iOS runtime validation is still required.",
+    "DesignPreview/flat-* are mockups with demonstration data, not app screenshots."
+  ]
+}
