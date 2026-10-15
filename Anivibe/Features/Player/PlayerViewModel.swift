@@ -131,6 +131,13 @@ final class PlayerViewModel {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
+    /// The details screen must see the final series/position before it can reopen
+    /// this title. The fallback onDisappear teardown still works without awaiting.
+    func finishPlayback() async {
+        teardown()
+        await progressSaveTask?.value
+    }
+
     var kodikWebURL: URL? {
         guard let episode = activeCandidate?.episode else { return nil }
         return KodikProvider.playerURL(for: episode)
@@ -189,6 +196,14 @@ final class PlayerViewModel {
 
     private func play(candidate: SourceCandidate) async {
         guard !Task.isCancelled, !isTornDown else { return }
+        if phase == .searchingSources, sharedWatch == nil,
+           candidate.providerID == KodikProvider.providerID, let episode = candidate.episode {
+            // Registry/catalogue playback must read the same source-scoped key as
+            // details. Never copy a different video's catalogue offset to Kodik.
+            let identity = KodikProvider.progressEpisode(for: episode)
+            let saved = library.progress(anime.id, episode: identity.number, sourceKey: identity.id)
+            startPosition = (saved?.isFinished ?? true) ? 0 : saved?.position ?? 0
+        }
         player.pause()
         source = nil
         hasActuallyPlayed = false
@@ -259,6 +274,7 @@ final class PlayerViewModel {
                 self.isPlaying = status == .playing
                 switch status {
                 case .playing:
+                    self.hasActuallyPlayed = true
                     self.isBuffering = false
                 case .waitingToPlayAtSpecifiedRate:
                     self.isBuffering = true
@@ -268,6 +284,7 @@ final class PlayerViewModel {
                     } else {
                         self.isBuffering = false
                     }
+                    self.saveProgress(force: true)
                 @unknown default:
                     break
                 }
@@ -638,13 +655,19 @@ final class PlayerViewModel {
     // MARK: - Progress
 
     private func saveProgress(force: Bool) {
-        guard source != nil, source?.isTestContent != true, hasActuallyPlayed, !restoringPosition, currentTime > 0 else { return }
+        guard source != nil, source?.isTestContent != true, hasActuallyPlayed, !restoringPosition else { return }
         let now = Date()
         guard force || now.timeIntervalSince(lastSaveDate) >= Self.saveInterval else { return }
         guard force || isPlaying else { return }
+        // UI time is sampled every 0.5 seconds. Pause/seek/exit use the actual
+        // player position; a confirmed seek back to zero must also be persisted.
+        let actualTime = player.currentTime().seconds
+        let position = force && actualTime.isFinite && actualTime >= 0 ? actualTime : currentTime
+        guard position.isFinite, position >= 0 else { return }
         let snapshot = anime.snapshot
-        let kodikEpisode = activeCandidate?.providerID == KodikProvider.providerID ? activeCandidate?.episode : nil
-        let (episode, position, total) = (kodikEpisode?.number ?? currentEpisode?.progressNumber ?? episodeNumber, currentTime, duration)
+        let candidateEpisode = activeCandidate?.providerID == KodikProvider.providerID ? activeCandidate?.episode : nil
+        let kodikEpisode = candidateEpisode.map { KodikProvider.progressEpisode(for: $0) }
+        let (episode, total) = (kodikEpisode?.number ?? currentEpisode?.progressNumber ?? episodeNumber, duration)
         let key = kodikEpisode?.id ?? currentEpisode?.sourceKey
         let sample = SavedProgress(episode: episode, position: position, duration: total, sourceKey: key)
         guard sample != lastSavedProgress || library.errorMessage != nil else { return }
@@ -655,7 +678,7 @@ final class PlayerViewModel {
         progressSaveTask = Task { [library, progressAccountID] in
             await previousSave?.value
             await library.recordProgress(anime: snapshot, episode: episode, position: position,
-                                         duration: total, sourceKey: key, accountID: progressAccountID)
+                                         duration: total, sourceKey: key, accountID: progressAccountID, recordedAt: now)
         }
     }
 

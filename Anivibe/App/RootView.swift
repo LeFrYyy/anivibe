@@ -36,7 +36,7 @@ struct RootView: View {
         .task(id: (session.user?.id ?? "guest") + String(scenePhase == .active)) {
             let user = session.user?.id
             env.community.clear(for: user)
-            guard scenePhase == .active, let user, let service = env.communityService else { return }
+            guard AppFeatures.communityEnabled, scenePhase == .active, let user, let service = env.communityService else { return }
             await env.community.refresh(service: service, userId: user)
             let polling = Task {
                 while !Task.isCancelled {
@@ -53,7 +53,7 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .top) {
-            if let toast = env.community.levelToast {
+            if AppFeatures.communityEnabled, let toast = env.community.levelToast {
                 Label(toast, systemImage: "sparkles").font(.headline).padding(16)
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20)).padding(16)
                     .transition(AppMotion.panelTransition(reduceMotion: reduceMotion)).allowsHitTesting(false)

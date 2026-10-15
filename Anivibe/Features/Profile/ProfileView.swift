@@ -7,6 +7,7 @@ struct ProfileView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(SessionStore.self) private var session
     @Environment(LibraryStore.self) private var library
+    @State private var path = NavigationPath()
     @State private var social = SocialStore()
     @State private var editProfile = false
     @State private var confirmSignOut = false
@@ -18,12 +19,12 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(spacing: Theme.Spacing.xl) {
                     identity
                     if session.user != nil { socialState }
-                    if session.user != nil {
+                    if session.user != nil && AppFeatures.communityEnabled {
                         NavigationLink { CommunityView() } label: {
                             HStack {
                                 Label("Вместе в Anivibe", systemImage: "play.rectangle.on.rectangle").font(.headline)
@@ -74,12 +75,18 @@ struct ProfileView: View {
             }
             .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
             .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
+            .navigationDestination(for: LibrarySection.self) { section in
+                LibraryView(initialSection: section, embedded: true).id(section)
+            }
             .task(id: session.user?.id) { await reloadProfile() }
             .refreshable { await reloadProfile() }
             .sheet(isPresented: $editProfile) {
                 if let profile = currentProfile { ProfileEditorView(store: social, profile: profile) }
             }
-            .onChange(of: session.user?.id) { _, _ in editProfile = false }
+            .onChange(of: session.user?.id) { _, _ in
+                editProfile = false
+                path = NavigationPath()
+            }
             .confirmationDialog("Скопировать локальные папки?", isPresented: $confirmImportFolders, titleVisibility: .visible) {
                 Button("Скопировать") { env.collections.importGuestFolders() }
                 Button("Отмена", role: .cancel) {}
@@ -125,10 +132,10 @@ struct ProfileView: View {
 
     private var quickStats: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            NavigationLink { LibraryView(initialSection: .favorites, embedded: true) } label: {
+            NavigationLink(value: LibrarySection.favorites) {
                 ProfileMetric(value: library.snapshot.favorites.count, title: "Избранное", icon: "heart", tint: Theme.accent)
             }.buttonStyle(.plain)
-            NavigationLink { LibraryView(initialSection: .history, embedded: true) } label: {
+            NavigationLink(value: LibrarySection.history) {
                 ProfileMetric(value: library.snapshot.history.count, title: "Серий в истории", icon: "play.rectangle", tint: Theme.secondaryAccent)
             }.buttonStyle(.plain)
             Button(action: openCollections) {
@@ -159,7 +166,7 @@ struct ProfileView: View {
             HStack {
                 Text("Статистика").font(.title3.bold())
                 Spacer()
-                NavigationLink { LibraryView(embedded: true) } label: {
+                NavigationLink(value: LibrarySection.list(.watching)) {
                     Text("Все списки").font(.subheadline.weight(.semibold)).frame(minHeight: 44)
                 }
             }
@@ -168,7 +175,7 @@ struct ProfileView: View {
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
             ForEach(LibraryStatus.allCases, id: \.self) { status in
-                NavigationLink { LibraryView(initialSection: .list(status), embedded: true) } label: {
+                NavigationLink(value: LibrarySection.list(status)) {
                     HStack(spacing: 12) {
                         Image(systemName: status.systemImage).font(.title3)
                             .foregroundStyle(statusColor(status)).frame(width: 28)
@@ -193,6 +200,7 @@ struct ProfileView: View {
         case .completed: return Theme.secondaryAccent
         case .planned: return Theme.accent
         case .onHold: return Theme.textSecondary
+        case .dropped: return Theme.danger
         }
     }
 

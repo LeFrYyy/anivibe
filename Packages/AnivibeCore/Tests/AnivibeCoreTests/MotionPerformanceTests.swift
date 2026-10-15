@@ -88,7 +88,10 @@ final class MotionPerformanceTests: XCTestCase {
         XCTAssertEqual(unfinished.first?.resume.episode, 4)
         await repo.recordProgress(anime: anime, episode: 4, position: 100, duration: 100, sourceKey: "kodik:voice:6:4")
         let finished = await repo.continueWatching()
-        XCTAssertTrue(finished.isEmpty)
+        XCTAssertEqual(finished.first?.resume.sourceKey, "kodik:voice:6:4")
+        XCTAssertEqual(finished.first?.resume.episode, 4, "keep the exact anchor, never guess episode 5")
+        XCTAssertEqual(finished.first?.resume.isFinishedSourceEpisode, true)
+        XCTAssertEqual(finished.first?.resume.isNextEpisode, false)
     }
 
     func testLargeLibraryUsesSameResumeSemanticsAndHonorsLimit() async {

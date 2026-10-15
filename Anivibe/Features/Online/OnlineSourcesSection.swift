@@ -20,6 +20,7 @@ final class KodikOnlineViewModel {
     @ObservationIgnored private var lookup: Task<KodikMatch?, Error>?
     @ObservationIgnored private var lookupID = UUID()
     @ObservationIgnored private var animeID: Int?
+    @ObservationIgnored private var hasExplicitVoiceSelection = false
 
     /// В том же порядке, что использует плеер по умолчанию.
     var voices: [KodikVoiceOption] { KodikProvider.rankedVoices(match?.voices ?? []) }
@@ -47,6 +48,7 @@ final class KodikOnlineViewModel {
     }
 
     func selectVoice(_ voice: KodikVoiceOption) {
+        hasExplicitVoiceSelection = true
         selectedVoiceID = voice.id
         // Запоминаем — кнопка «Смотреть» и плеер приложения возьмут эту же озвучку.
         UserDefaults.standard.set(voice.translation.title, forKey: KodikPreferences.voiceKey)
@@ -56,11 +58,26 @@ final class KodikOnlineViewModel {
         }
     }
 
-    func load(anime: Anime, client: KodikClient) async {
-        if animeID == anime.id, phase == .loaded { return }
+    private func restoreVoice(sourceKey: String?, animeID: Int) {
+        guard !hasExplicitVoiceSelection, let sourceKey else { return }
+        for voice in voices {
+            if let episode = KodikProvider.sourceEpisodes(for: voice, animeID: animeID).first(where: { $0.sourceKey == sourceKey }) {
+                selectedVoiceID = voice.id
+                selectedSeason = episode.season
+                return
+            }
+        }
+    }
+
+    func load(anime: Anime, client: KodikClient, resumeSourceKey: String? = nil) async {
+        if animeID == anime.id, phase == .loaded {
+            restoreVoice(sourceKey: resumeSourceKey, animeID: anime.id)
+            return
+        }
         if animeID != anime.id {
             lookup?.cancel(); lookup = nil; lookupID = UUID()
             match = nil; selectedVoiceID = nil
+            hasExplicitVoiceSelection = false
         }
         animeID = anime.id
         let task: Task<KodikMatch?, Error>
@@ -78,7 +95,10 @@ final class KodikOnlineViewModel {
             let result = try await task.value
             guard !Task.isCancelled, lookupID == request, animeID == anime.id else { return }
             // Another waiter may already have applied it and user may have picked a voice.
-            if phase == .loaded { return }
+            if phase == .loaded {
+                restoreVoice(sourceKey: resumeSourceKey, animeID: anime.id)
+                return
+            }
             if let result {
                 match = result
                 let ranked = KodikProvider.rankedVoices(result.voices)
@@ -88,6 +108,7 @@ final class KodikOnlineViewModel {
                 let seasons = firstVoice.map { Set($0.episodes.map(\.season)).sorted() } ?? []
                 selectedSeason = seasons.first(where: { $0 >= 1 }) ?? seasons.first ?? 1
                 phase = .loaded
+                restoreVoice(sourceKey: resumeSourceKey, animeID: anime.id)
             } else { match = nil; phase = .notFound }
         } catch {
             guard lookupID == request, !Task.isCancelled else { return }
@@ -107,6 +128,7 @@ struct OnlineSourcesSection: View {
     /// Общая модель со страницей аниме (её же использует выбор озвучки над кнопкой «Смотреть»).
     let model: KodikOnlineViewModel
     let playEpisode: (Episode, KodikVoiceOption) -> Void
+    @Environment(LibraryStore.self) private var library
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
@@ -121,7 +143,7 @@ struct OnlineSourcesSection: View {
 
         .task {
             if model.phase == .idle {
-                await model.load(anime: anime, client: client)
+                await model.load(anime: anime, client: client, resumeSourceKey: library.resumePoint(for: anime)?.sourceKey)
             }
         }
     }
@@ -130,7 +152,7 @@ struct OnlineSourcesSection: View {
         switch model.phase {
         case .idle:
             Button {
-                Task { await model.load(anime: anime, client: client) }
+                Task { await model.load(anime: anime, client: client, resumeSourceKey: library.resumePoint(for: anime)?.sourceKey) }
             } label: {
                 Label("Найти озвучки", systemImage: "mic.badge.plus")
                     .frame(maxWidth: .infinity)
@@ -159,7 +181,7 @@ struct OnlineSourcesSection: View {
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
                 Button("Повторить") {
-                    Task { await model.load(anime: anime, client: client) }
+                    Task { await model.load(anime: anime, client: client, resumeSourceKey: library.resumePoint(for: anime)?.sourceKey) }
                 }
                 .buttonStyle(.bordered)
             }
@@ -296,6 +318,7 @@ struct KodikVoicePicker: View {
     let anime: Anime
     let client: KodikClient
     let model: KodikOnlineViewModel
+    @Environment(LibraryStore.self) private var library
 
     var body: some View {
         Group {
@@ -316,7 +339,7 @@ struct KodikVoicePicker: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             case .failed:
                 Button {
-                    Task { await model.load(anime: anime, client: client) }
+                    Task { await model.load(anime: anime, client: client, resumeSourceKey: library.resumePoint(for: anime)?.sourceKey) }
                 } label: {
                     Label("Не удалось загрузить озвучки — повторить", systemImage: "arrow.clockwise")
                         .font(.footnote)
@@ -327,7 +350,9 @@ struct KodikVoicePicker: View {
             }
         }
         .task {
-            if model.phase == .idle { await model.load(anime: anime, client: client) }
+            if model.phase == .idle {
+                await model.load(anime: anime, client: client, resumeSourceKey: library.resumePoint(for: anime)?.sourceKey)
+            }
         }
     }
 

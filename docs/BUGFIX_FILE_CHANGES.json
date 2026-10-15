@@ -1,0 +1,36 @@
+{
+  "base_archive": "Anivibe-social-fixed-v2.zip",
+  "update": "2026-10-15 bugfix v3",
+  "modified": [
+    ".github/workflows/ios.yml",
+    "Anivibe/App/RootView.swift",
+    "Anivibe/Core/LibraryStore.swift",
+    "Anivibe/Features/AnimeDetails/AnimeDetailsView.swift",
+    "Anivibe/Features/Community/CommunityViews.swift",
+    "Anivibe/Features/Home/HomeView.swift",
+    "Anivibe/Features/Library/LibraryView.swift",
+    "Anivibe/Features/Online/OnlineSourcesSection.swift",
+    "Anivibe/Features/Player/PlayerScreen.swift",
+    "Anivibe/Features/Player/PlayerViewModel.swift",
+    "Anivibe/Features/Profile/FriendsView.swift",
+    "Anivibe/Features/Profile/ProfileView.swift",
+    "Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryPersistence.swift",
+    "Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryRepository.swift",
+    "Packages/AnivibeCore/Sources/AnivibeCore/Models/Library.swift",
+    "Packages/AnivibeCore/Sources/AnivibeCore/Providers/KodikProvider.swift",
+    "Packages/AnivibeCore/Tests/AnivibeCoreTests/MotionPerformanceTests.swift",
+    "README.md",
+    "supabase/tests/social_test.py"
+  ],
+  "added": [
+    "Anivibe/App/AppFeatures.swift",
+    "Packages/AnivibeCore/Tests/AnivibeCoreTests/Bugfix20261015Tests.swift",
+    "docs/BUGFIX_CHECKS.txt",
+    "docs/BUGFIX_FILE_CHANGES.json",
+    "docs/BUGFIX_UPDATE_RU.md",
+    "scripts/test_bugfix_update.py",
+    "supabase/migrations/20261015000000_bugfix_library_status.sql"
+  ],
+  "removed": [],
+  "historical_migrations_unchanged": true
+}

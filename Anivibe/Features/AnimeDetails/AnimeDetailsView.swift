@@ -82,7 +82,11 @@ struct AnimeDetailsView: View {
                 }
             }
         }
-        .sheet(isPresented: $showSharedWatch) { NavigationStack { WatchInviteView(anilistId: anime.id).toolbar { Button("Закрыть") { showSharedWatch = false } } } }
+        .sheet(isPresented: $showSharedWatch) {
+            if AppFeatures.sharedWatchingEnabled {
+                NavigationStack { WatchInviteView(anilistId: anime.id).toolbar { Button("Закрыть") { showSharedWatch = false } } }
+            }
+        }
         .sheet(isPresented: $showFolders) { FolderSelectionSheet(anime: anime.snapshot) }
         .screenBackground()
         .navigationTitle(anime.title.preferred)
@@ -148,7 +152,7 @@ struct AnimeDetailsView: View {
             .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
             .disabled(startingPlayback || !detailsLoaded || (episodes.isEmpty && env.kodik == nil))
 
-            if env.session.user != nil {
+            if env.session.user != nil && AppFeatures.sharedWatchingEnabled {
                 Button { showSharedWatch = true } label: { Label("Смотреть вместе", systemImage: "play.rectangle.on.rectangle").frame(maxWidth: .infinity, minHeight: 44) }
                     .buttonStyle(.bordered).tint(Theme.accent)
             }
@@ -225,13 +229,21 @@ struct AnimeDetailsView: View {
         guard !startingPlayback else { return }
         startingPlayback = true
         defer { startingPlayback = false }
-        if let client = env.kodik { await kodikModel.load(anime: anime, client: client) }
+        if let client = env.kodik {
+            await kodikModel.load(anime: anime, client: client, resumeSourceKey: resume?.sourceKey)
+        }
         guard !Task.isCancelled else { return }
         if let voice = kodikModel.selectedVoice {
             let list = KodikProvider.sourceEpisodes(for: voice, animeID: anime.id)
             if let saved = resume {
-                if let key = saved.sourceKey {
-                    guard let exact = list.first(where: { $0.sourceKey == key }) else { chooseKodikEpisode(); return }
+                if saved.sourceKey != nil {
+                    guard let exact = KodikProvider.resumeEpisode(for: saved, in: list) else {
+                        if saved.isFinishedSourceEpisode, list.contains(where: { $0.sourceKey == saved.sourceKey }) {
+                            sourceSelectionMessage = "Сохранённая серия просмотрена. Следующей серии в этой озвучке пока нет. Выберите другую серию или озвучку."
+                            showEpisodes = true
+                        } else { chooseKodikEpisode() }
+                        return
+                    }
                     playSourceEpisode(exact, voice: voice)
                 } else if let exact = KodikProvider.catalogueEpisode(number: saved.episode, anime: anime, voice: voice) {
                     // Source-scoped progress is used; legacy catalogue position is not copied.
@@ -251,7 +263,9 @@ struct AnimeDetailsView: View {
             guard !startingPlayback else { return }
             startingPlayback = true
             defer { startingPlayback = false }
-            if let client = env.kodik { await kodikModel.load(anime: anime, client: client) }
+            if let client = env.kodik {
+                await kodikModel.load(anime: anime, client: client, resumeSourceKey: resume?.sourceKey)
+            }
             guard !Task.isCancelled else { return }
             if let voice = kodikModel.selectedVoice {
                 if let exact = KodikProvider.catalogueEpisode(number: episode, anime: anime, voice: voice) {

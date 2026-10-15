@@ -8,6 +8,8 @@ struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model: PlayerViewModel?
     @State private var pip = PictureInPictureModel()
+    @State private var playbackAccountID: String?
+    @State private var isClosing = false
 
     var body: some View {
         ZStack {
@@ -20,11 +22,12 @@ struct PlayerScreen: View {
         .persistentSystemOverlays(.hidden)
         .onAppear {
             if model == nil {
+                playbackAccountID = env.session.user?.id
                 let settings = env.settings
                 let vm = PlayerViewModel(request: request, registry: env.registry, library: env.library,
                                          accountID: env.session.user?.id, autoplayNext: { request.sharedWatch == nil && settings.autoplayNextEpisode })
                 model = vm
-                if let context = request.sharedWatch, let service = env.communityService {
+                if AppFeatures.sharedWatchingEnabled, let context = request.sharedWatch, let service = env.communityService {
                     let coordinator = SharedWatchCoordinator(model: vm, context: context, service: service, session: env.session)
                     vm.useSharedSpeed()
                     vm.sharedWatch = coordinator
@@ -34,7 +37,7 @@ struct PlayerScreen: View {
             }
         }
         .onChange(of: env.session.user?.id) { _, id in
-            if let expected = request.sharedWatch?.userId, id != expected { close() }
+            if model != nil, id != playbackAccountID { close() }
         }
         .onDisappear {
             model?.teardown()
@@ -43,10 +46,14 @@ struct PlayerScreen: View {
     }
 
     private func close() {
-        model?.teardown()
-        pip.detach()
-        OrientationHelper.request(.portrait)
-        dismiss()
+        guard !isClosing else { return }
+        isClosing = true
+        Task { @MainActor in
+            await model?.finishPlayback()
+            pip.detach()
+            OrientationHelper.request(.portrait)
+            dismiss()
+        }
     }
 }
 

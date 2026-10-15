@@ -176,7 +176,8 @@ struct HomeView: View {
                         ForEach(library.continueWatching) { item in
                             NavigationLink(value: item.anime) {
                                 PosterCard(title: item.anime.title, coverURL: item.anime.coverURL,
-                                           subtitle: item.resume.isNextEpisode ? "Далее: серия \(item.resume.episode)" : "Серия \(item.resume.episode) · \(Int(item.resume.fraction * 100))%",
+                                           subtitle: item.resume.isFinishedSourceEpisode ? "Серия \(item.resume.episode) просмотрена" :
+                                               (item.resume.isNextEpisode ? "Далее: серия \(item.resume.episode)" : "Серия \(item.resume.episode) · \(Int(item.resume.fraction * 100))%"),
                                            progress: item.resume.isNextEpisode ? nil : item.resume.fraction)
                                 .frame(width: 130)
                             }

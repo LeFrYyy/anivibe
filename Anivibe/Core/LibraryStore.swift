@@ -65,6 +65,12 @@ final class LibraryStore {
         await changed()
     }
 
+    func setFavorite(_ favorite: Bool, for anime: AnimeSnapshot) async {
+        guard isAccountStorageAvailable else { return }
+        await repository.setFavorite(favorite, for: anime)
+        await changed()
+    }
+
     func remove(_ id: Int) async {
         guard isAccountStorageAvailable else { return }
         await repository.remove(animeId: id)
@@ -83,9 +89,11 @@ final class LibraryStore {
         await changed()
     }
 
-    func recordProgress(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double, sourceKey: String? = nil, accountID: String?) async {
+    func recordProgress(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double,
+                        sourceKey: String? = nil, accountID: String?, recordedAt: Date? = nil) async {
         guard isAccountStorageAvailable else { return }
-        await repository.recordProgressForAccount(anime: anime, episode: episode, position: position, duration: duration, sourceKey: sourceKey, accountID: accountID)
+        await repository.recordProgressForAccount(anime: anime, episode: episode, position: position, duration: duration,
+                                                  sourceKey: sourceKey, accountID: accountID, recordedAt: recordedAt)
         await changed()
     }
 

@@ -37,14 +37,29 @@ public struct FileLibraryPersistence: LibraryPersistence {
 
     static var encoder: JSONEncoder {
         let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        e.dateEncodingStrategy = .custom { date, encoder in
+            var value = encoder.singleValueContainer()
+            try value.encode(formatter.string(from: date))
+        }
         e.outputFormatting = [.sortedKeys]
         return e
     }
 
     static var decoder: JSONDecoder {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let legacy = ISO8601DateFormatter()
+        d.dateDecodingStrategy = .custom { decoder in
+            let value = try decoder.singleValueContainer().decode(String.self)
+            if let date = fractional.date(from: value) ?? legacy.date(from: value) {
+                return date
+            }
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
+                                                    debugDescription: "Invalid library date: \(value)"))
+        }
         return d
     }
 }

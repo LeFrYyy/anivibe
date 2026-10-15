@@ -122,12 +122,29 @@ public struct KodikProvider: VideoSourceProvider {
                                number: episode.number, title: episode.title, payload: payload.encoded())
     }
 
+    /// The registry may flatten a season for catalogue matching. Progress must
+    /// still use the real material/translation/season identity used by details.
+    public static func progressEpisode(for episode: ProviderEpisode) -> ProviderEpisode {
+        guard episode.providerID == providerID,
+              let payload = Payload.decode(episode.payload),
+              let voice = payload.voices.first(where: { $0.title == payload.selected }) ?? payload.voices.first,
+              let identity = voice.sourceIdentity else { return episode }
+        return ProviderEpisode(providerID: episode.providerID, titleID: identity.titleID, season: identity.season,
+                               number: identity.number, title: episode.title, payload: episode.payload)
+    }
+
     // MARK: - Внутреннее
 
     struct Payload: Codable, Equatable {
+        struct SourceIdentity: Codable, Equatable {
+            let titleID: String
+            let season: Int?
+            let number: Int
+        }
         struct Voice: Codable, Equatable {
             let title: String
             let url: String
+            var sourceIdentity: SourceIdentity? = nil
         }
         var selected: String?
         var voices: [Voice]
@@ -154,13 +171,17 @@ public struct KodikProvider: VideoSourceProvider {
                 let key = Key(season: flatten ? nil : ep.season, number: ep.number)
                 if byKey[key] == nil { order.append(key); byKey[key] = (ep.title, []) }
                 if byKey[key]!.voices.contains(where: { $0.title == voice.translation.title }) { continue }
-                byKey[key]!.voices.append(.init(title: voice.translation.title, url: ep.playerURL.absoluteString))
+                byKey[key]!.voices.append(.init(title: voice.translation.title, url: ep.playerURL.absoluteString,
+                    sourceIdentity: .init(titleID: voice.id, season: ep.season, number: ep.number)))
                 if byKey[key]!.title == nil { byKey[key]!.title = ep.title }
             }
         }
         // Фильмы и одиночные видео: одна «серия» с номером 1.
         if order.isEmpty {
-            let list = voices.filter(\.isSingleVideo).map { Payload.Voice(title: $0.translation.title, url: $0.playerURL.absoluteString) }
+            let list = voices.filter(\.isSingleVideo).map {
+                Payload.Voice(title: $0.translation.title, url: $0.playerURL.absoluteString,
+                             sourceIdentity: .init(titleID: $0.id, season: nil, number: 1))
+            }
             if !list.isEmpty {
                 let selected = list.contains { $0.title == preferredVoice } ? preferredVoice : list[0].title
                 return [ProviderEpisode(providerID: providerID, titleID: titleID, season: nil, number: 1, title: nil,
@@ -194,6 +215,22 @@ public struct KodikProvider: VideoSourceProvider {
             return Episode(animeId: animeID, season: ep.season, number: index + 1,
                            title: ep.title, sourceEpisode: source)
         }
+    }
+
+    /// Resume only an exact saved source identity. A completed source advances to
+    /// the next actual item in this list, never to an inferred catalogue number.
+    public static func resumeEpisode(for resume: ResumePoint, in episodes: [Episode]) -> Episode? {
+        guard let key = resume.sourceKey,
+              let index = episodes.firstIndex(where: { $0.animeId == resume.animeId && $0.sourceKey == key }) else { return nil }
+        if !resume.isFinishedSourceEpisode { return episodes[index] }
+        let next = index + 1
+        guard episodes.indices.contains(next),
+              episodes[next].animeId == resume.animeId,
+              let currentSource = episodes[index].sourceEpisode,
+              let nextSource = episodes[next].sourceEpisode,
+              nextSource.providerID == currentSource.providerID,
+              nextSource.titleID == currentSource.titleID else { return nil }
+        return episodes[next]
     }
 
     /// Озвучки в порядке «по умолчанию»: сначала озвучки (не субтитры), затем популярные студии,

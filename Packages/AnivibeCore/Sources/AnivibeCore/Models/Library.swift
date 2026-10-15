@@ -3,7 +3,7 @@ import Foundation
 /// Пользовательские списки. «Избранное» — отдельный флаг, т.к. тайтл может быть
 /// одновременно, например, «Смотрю» и «Избранное».
 public enum LibraryStatus: String, Codable, CaseIterable, Sendable {
-    case watching, completed, planned, onHold
+    case watching, completed, planned, onHold, dropped
 
     public var localizedName: String {
         switch self {
@@ -11,6 +11,7 @@ public enum LibraryStatus: String, Codable, CaseIterable, Sendable {
         case .completed: return "Просмотрено"
         case .planned: return "Запланировано"
         case .onHold: return "Отложено"
+        case .dropped: return "Брошено"
         }
     }
 
@@ -20,6 +21,7 @@ public enum LibraryStatus: String, Codable, CaseIterable, Sendable {
         case .completed: return "checkmark.circle"
         case .planned: return "calendar"
         case .onHold: return "pause.circle"
+        case .dropped: return "xmark.circle"
         }
     }
 }
@@ -92,6 +94,22 @@ public struct WatchProgress: Hashable, Codable, Sendable {
     public var isFinished: Bool { fraction >= Self.finishedThreshold }
 
     public var percent: Int { Int((fraction * 100).rounded()) }
+
+    /// Старые файлы округляли даты до секунды. При равенстве дат используем
+    /// последнюю открытую серию, затем порядок записи, а не первый элемент массива.
+    static func latest(in progress: [WatchProgress], preferredEpisode: Int? = nil) -> WatchProgress? {
+        progress.enumerated().max { lhs, rhs in
+            if lhs.element.updatedAt != rhs.element.updatedAt {
+                return lhs.element.updatedAt < rhs.element.updatedAt
+            }
+            if let preferredEpisode {
+                let leftMatches = lhs.element.episode == preferredEpisode
+                let rightMatches = rhs.element.episode == preferredEpisode
+                if leftMatches != rightMatches { return !leftMatches }
+            }
+            return lhs.offset < rhs.offset
+        }?.element
+    }
 }
 
 public struct HistoryItem: Identifiable, Hashable, Codable, Sendable {
@@ -122,6 +140,12 @@ public struct ResumePoint: Hashable, Sendable {
     /// `true`, если это переход к следующей серии после завершённой.
     public let isNextEpisode: Bool
     public var sourceKey: String? = nil
+
+    /// Это якорь просмотренной серии источника, а не угаданный номер следующей.
+    /// Следующую серию можно выбрать только из фактического списка провайдера.
+    public var isFinishedSourceEpisode: Bool {
+        sourceKey != nil && fraction >= WatchProgress.finishedThreshold
+    }
 }
 
 public struct ContinueWatchingItem: Identifiable, Hashable, Sendable {
@@ -161,6 +185,12 @@ public struct LibrarySnapshot: Codable, Hashable, Sendable {
 
     public func progress(animeId: Int, episode: Int, sourceKey: String? = nil) -> WatchProgress? {
         progress.first { $0.animeId == animeId && $0.episode == episode && $0.sourceKey == sourceKey }
+    }
+
+    public func latestProgress(animeId: Int, episode: Int? = nil) -> WatchProgress? {
+        WatchProgress.latest(in: progress.filter {
+            $0.animeId == animeId && (episode == nil || $0.episode == episode)
+        }, preferredEpisode: entry(for: animeId)?.lastEpisode)
     }
 
     public func entries(in status: LibraryStatus) -> [LibraryEntry] {

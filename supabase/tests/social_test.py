@@ -134,6 +134,23 @@ class SocialDatabaseTests(unittest.TestCase):
         self.assertEqual(len(self.details(A,B)['history']),1)
         action(A,B,'remove')
         self.assertFalse(self.details(A,B)['history_allowed'])
+    def test_dropped_status_sync_and_public_counter_keep_privacy(self):
+        self.public(B)
+        sql(f"insert into public.library_entries(user_id,anime_id,title,status,is_favorite) values('{B}',15,'Dropped title','dropped',true)",B)
+        self.assertEqual(self.count("select count(*) from public.library_entries where status='dropped'",A),'0')
+        private=self.details(A,B)
+        self.assertFalse(private['library_allowed']); self.assertIsNone(private['stats'])
+        sql(f"update public.profiles set library_visibility='public' where user_id='{B}'",B)
+        shared=self.details(A,B)
+        self.assertEqual(shared['stats']['dropped'],1)
+        self.assertEqual(shared['stats']['onHold'],0)
+        self.assertEqual(shared['stats']['favorites'],1)
+        self.assertEqual(shared['library'][0]['status'],'dropped')
+    def test_old_library_statuses_still_valid_and_unknown_status_is_rejected(self):
+        for number,status in enumerate(['watching','completed','planned','onHold','dropped'],1):
+            sql(f"insert into public.library_entries(user_id,anime_id,title,status) values('{A}',{number},'Title','{status}')",A)
+        self.assertEqual(self.count('select count(*) from public.library_entries',A),'5')
+        self.assertNotEqual(sql(f"insert into public.library_entries(user_id,anime_id,title,status) values('{A}',99,'Invalid','unknown')",A,False).returncode,0)
     def test_social_profile_itself_must_be_visible(self):
         sql(f"update public.profiles set history_visibility='public' where user_id='{B}'",B)
         self.assertNotEqual(sql(f"select public.anivibe_social_profile('{B}',0,0)",A,False).returncode,0)

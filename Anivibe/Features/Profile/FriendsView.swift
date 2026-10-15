@@ -31,7 +31,9 @@ struct FriendsView: View {
                 }
                 switch tab {
                 case .friends:
-                    Text("Друзья · \(accepted.count)/\(env.community.hub?.friendCap.description ?? "—")").font(.headline)
+                    Text(AppFeatures.communityEnabled
+                         ? "Друзья · \(accepted.count)/\(env.community.hub?.friendCap.description ?? "—")"
+                         : "Друзья · \(accepted.count)").font(.headline)
                     if accepted.isEmpty && !store.isLoading {
                         SocialEmptyPanel(icon: "person.2", title: "Хорошие истории лучше вместе", message: "Найдите друга по имени, username или ID и отправьте приглашение.")
                         Button("Найти друзей") { tab = .search }.buttonStyle(.borderedProminent).controlSize(.large).foregroundStyle(Theme.onAccent)
@@ -100,7 +102,9 @@ struct FriendsView: View {
     private func reload() async {
         guard session.user?.id == userID else { return }
         await store.load(service: env.socialService, userID: userID)
-        await env.community.refresh(service: env.communityService, userId: userID)
+        if AppFeatures.communityEnabled {
+            await env.community.refresh(service: env.communityService, userId: userID)
+        }
     }
     @ViewBuilder private func friendCard(_ edge: Friendship) -> some View {
         let id = edge.peerID(for: userID)
@@ -108,7 +112,8 @@ struct FriendsView: View {
             if let profile = store.peers[id] {
                 NavigationLink { PublicProfileView(profile: profile) } label: { SocialPersonRow(profile: profile) }.buttonStyle(.plain)
             } else { Label("Профиль недоступен", systemImage: "lock").foregroundStyle(Theme.textSecondary) }
-            if edge.status == "accepted", let friend = env.community.hub?.friends.first(where: { $0.peerId == id }) {
+            if AppFeatures.sharedWatchingEnabled, edge.status == "accepted",
+               let friend = env.community.hub?.friends.first(where: { $0.peerId == id }) {
                 Text("Уровень \(friend.level.level) · \(friend.episodes) серий вместе").font(.caption).foregroundStyle(Theme.textSecondary)
             }
             relationAction(id)
@@ -155,7 +160,7 @@ struct PublicProfileView: View {
                     ProfileIdentityView(profile: details.profile, fallbackSubtitle: "Пока ничего о себе")
                         .padding(.vertical, 12)
                     if details.profile.userID != session.user?.id { friendshipActions }
-                    if relationships.edge(with: profile.userID)?.status == "accepted" {
+                    if AppFeatures.sharedWatchingEnabled, relationships.edge(with: profile.userID)?.status == "accepted" {
                         NavigationLink { WatchInviteView(peerId: profile.userID) } label: {
                             Label("Смотреть вместе", systemImage: "play.rectangle.on.rectangle").frame(maxWidth: .infinity, minHeight: 44)
                         }.buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)

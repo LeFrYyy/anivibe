@@ -106,22 +106,34 @@ public actor LibraryRepository {
     // MARK: - Progress
 
     /// Сохраняет позицию просмотра. Вызывается плеером периодически и при паузе/выходе.
-    public func recordProgress(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double, sourceKey: String? = nil) {
+    public func recordProgress(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double,
+                               sourceKey: String? = nil, recordedAt: Date? = nil) {
         guard episode > 0, position.isFinite, position >= 0 else { return }
-        let t = now()
-        let safeDuration = duration.isFinite && duration > 0 ? duration : 0
+        // Use the sample time, not the later time when a queued save reaches this actor.
+        let t = recordedAt ?? now()
+        guard t.timeIntervalSince1970.isFinite else { return }
+        let key = ProgressKey(animeId: anime.id, episode: episode, sourceKey: sourceKey)
+        let existing = state.progress.first { $0.key == key }
+        if let existing, existing.updatedAt > t { return }
+        let knownDuration = existing?.duration ?? 0
+        let safeDuration = duration.isFinite && duration > 0 ? duration
+            : (knownDuration.isFinite && knownDuration > 0 ? knownDuration : 0)
         let progress = WatchProgress(animeId: anime.id, episode: episode, position: min(position, safeDuration > 0 ? safeDuration : position),
                                      duration: safeDuration, updatedAt: t, sourceKey: sourceKey)
         if let i = state.progress.firstIndex(where: { $0.key == progress.key }) {
-            state.progress[i] = progress
-        } else {
-            state.progress.append(progress)
+            state.progress.remove(at: i)
         }
+        state.progress.append(progress)
 
-        mutateEntry(anime, persistNow: false) { entry in
-            entry.lastEpisode = episode
-            if entry.status == nil || entry.status == .planned || entry.status == .onHold { entry.status = .watching }
-            if sourceKey == nil, progress.isFinished, let total = anime.episodeCount, episode >= total { entry.status = .completed }
+        let newerSampleExists = state.progress.contains { $0.animeId == anime.id && $0.updatedAt > t }
+        let entryDate = state.entries.first { $0.anime.id == anime.id }?.updatedAt
+        if !newerSampleExists, entryDate.map({ $0 <= t }) ?? true {
+            mutateEntry(anime, persistNow: false, updatedAt: t) { entry in
+                entry.lastEpisode = episode
+                if entry.status == nil || entry.status == .planned || entry.status == .onHold { entry.status = .watching }
+                if entry.status != .dropped, sourceKey == nil, progress.isFinished,
+                   let total = anime.episodeCount, episode >= total { entry.status = .completed }
+            }
         }
         appendHistory(anime: anime, episode: episode, at: t, sourceKey: sourceKey)
         persist()
@@ -129,9 +141,10 @@ public actor LibraryRepository {
 
     /// Reject late player events from a session that no longer owns the visible library.
     public func recordProgressForAccount(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double,
-                                         sourceKey: String? = nil, accountID: String?) {
+                                         sourceKey: String? = nil, accountID: String?, recordedAt: Date? = nil) {
         guard activeAccountID == accountID else { return }
-        recordProgress(anime: anime, episode: episode, position: position, duration: duration, sourceKey: sourceKey)
+        recordProgress(anime: anime, episode: episode, position: position, duration: duration,
+                       sourceKey: sourceKey, recordedAt: recordedAt)
     }
 
     /// Отметить серию просмотренной без воспроизведения.
@@ -158,13 +171,16 @@ public actor LibraryRepository {
 
     public static func resumePoint(in state: LibrarySnapshot, animeId: Int, lastAvailableEpisode: Int?) -> ResumePoint? {
         resumePoint(in: state.progress.filter { $0.animeId == animeId },
-                    animeId: animeId, lastAvailableEpisode: lastAvailableEpisode)
+                    animeId: animeId, lastAvailableEpisode: lastAvailableEpisode,
+                    preferredEpisode: state.entry(for: animeId)?.lastEpisode)
     }
 
-    private static func resumePoint(in progress: [WatchProgress], animeId: Int, lastAvailableEpisode: Int?) -> ResumePoint? {
-        guard let latest = progress.max(by: { $0.updatedAt < $1.updatedAt }) else { return nil }
+    private static func resumePoint(in progress: [WatchProgress], animeId: Int, lastAvailableEpisode: Int?,
+                                    preferredEpisode: Int? = nil) -> ResumePoint? {
+        guard let latest = WatchProgress.latest(in: progress, preferredEpisode: preferredEpisode) else { return nil }
         if let sourceKey = latest.sourceKey {
-            guard !latest.isFinished else { return nil } // No guessed next episode/offset.
+            // Keep the exact source anchor after a finished episode. Details resolve
+            // the actual next item from Kodik; the title must not disappear here.
             return ResumePoint(animeId: animeId, episode: latest.episode, position: latest.position,
                                fraction: latest.fraction, isNextEpisode: false, sourceKey: sourceKey)
         }
@@ -192,9 +208,10 @@ public actor LibraryRepository {
         var items: [ContinueWatchingItem] = []
         for (animeId, list) in byAnime {
             guard let entry = entries[animeId], !entry.isDeleted,
-                  entry.status != .completed,
-                  let resume = resumePoint(in: list, animeId: animeId, lastAvailableEpisode: entry.anime.episodeCount),
-                  let updated = list.max(by: { $0.updatedAt < $1.updatedAt })?.updatedAt else { continue }
+                  entry.status != .completed, entry.status != .dropped,
+                  let resume = resumePoint(in: list, animeId: animeId, lastAvailableEpisode: entry.anime.episodeCount,
+                                           preferredEpisode: entry.lastEpisode),
+                  let updated = WatchProgress.latest(in: list)?.updatedAt else { continue }
             items.append(ContinueWatchingItem(anime: entry.anime, resume: resume, updatedAt: updated))
         }
         return Array(items.sorted {
@@ -221,10 +238,17 @@ public actor LibraryRepository {
     }
 
     private func appendHistory(anime: AnimeSnapshot, episode: Int, at t: Date, sourceKey: String? = nil) {
+        // A late pause/exit sample must not undo an explicit history deletion.
+        if (state.historyTombstones ?? []).contains(where: {
+            $0.anime.id == anime.id && $0.episode == episode && $0.sourceKey == sourceKey
+                && ($0.deletedAt.map { $0 >= t } ?? false)
+        }) { return }
         if let i = state.history.firstIndex(where: { $0.anime.id == anime.id && $0.episode == episode && $0.sourceKey == sourceKey }),
-           t.timeIntervalSince(state.history[i].watchedAt) < Self.historyMergeWindow {
-            state.history[i].watchedAt = t
-            state.history[i].anime = anime
+           abs(t.timeIntervalSince(state.history[i].watchedAt)) < Self.historyMergeWindow {
+            if t >= state.history[i].watchedAt {
+                state.history[i].watchedAt = t
+                state.history[i].anime = anime
+            }
         } else {
             state.history.append(HistoryItem(anime: anime, episode: episode, watchedAt: t, sourceKey: sourceKey))
         }
@@ -296,8 +320,9 @@ public actor LibraryRepository {
 
     // MARK: - Helpers
 
-    private func mutateEntry(_ anime: AnimeSnapshot, persistNow: Bool = true, _ change: (inout LibraryEntry) -> Void) {
-        let t = now()
+    private func mutateEntry(_ anime: AnimeSnapshot, persistNow: Bool = true, updatedAt: Date? = nil,
+                             _ change: (inout LibraryEntry) -> Void) {
+        let t = updatedAt ?? now()
         if let i = state.entries.firstIndex(where: { $0.anime.id == anime.id }) {
             var entry = state.entries[i]
             entry.anime = anime

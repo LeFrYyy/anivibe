@@ -5,7 +5,7 @@ enum LibrarySection: Hashable, CaseIterable, Identifiable {
     case list(LibraryStatus), favorites, history
 
     static var allCases: [LibrarySection] {
-        [.list(.watching), .list(.planned), .list(.onHold), .list(.completed), .favorites, .history]
+        [.list(.watching), .list(.planned), .list(.onHold), .list(.completed), .list(.dropped), .favorites, .history]
     }
 
     var id: String {
@@ -41,7 +41,13 @@ struct LibraryView: View {
 
     var body: some View {
         if embedded { libraryContent }
-        else { NavigationStack { libraryContent } }
+        else {
+            NavigationStack {
+                libraryContent
+                    .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
+                    .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
+            }
+        }
     }
 
     private var libraryContent: some View {
@@ -78,8 +84,6 @@ struct LibraryView: View {
             }
             .screenBackground()
             .navigationTitle("Библиотека")
-            .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
-            .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
             .toolbar {
                 if section == .history && !library.snapshot.history.isEmpty {
                     Button("Очистить") { confirmClear = true }
@@ -119,7 +123,13 @@ struct LibraryView: View {
                 ForEach(entries) { entry in
                     NavigationLink(value: entry.anime) { LibraryRow(entry: entry) }
                         .swipeActions {
-                            Button("Удалить", role: .destructive) { Task { await library.remove(entry.id) } }
+                            Button(section == .favorites ? "Убрать из избранного" : "Убрать из списка", role: .destructive) {
+                                let removingFavorite = section == .favorites
+                                Task {
+                                    if removingFavorite { await library.setFavorite(false, for: entry.anime) }
+                                    else { await library.setStatus(nil, for: entry.anime) }
+                                }
+                            }
                         }
                         .contextMenu {
                             ForEach(LibraryStatus.allCases, id: \.self) { status in
@@ -152,7 +162,7 @@ struct LibraryView: View {
                                 Text(item.anime.title).font(.subheadline.weight(.semibold)).lineLimit(2)
                                 Text("Серия \(item.episode) · \(item.watchedAt.formatted(.relative(presentation: .named)))")
                                     .font(.caption).foregroundStyle(Theme.textSecondary)
-                                if let p = library.progress(item.anime.id, episode: item.episode) {
+                                if let p = library.progress(item.anime.id, episode: item.episode, sourceKey: item.sourceKey) {
                                     Text(p.isFinished ? "Просмотрено" : "Просмотрено \(p.percent)%")
                                         .font(.caption2).foregroundStyle(p.isFinished ? Theme.success : Theme.textSecondary)
                                 }
@@ -185,7 +195,7 @@ private struct LibraryRow: View {
                 }
                 .font(.caption).foregroundStyle(Theme.textSecondary)
                 if let last = entry.lastEpisode {
-                    let p = library.progress(entry.id, episode: last)
+                    let p = library.snapshot.latestProgress(animeId: entry.id, episode: last)
                     Text("Серия \(last)" + (entry.anime.episodeCount.map { " из \($0)" } ?? "") + (p.map { $0.isFinished ? " · просмотрена" : " · \($0.percent)%" } ?? ""))
                         .font(.caption).foregroundStyle(Theme.textSecondary)
                     if let total = entry.anime.episodeCount, total > 0 {

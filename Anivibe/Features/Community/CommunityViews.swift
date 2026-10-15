@@ -10,6 +10,15 @@ struct CommunityView: View {
     @State private var pendingPurchase: CommunityItem?
     @State private var preview: CommunityItem?
     private var store: CommunityStore { env.community }
+    private var visibleSections: [Section] {
+        Section.allCases.filter { section in
+            switch section {
+            case .friends: return AppFeatures.sharedWatchingEnabled
+            case .shop, .inventory: return AppFeatures.friendshipShopEnabled
+            case .notices: return AppFeatures.communityEnabled
+            }
+        }
+    }
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
@@ -24,7 +33,7 @@ struct CommunityView: View {
                         Label(hub.balance.formatted(), systemImage: "circle.circle.fill").font(.headline.monospacedDigit()).foregroundStyle(Theme.accent)
                             .accessibilityLabel("Баланс: \(hub.balance) монет")
                     }
-                    Picker("Раздел", selection: $section) { ForEach(Section.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
+                    Picker("Раздел", selection: $section) { ForEach(visibleSections, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
                     switch section {
                     case .friends: together(hub)
                     case .shop: items(hub.items.filter(\.available), inventory: false)
@@ -48,7 +57,10 @@ struct CommunityView: View {
                     .font(.footnote).foregroundStyle(Theme.textSecondary)
             }.padding(16).padding(.bottom, 20)
         }.screenBackground().navigationTitle("Вместе в Anivibe").navigationBarTitleDisplayMode(.inline)
-        .task(id: session.user?.id) { await refresh() }.refreshable { await refresh() }
+        .task(id: session.user?.id) {
+            if let first = visibleSections.first { section = first }
+            await refresh()
+        }.refreshable { await refresh() }
         .toolbar { Button { preferences = true } label: { Image(systemName: "slider.horizontal.3") }.accessibilityLabel("Приватность приглашений") }
         .sheet(isPresented: $preferences) { NavigationStack { CommunityPreferencesView() } }
         .sheet(item: $preview) { item in
@@ -76,9 +88,12 @@ struct CommunityView: View {
         }
         .onChange(of: session.user?.id) { _, _ in preview = nil; pendingPurchase = nil; preferences = false }
     }
-    private func refresh() async { await store.refresh(service: env.communityService, userId: session.user?.id) }
+    private func refresh() async {
+        guard AppFeatures.communityEnabled else { return }
+        await store.refresh(service: env.communityService, userId: session.user?.id)
+    }
     @ViewBuilder private func together(_ hub: CommunityHub) -> some View {
-        if !hub.sessions.isEmpty {
+        if AppFeatures.sharedWatchingEnabled, !hub.sessions.isEmpty {
             Text("Комнаты").font(.headline)
             ForEach(hub.sessions) { room in
                 NavigationLink { WatchRoomView(roomId: room.id) } label: {
@@ -153,7 +168,7 @@ struct CommunityView: View {
                     if !notice.read { Circle().fill(Theme.accent).frame(width: 7, height: 7).accessibilityLabel("Не прочитано") }
                 }
                 if let reason = notice.payload.reason { Text(reason).font(.caption).foregroundStyle(Theme.textSecondary) }
-                if let id = notice.payload.sessionId { NavigationLink("Открыть комнату") { WatchRoomView(roomId: id) } }
+                if AppFeatures.sharedWatchingEnabled, let id = notice.payload.sessionId { NavigationLink("Открыть комнату") { WatchRoomView(roomId: id) } }
                 if !notice.read { Button("Прочитано") { Task { await store.read(notice, service: env.communityService, userId: session.user?.id) } }.font(.caption).disabled(store.isMutating) }
             }.profilePanel()
         }
@@ -189,13 +204,19 @@ struct FriendshipProgressView: View {
                         Text("\(friend.dailyCompleted)/\(hub.dailyGoal) · \(friend.dailyRewarded ? "бонус получен" : "+\(hub.dailyXp) XP и +\(hub.dailyCoins) монет каждому")").font(.subheadline)
                         Text("Серверный день: \(hub.day). Повторные серии не продвигают задание.").font(.caption).foregroundStyle(Theme.textSecondary)
                     }.profilePanel()
-                    NavigationLink { WatchInviteView(peerId: peerId) } label: { Label("Смотреть вместе", systemImage: "play.rectangle.on.rectangle").frame(maxWidth: .infinity, minHeight: 44) }
-                        .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+                    if AppFeatures.sharedWatchingEnabled {
+                        NavigationLink { WatchInviteView(peerId: peerId) } label: { Label("Смотреть вместе", systemImage: "play.rectangle.on.rectangle").frame(maxWidth: .infinity, minHeight: 44) }
+                            .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+                    }
                     Text("По умолчанию: каждому нужно подтвердить минимум 90% серии, из них 80% — одновременно. Перемотка и ожидание не засчитываются; точные пороги задаёт сервер.").font(.footnote).foregroundStyle(Theme.textSecondary)
                 }.padding(20)
             } else { ContentUnavailableView("Дружба недоступна", systemImage: "person.2", description: Text("Обновите список или проверьте, что заявка принята.")) }
         }.screenBackground().navigationTitle("Ваше развитие").navigationBarTitleDisplayMode(.inline)
-        .task(id: session.user?.id) { await env.community.refresh(service: env.communityService, userId: session.user?.id) }
+        .task(id: session.user?.id) {
+            if AppFeatures.sharedWatchingEnabled {
+                await env.community.refresh(service: env.communityService, userId: session.user?.id)
+            }
+        }
     }
     private func readableDate(_ raw: String) -> String { String(raw.prefix(10)) }
 }
