@@ -252,7 +252,7 @@ struct FolderOverlay: View {
                 .padding(Theme.Spacing.l)
             } else {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: Theme.Spacing.xl) {
-                    ForEach(collection.items) { anime in
+                    ForEach(collection.items, id: \.id) { anime in
                         FolderItemView(anime: anime, editing: editing) {
                             guard !editing else { return }
                             env.collections.rename(collectionID, to: name)

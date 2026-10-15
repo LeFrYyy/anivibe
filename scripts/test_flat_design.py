@@ -95,6 +95,16 @@ class FlatDesignSourceTests(unittest.TestCase):
         self.assertIn(".onDrag {", folders)
         self.assertIn(".onDrop(", folders)
 
+    def test_folder_grid_identifies_snapshots_by_their_anime_id(self):
+        # AnimeCollection.items contains AnimeSnapshot, which has an Int id but
+        # does not conform to Identifiable. ForEach must receive a key path.
+        folders = source("Anivibe/Features/Home/FolderViews.swift")
+        self.assertTrue(
+            r"ForEach(collection.items, id: \.id)" in folders,
+            "Use ForEach(collection.items, id: \\.id): AnimeSnapshot is not Identifiable.",
+        )
+        self.assertNotIn("ForEach(collection.items) {", folders)
+
     def test_empty_folder_has_clear_copy_and_add_action(self):
         folders = source("Anivibe/Features/Home/FolderViews.swift")
         self.assertIn("collection.items.isEmpty", folders)

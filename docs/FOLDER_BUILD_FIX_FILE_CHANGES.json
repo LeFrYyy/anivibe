@@ -1,0 +1,26 @@
+{
+  "version": "v4.1-folder-build-fix",
+  "baseline_archive": "Anivibe-flat-design-v4.zip",
+  "baseline_sha256": "8a96b4006bca8321d7beb3c8088f0fef6ac985f26dab8417029cf37f744674f9",
+  "content": "Full source project; not an IPA",
+  "changed": [
+    "Anivibe/Features/Home/FolderViews.swift",
+    "README.md",
+    "scripts/test_flat_design.py"
+  ],
+  "added": [
+    "docs/FOLDER_BUILD_FIX_CHECKS.txt",
+    "docs/FOLDER_BUILD_FIX_FILE_CHANGES.json",
+    "docs/FOLDER_BUILD_FIX_RU.md"
+  ],
+  "deleted": [],
+  "swift_change": "Exactly one line in FolderViews.swift: ForEach(collection.items, id: \\.id)",
+  "validation": {
+    "new_source_regression_detected_original_bug": true,
+    "python_source_checks_passed": 83,
+    "static_project_check_passed": true,
+    "native_build_run": false,
+    "swift_tests_run": false
+  },
+  "migration_required_for_this_fix": false
+}
