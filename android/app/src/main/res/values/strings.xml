@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">Anivibe</string>
+    <string name="home">Главная</string>
+    <string name="catalog">Каталог</string>
+    <string name="library">Библиотека</string>
+    <string name="profile">Профиль</string>
+    <string name="settings">Настройки</string>
+    <string name="search_hint">Поиск аниме на русском или английском...</string>
+    <string name="retry">Повторить</string>
+    <string name="watching">Смотрю</string>
+    <string name="completed">Просмотрено</string>
+    <string name="planned">Запланировано</string>
+    <string name="on_hold">Отложено</string>
+    <string name="dropped">Брошено</string>
+    <string name="favorites">Избранное</string>
+    <string name="history">История</string>
+    <string name="watch">Смотреть</string>
+    <string name="episodes">Серии</string>
+    <string name="sources">Озвучки</string>
+    <string name="continue_watching">Продолжить просмотр</string>
+    <string name="recommendations">Рекомендации</string>
+    <string name="trending">В тренде</string>
+    <string name="seasonal">Сейчас в эфире</string>
+    <string name="popular">Популярное</string>
+    <string name="recent_episodes">Недавно вышедшие</string>
+</resources>
