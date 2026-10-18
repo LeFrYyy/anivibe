@@ -1,0 +1,3 @@
+# Ensure gradlew uses LF endings so it can run on Linux/macOS runners
+* text=auto
+android/gradlew text eol=lf
