@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.anivibe.app"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.anivibe.app"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
@@ -74,9 +74,6 @@ dependencies {
     implementation("androidx.compose.material3:material3-window-size-class")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // TV support (for Android TV leanback / remote focus)
-    implementation("androidx.tv:tv-foundation:1.0.0")
-    implementation("androidx.tv:tv-material:1.0.0")
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
