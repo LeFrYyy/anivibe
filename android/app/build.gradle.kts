@@ -75,8 +75,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     // TV support (for Android TV leanback / remote focus)
-    implementation("androidx.tv:tv-foundation:1.0.0-alpha11")
-    implementation("androidx.tv:tv-material:1.0.0-alpha11")
+    implementation("androidx.tv:tv-foundation:1.0.0")
+    implementation("androidx.tv:tv-material:1.0.0")
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
