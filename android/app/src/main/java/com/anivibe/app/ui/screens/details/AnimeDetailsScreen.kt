@@ -27,6 +27,7 @@ import com.anivibe.app.core.theme.*
 import com.anivibe.app.data.model.LibraryStatus
 import com.anivibe.app.data.model.ProviderEpisode
 import com.anivibe.app.ui.components.*
+import com.anivibe.app.ui.screens.home.SectionHeader
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

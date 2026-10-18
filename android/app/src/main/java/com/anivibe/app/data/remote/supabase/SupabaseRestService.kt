@@ -61,9 +61,9 @@ data class CollectionRow(
 )
 
 class SupabaseRestService(
-    private val client: HttpClient,
-    private val supabaseUrl: String,
-    private val anonKey: String
+    @PublishedApi internal val client: HttpClient,
+    @PublishedApi internal val supabaseUrl: String,
+    @PublishedApi internal val anonKey: String
 ) {
     suspend inline fun <reified T> fetchTable(
         table: String,
