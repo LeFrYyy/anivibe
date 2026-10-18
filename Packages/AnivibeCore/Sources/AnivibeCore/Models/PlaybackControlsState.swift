@@ -20,4 +20,8 @@ public struct PlaybackControlsState: Equatable, Sendable {
         isVisible = false
         self.deadline = nil
     }
+    public mutating func hide() {
+        isVisible = false
+        deadline = nil
+    }
 }

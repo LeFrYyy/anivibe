@@ -1,5 +1,17 @@
 import SwiftUI
 import AnivibeCore
+#if canImport(AudioToolbox)
+import AudioToolbox
+#endif
+
+@MainActor
+enum PlayerHaptic {
+    static func playHoldFeedback() {
+        #if os(iOS)
+        AudioServicesPlaySystemSound(1519)
+        #endif
+    }
+}
 
 /// Полноэкранный плеер. Открывается через `fullScreenCover` со страницы тайтла.
 struct PlayerScreen: View {
@@ -78,9 +90,11 @@ private struct PlayerContent: View {
 
     var body: some View {
         ZStack {
-            PlayerLayerView(player: model.player, pip: pip)
+            PlayerLayerView(player: model.player, pip: pip,
+                            onTap: { toggleControls() },
+                            onHoldBegan: { handleHoldBegan() },
+                            onHoldEnded: { handleHoldEnded() })
                 .ignoresSafeArea()
-                .onTapGesture { toggleControls() }
                 .accessibilityLabel("Видео")
                 .accessibilityAddTraits(.allowsDirectInteraction)
 
@@ -101,6 +115,10 @@ private struct PlayerContent: View {
                 }.padding(.top, 12).allowsHitTesting(false)
             }
 
+            if model.isFastForwarding {
+                fastForwardBadge
+            }
+
             if controlsVisible || model.phase != .ready {
                 PlayerControlsView(model: model, pip: pip, close: close,
                                    showSources: { showSources = true },
@@ -119,6 +137,7 @@ private struct PlayerContent: View {
             }
         }
         .animation(AppMotion.fade(reduceMotion: reduceMotion), value: controlsVisible)
+        .animation(AppMotion.fade(reduceMotion: reduceMotion), value: model.isFastForwarding)
         .animation(AppMotion.panel(reduceMotion: reduceMotion), value: model.nextEpisodeCountdown != nil)
         .sheet(item: $webPlayback) { request in
             NavigationStack {
@@ -144,12 +163,22 @@ private struct PlayerContent: View {
         .onChange(of: model.isBuffering) { _, _ in model.sharedWatch?.playerStateChanged() }
         .onChange(of: model.isScrubbing) { _, _ in model.sharedWatch?.playerStateChanged() }
         .onChange(of: scenePhase) { _, phase in
+            if phase != .active && model.isFastForwarding {
+                withAnimation(AppMotion.fade(reduceMotion: reduceMotion)) {
+                    model.stopFastForward()
+                }
+            }
             model.sharedWatch?.setActive(phase == .active && webPlayback == nil)
         }
         .onChange(of: webPlayback != nil) { _, open in model.sharedWatch?.setActive(!open && scenePhase == .active) }
         .onChange(of: interactionBlocked) { _, _ in scheduleHide() }
         .onAppear { scheduleHide() }
-        .onDisappear { hideTask?.cancel() }
+        .onDisappear {
+            hideTask?.cancel()
+            if model.isFastForwarding {
+                model.stopFastForward()
+            }
+        }
     }
 
     @ViewBuilder private var phaseOverlay: some View {
@@ -197,6 +226,44 @@ private struct PlayerContent: View {
             try? await Task.sleep(nanoseconds: 3_500_000_000)
             guard !Task.isCancelled else { return }
             controls.tick(at: Date(), playing: model.isPlaying, blocked: interactionBlocked)
+        }
+    }
+
+    private var fastForwardBadge: some View {
+        HStack(spacing: 6) {
+            Text(KodikPlayerScreen.speedLabel(model.fastForwardSpeed))
+                .font(.subheadline.weight(.bold).monospacedDigit())
+            Image(systemName: "forward.fill")
+                .font(.caption.weight(.bold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.8), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 24)
+        .transition(AppMotion.panelTransition(reduceMotion: reduceMotion))
+        .allowsHitTesting(false)
+        .accessibilityLabel("Ускоренное воспроизведение: \(KodikPlayerScreen.speedLabel(model.fastForwardSpeed))")
+    }
+
+    private func handleHoldBegan() {
+        guard !interactionBlocked, model.isPlaying, model.phase == .ready, model.sharedWatch == nil else { return }
+        hideTask?.cancel()
+        withAnimation(AppMotion.fade(reduceMotion: reduceMotion)) {
+            controls.hide()
+        }
+        PlayerHaptic.playHoldFeedback()
+        withAnimation(AppMotion.fade(reduceMotion: reduceMotion)) {
+            model.startFastForward()
+        }
+    }
+
+    private func handleHoldEnded() {
+        guard model.isFastForwarding else { return }
+        withAnimation(AppMotion.fade(reduceMotion: reduceMotion)) {
+            model.stopFastForward()
         }
     }
 }

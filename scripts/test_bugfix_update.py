@@ -139,6 +139,28 @@ class BugfixUpdateSourceTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r"func test\w+\(", tests)), 20)
         self.assertIn("python3 scripts/test_bugfix_update.py", source(".github/workflows/ios.yml"))
 
+    def test_hold_to_speedup_fast_forward_gesture(self):
+        model = source("Anivibe/Features/Player/PlayerViewModel.swift")
+        self.assertIn("private(set) var isFastForwarding = false", model)
+        self.assertIn("var fastForwardSpeed: Float", model)
+        self.assertIn("func startFastForward()", model)
+        self.assertIn("func stopFastForward()", model)
+        self.assertIn("player.rate = fastForwardSpeed", model)
+        self.assertIn("player.rate = playbackSpeed", model)
+
+        layer = source("Anivibe/Features/Player/PlayerLayerView.swift")
+        self.assertIn("var onHoldBegan: (() -> Void)?", layer)
+        self.assertIn("var onHoldEnded: (() -> Void)?", layer)
+        self.assertIn("UILongPressGestureRecognizer", layer)
+        self.assertIn("tap.require(toFail: longPress)", layer)
+
+        screen = source("Anivibe/Features/Player/PlayerScreen.swift")
+        self.assertIn("PlayerHaptic.playHoldFeedback()", screen)
+        self.assertIn("model.startFastForward()", screen)
+        self.assertIn("model.stopFastForward()", screen)
+        self.assertIn("fastForwardBadge", screen)
+        self.assertIn("controls.hide()", screen)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

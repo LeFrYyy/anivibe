@@ -115,6 +115,7 @@ final class PlayerViewModel {
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
+        stopFastForward()
         sharedWatch?.stop()
         saveProgress(force: true)
         loadTask?.cancel()
@@ -279,6 +280,7 @@ final class PlayerViewModel {
                 case .waitingToPlayAtSpecifiedRate:
                     self.isBuffering = true
                 case .paused:
+                    if self.isFastForwarding { self.stopFastForward() }
                     if let item = self.player.currentItem {
                         self.isBuffering = item.isPlaybackBufferEmpty && !item.isPlaybackLikelyToKeepUp && !item.isPlaybackBufferFull
                     } else {
@@ -480,6 +482,11 @@ final class PlayerViewModel {
     static let speeds: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
 
     private(set) var playbackSpeed: Float = PlayerViewModel.storedSpeed()
+    private(set) var isFastForwarding = false
+
+    var fastForwardSpeed: Float {
+        playbackSpeed >= 2.0 ? 2.5 : 2.0
+    }
 
     var qualities: [PlaybackQuality] { source?.qualities ?? [] }
     var currentQualityHeight: Int? {
@@ -513,7 +520,21 @@ final class PlayerViewModel {
         playbackSpeed = speed
         UserDefaults.standard.set(Double(speed), forKey: KodikPreferences.speedKey)
         player.defaultRate = speed
-        if player.rate > 0 { player.rate = speed }
+        if player.rate > 0 && !isFastForwarding { player.rate = speed }
+    }
+
+    func startFastForward() {
+        guard sharedWatch == nil, phase == .ready, isPlaying, !isFastForwarding else { return }
+        isFastForwarding = true
+        player.rate = fastForwardSpeed
+    }
+
+    func stopFastForward() {
+        guard isFastForwarding else { return }
+        isFastForwarding = false
+        if isPlaying {
+            player.rate = playbackSpeed
+        }
     }
 
     func selectVoice(_ voice: String) {
@@ -541,6 +562,7 @@ final class PlayerViewModel {
 
     func togglePlay() {
         if let sharedWatch { sharedWatch.togglePlay(); return }
+        if isFastForwarding { stopFastForward() }
         if isPlaying { player.pause(); saveProgress(force: true) } else { cancelCountdown(); player.play() }
     }
 

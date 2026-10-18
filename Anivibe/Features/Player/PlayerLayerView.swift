@@ -58,22 +58,72 @@ final class PictureInPictureModel: NSObject, AVPictureInPictureControllerDelegat
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
     let pip: PictureInPictureModel
+    var onTap: (() -> Void)? = nil
+    var onHoldBegan: (() -> Void)? = nil
+    var onHoldEnded: (() -> Void)? = nil
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
 
     func makeUIView(context: Context) -> PlayerContainerView {
         let view = PlayerContainerView()
         view.playerLayer.player = player
         view.playerLayer.videoGravity = .resizeAspect
         view.backgroundColor = .black
+        view.isUserInteractionEnabled = true
         pip.attach(to: view.playerLayer)
+
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
+        let longPress = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
+        longPress.minimumPressDuration = 0.28
+        longPress.allowableMovement = .greatestFiniteMagnitude
+        tap.require(toFail: longPress)
+
+        view.addGestureRecognizer(tap)
+        view.addGestureRecognizer(longPress)
+        context.coordinator.onTap = onTap
+        context.coordinator.onHoldBegan = onHoldBegan
+        context.coordinator.onHoldEnded = onHoldEnded
         return view
     }
 
     func updateUIView(_ uiView: PlayerContainerView, context: Context) {
         if uiView.playerLayer.player !== player { uiView.playerLayer.player = player }
+        context.coordinator.onTap = onTap
+        context.coordinator.onHoldBegan = onHoldBegan
+        context.coordinator.onHoldEnded = onHoldEnded
     }
 
-    static func dismantleUIView(_ uiView: PlayerContainerView, coordinator: ()) {
+    static func dismantleUIView(_ uiView: PlayerContainerView, coordinator: Coordinator) {
         uiView.playerLayer.player = nil
+        uiView.gestureRecognizers?.forEach { uiView.removeGestureRecognizer($0) }
+        coordinator.onTap = nil
+        coordinator.onHoldBegan = nil
+        coordinator.onHoldEnded = nil
+    }
+
+    final class Coordinator: NSObject {
+        var onTap: (() -> Void)?
+        var onHoldBegan: (() -> Void)?
+        var onHoldEnded: (() -> Void)?
+
+        @objc func handleTap(_ sender: UITapGestureRecognizer) {
+            if sender.state == .ended {
+                onTap?()
+            }
+        }
+
+        @objc func handleLongPress(_ sender: UILongPressGestureRecognizer) {
+            switch sender.state {
+            case .began:
+                onHoldBegan?()
+            case .ended, .cancelled, .failed:
+                onHoldEnded?()
+            default:
+                break
+            }
+        }
     }
 }
 
