@@ -24,3 +24,14 @@ __pycache__/
 
 # Disposable integration-test restart checkpoint
 supabase/tests/community-persistence-checkpoint.json
+
+# Android build outputs & local artifacts
+*.apk
+*.aab
+*.zip
+build_log.txt
+built_apk/
+android/.gradle/
+android/build/
+android/app/build/
+
