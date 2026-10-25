@@ -121,6 +121,12 @@ struct AnimeDetailsView: View {
                             .foregroundStyle(Theme.textSecondary)
                             .lineLimit(2)
                     }
+                    if anime.title.isRussianAutomatic {
+                        Text("Название переведено автоматически")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textSecondary)
+                            .accessibilityLabel("Русское название переведено автоматически, официального перевода нет")
+                    }
                 }
                 .padding(.bottom, Theme.Spacing.s)
             }

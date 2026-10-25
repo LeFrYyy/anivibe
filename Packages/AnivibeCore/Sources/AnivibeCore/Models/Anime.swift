@@ -6,13 +6,20 @@ public struct AnimeTitle: Hashable, Codable, Sendable {
     public var english: String?
     public var native: String?
     public var russian: String?
+    /// Откуда взято русское название; `nil` — источник неизвестен (старый кэш) и название считается официальным.
+    public var russianSource: RussianTitleSource?
 
-    public init(romaji: String? = nil, english: String? = nil, native: String? = nil, russian: String? = nil) {
+    public init(romaji: String? = nil, english: String? = nil, native: String? = nil, russian: String? = nil,
+                russianSource: RussianTitleSource? = nil) {
         self.russian = russian
         self.romaji = romaji
         self.english = english
         self.native = native
+        self.russianSource = russianSource
     }
+
+    /// Русское название — автоматический перевод, а не официальное.
+    public var isRussianAutomatic: Bool { russianSource == .automatic && russian?.nilIfBlank != nil }
 
     /// Основное отображаемое название.
     public var preferred: String {
@@ -23,6 +30,11 @@ public struct AnimeTitle: Hashable, Codable, Sendable {
     public var all: [String] {
         var seen = Set<String>()
         return [russian, english, romaji, native].compactMap { $0?.nilIfBlank }.filter { seen.insert($0).inserted }
+    }
+
+    /// Только официальные названия: автоматический перевод исключён, чтобы не сопоставлять по нему источники видео.
+    public var official: [String] {
+        isRussianAutomatic ? all.filter { $0 != russian } : all
     }
 }
 
@@ -126,6 +138,8 @@ public struct Anime: Identifiable, Hashable, Codable, Sendable {
     /// ID на MyAnimeList (= ID на Shikimori). По нему видеоисточники сопоставляются
     /// точно, без угадывания по названию.
     public var malID: Int?
+    /// Разговорные и альтернативные русские названия для поиска (не используются для сопоставления с источниками).
+    public var searchAliases: [String]?
 
     public init(id: Int, title: AnimeTitle, synonyms: [String] = [], synopsis: String? = nil,
                 coverURL: URL? = nil, bannerURL: URL? = nil, coverColorHex: String? = nil,
@@ -155,7 +169,13 @@ public struct Anime: Identifiable, Hashable, Codable, Sendable {
     /// Все названия, включая синонимы (для поиска и сопоставления с источниками).
     public var allTitles: [String] {
         var seen = Set<String>()
-        return (title.all + synonyms).filter { seen.insert($0.lowercased()).inserted }
+        return (title.official + synonyms).filter { seen.insert($0.lowercased()).inserted }
+    }
+
+    /// Всё, по чему тайтл можно найти: названия, синонимы, разговорные варианты и автоперевод.
+    public var searchableTitles: [String] {
+        var seen = Set<String>()
+        return (title.all + synonyms + (searchAliases ?? [])).filter { seen.insert($0.lowercased()).inserted }
     }
 
     /// Количество уже вышедших серий (известное), без домыслов.

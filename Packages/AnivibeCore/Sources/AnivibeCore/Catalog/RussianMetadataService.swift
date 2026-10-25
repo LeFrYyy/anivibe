@@ -24,7 +24,10 @@ public actor RussianMetadataService {
         public func apply(to original: Anime) -> Anime {
             guard original.malID == id else { return original }
             var anime = original
-            anime.title.russian = russian?.nilIfBlank
+            if let official = russian?.nilIfBlank {
+                anime.title.russian = official
+                anime.title.russianSource = .shikimori
+            }
             anime.synonyms = Array(Set(anime.synonyms + aliases)).sorted()
             if let text = description?.nilIfBlank {
                 let cleaned = HTMLText.plainText(text)
@@ -77,23 +80,53 @@ public enum CatalogSearchRanking {
             "ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya"]
         return text.lowercased().map { alphabet[$0] ?? String($0) }.joined()
     }
+
+    /// Оценка совпадения запроса с тайтлом: 1000 — точное русское название, 800 — точный синоним,
+    /// 700+ — начало названия, 600+ — вхождение, 500 — все слова запроса есть в названии, 200 — опечатка.
+    /// Понимает транслит («vanpanchmen»), ё/е, э/е, й/и и встроенный словарь популярных тайтлов.
     public static func score(query: String, anime: Anime) -> Int {
-        let q = TitleMatcher.normalize(query)
+        let q = RussianTitleDictionary.fold(query)
         guard !q.isEmpty else { return 0 }
         let transliterated = TitleMatcher.normalize(transliterate(q))
         let primary = [anime.title.russian, anime.title.english, anime.title.romaji, anime.title.native].compactMap { $0 }
         var best = 0
-        for (index, title) in (primary + anime.synonyms).enumerated() {
-            let t = TitleMatcher.normalize(title)
+        for (index, title) in (primary + anime.synonyms + (anime.searchAliases ?? [])).enumerated() {
+            let t = RussianTitleDictionary.fold(title)
+            guard !t.isEmpty else { continue }
             let exact = index < primary.count ? 1000 - index : 800
-            if t == q { best = max(best, exact) }
-            else if t.contains(q) { best = max(best, 600 + min(q.count, 100)) }
-            else if transliterated != q, t == transliterated { best = max(best, 750) }
-            else if q.count >= 4, abs(q.count - t.count) <= 2, distance(q, t) <= (q.count >= 8 ? 2 : 1) { best = max(best, 200) }
+            best = max(best, score(query: q, transliterated: transliterated, title: t, exact: exact))
+        }
+        if let malID = anime.malID, best < 800 {
+            best = max(best, RussianTitleDictionary.score(query: query, malID: malID))
         }
         return best
     }
-    private static func distance(_ a: String, _ b: String) -> Int {
+
+    static func score(query q: String, transliterated: String, title t: String, exact: Int) -> Int {
+        if t == q { return exact }
+        if transliterated != q {
+            if t == transliterated { return min(exact, 750) }
+        } else if t.unicodeScalars.contains(where: { $0.value >= 0x400 && $0.value <= 0x4FF }) {
+            // Запрос латиницей, название кириллицей: сравниваем транслит названия («vanpanchmen» → «Ванпанчмен»).
+            let latinTitle = TitleMatcher.normalize(transliterate(t))
+            if latinTitle == q { return min(exact, 750) }
+            if q.count >= 3, latinTitle.hasPrefix(q) { return 650 }
+        }
+        if t.hasPrefix(q) { return 700 + min(q.count, 90) }
+        if transliterated != q, transliterated.count >= 3, t.hasPrefix(transliterated) { return 650 }
+        if q.count >= 3, t.contains(q) { return 600 + min(q.count, 40) }
+        if q.contains(" "), wordsMatch(query: q, title: t) { return 500 }
+        if q.count >= 4, abs(q.count - t.count) <= 2, editDistance(q, t) <= (q.count >= 8 ? 2 : 1) { return 200 }
+        return 0
+    }
+
+    /// Каждое слово запроса — начало какого-то слова названия («атака тит» → «атака титанов»).
+    static func wordsMatch(query: String, title: String) -> Bool {
+        let titleWords = title.split(separator: " ")
+        return query.split(separator: " ").allSatisfy { word in titleWords.contains { $0.hasPrefix(word) } }
+    }
+
+    public static func editDistance(_ a: String, _ b: String) -> Int {
         let a = Array(a.prefix(160)), b = Array(b.prefix(160))
         var row = Array(0...b.count)
         for (i, x) in a.enumerated() {
