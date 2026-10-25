@@ -85,7 +85,8 @@ final class AnilibriaTests: XCTestCase {
         return (AnilibriaProvider(transport: transport), transport)
     }
 
-    private func route(_ request: URLRequest) -> (Int, Data, [String: String]) {
+    /// Static: a test-case instance method is not Sendable and cannot be a transport handler.
+    private static func route(_ request: URLRequest) -> (Int, Data, [String: String]) {
         let path = request.url?.path ?? ""
         if path.contains("/app/search/releases") { return (200, Data(Self.searchFixture.utf8), [:]) }
         if path.contains("/anime/releases/5555") { return (200, Data(Self.blockedReleaseFixture.utf8), [:]) }
@@ -95,7 +96,7 @@ final class AnilibriaTests: XCTestCase {
     }
 
     func testSearchMapsReleases() async throws {
-        let (provider, transport) = makeProvider(route)
+        let (provider, transport) = makeProvider { AnilibriaTests.route($0) }
         let titles = try await provider.search(title: "jujutsu")
         XCTAssertEqual(titles.count, 2)
         XCTAssertEqual(titles[0].id, "8789")
@@ -107,13 +108,13 @@ final class AnilibriaTests: XCTestCase {
     }
 
     func testMatchFindsAnimeByEnglishTitle() async throws {
-        let (provider, _) = makeProvider(route)
+        let (provider, _) = makeProvider { AnilibriaTests.route($0) }
         let match = try await provider.match(anime: makeAnime(title: "Jujutsu Kaisen", romaji: "Jujutsu Kaisen"))
         XCTAssertEqual(match?.id, "8789")
     }
 
     func testEpisodesSkipFractionalAndStreamless() async throws {
-        let (provider, _) = makeProvider(route)
+        let (provider, _) = makeProvider { AnilibriaTests.route($0) }
         let title = ProviderTitle(id: "8789", providerID: AnilibriaProvider.providerID, titles: ["Jujutsu Kaisen"])
         let episodes = try await provider.episodes(for: title)
         // Серия 2.5 (спецвыпуск) и серия 3 (без ссылок) пропущены.
@@ -126,7 +127,7 @@ final class AnilibriaTests: XCTestCase {
     }
 
     func testEpisodesAreCached() async throws {
-        let (provider, transport) = makeProvider(route)
+        let (provider, transport) = makeProvider { AnilibriaTests.route($0) }
         let title = ProviderTitle(id: "8789", providerID: AnilibriaProvider.providerID, titles: ["Jujutsu Kaisen"])
         _ = try await provider.episodes(for: title)
         _ = try await provider.episodes(for: title)
@@ -134,7 +135,7 @@ final class AnilibriaTests: XCTestCase {
     }
 
     func testBlockedReleaseThrows() async throws {
-        let (provider, _) = makeProvider(route)
+        let (provider, _) = makeProvider { AnilibriaTests.route($0) }
         let title = ProviderTitle(id: "5555", providerID: AnilibriaProvider.providerID, titles: ["X"])
         do {
             _ = try await provider.episodes(for: title)
@@ -149,7 +150,7 @@ final class AnilibriaTests: XCTestCase {
     }
 
     func testResolveReturnsHLSWithRussianTrack() async throws {
-        let (provider, _) = makeProvider(route)
+        let (provider, _) = makeProvider { AnilibriaTests.route($0) }
         let title = ProviderTitle(id: "8789", providerID: AnilibriaProvider.providerID, titles: ["Jujutsu Kaisen"])
         let episodes = try await provider.episodes(for: title)
         let episode = try XCTUnwrap(episodes.first)

@@ -62,7 +62,9 @@ class BugfixUpdateSourceTests(unittest.TestCase):
 
     def test_date_precision_has_legacy_read_fallback(self):
         persistence = source("Packages/AnivibeCore/Sources/AnivibeCore/Library/LibraryPersistence.swift")
-        self.assertEqual(persistence.count(".withFractionalSeconds"), 2)
+        # One shared fractional formatter (LibraryDateCodec) serves both encode and decode.
+        self.assertEqual(persistence.count(".withFractionalSeconds"), 1)
+        self.assertIn("LibraryDateCodec.shared", persistence)
         self.assertIn("fractional.date(from: value) ?? legacy.date(from: value)", persistence)
 
     def test_finished_source_keeps_anchor_and_next_is_resolved_from_real_list(self):
@@ -138,28 +140,6 @@ class BugfixUpdateSourceTests(unittest.TestCase):
         tests = source("Packages/AnivibeCore/Tests/AnivibeCoreTests/Bugfix20261015Tests.swift")
         self.assertEqual(len(re.findall(r"func test\w+\(", tests)), 20)
         self.assertIn("python3 scripts/test_bugfix_update.py", source(".github/workflows/ios.yml"))
-
-    def test_hold_to_speedup_fast_forward_gesture(self):
-        model = source("Anivibe/Features/Player/PlayerViewModel.swift")
-        self.assertIn("private(set) var isFastForwarding = false", model)
-        self.assertIn("var fastForwardSpeed: Float", model)
-        self.assertIn("func startFastForward()", model)
-        self.assertIn("func stopFastForward()", model)
-        self.assertIn("player.rate = fastForwardSpeed", model)
-        self.assertIn("player.rate = playbackSpeed", model)
-
-        layer = source("Anivibe/Features/Player/PlayerLayerView.swift")
-        self.assertIn("var onHoldBegan: (() -> Void)?", layer)
-        self.assertIn("var onHoldEnded: (() -> Void)?", layer)
-        self.assertIn("UILongPressGestureRecognizer", layer)
-        self.assertIn("tap.require(toFail: longPress)", layer)
-
-        screen = source("Anivibe/Features/Player/PlayerScreen.swift")
-        self.assertIn("PlayerHaptic.playHoldFeedback()", screen)
-        self.assertIn("model.startFastForward()", screen)
-        self.assertIn("model.stopFastForward()", screen)
-        self.assertIn("fastForwardBadge", screen)
-        self.assertIn("controls.hide()", screen)
 
 
 if __name__ == "__main__":

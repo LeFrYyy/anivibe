@@ -1,0 +1,574 @@
+[0/1] Planning build
+Test Suite 'All tests' started at 2026-10-25 08:55:30.812
+Test Suite 'debug.xctest' started at 2026-10-25 08:55:30.815
+Test Suite 'AccountAndHistoryTests' started at 2026-10-25 08:55:30.815
+Test Case 'AccountAndHistoryTests.testAccountsAndGuestNeverShareUnsyncedPrivateLibrary' started at 2026-10-25 08:55:30.815
+Test Case 'AccountAndHistoryTests.testAccountsAndGuestNeverShareUnsyncedPrivateLibrary' passed (0.001 seconds)
+Test Case 'AccountAndHistoryTests.testCorruptLibraryDoesNotOverwriteOriginal' started at 2026-10-25 08:55:30.815
+Test Case 'AccountAndHistoryTests.testCorruptLibraryDoesNotOverwriteOriginal' passed (0.0 seconds)
+Test Case 'AccountAndHistoryTests.testHistoryDeletionSurvivesRemoteMergeAndPersistence' started at 2026-10-25 08:55:30.816
+Test Case 'AccountAndHistoryTests.testHistoryDeletionSurvivesRemoteMergeAndPersistence' passed (0.001 seconds)
+Test Suite 'AccountAndHistoryTests' passed at 2026-10-25 08:55:30.817
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'AnilibriaTests' started at 2026-10-25 08:55:30.817
+Test Case 'AnilibriaTests.testBlackCloverSeason2IsNotReplacedBySameYearTitle' started at 2026-10-25 08:55:30.817
+Test Case 'AnilibriaTests.testBlackCloverSeason2IsNotReplacedBySameYearTitle' passed (0.003 seconds)
+Test Case 'AnilibriaTests.testBlockedReleaseThrows' started at 2026-10-25 08:55:30.820
+Test Case 'AnilibriaTests.testBlockedReleaseThrows' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testConflictingMalIDIsRejectedEvenWithSameTitle' started at 2026-10-25 08:55:30.820
+Test Case 'AnilibriaTests.testConflictingMalIDIsRejectedEvenWithSameTitle' passed (0.001 seconds)
+Test Case 'AnilibriaTests.testEpisodesAreCached' started at 2026-10-25 08:55:30.821
+Test Case 'AnilibriaTests.testEpisodesAreCached' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testEpisodesSkipFractionalAndStreamless' started at 2026-10-25 08:55:30.821
+Test Case 'AnilibriaTests.testEpisodesSkipFractionalAndStreamless' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testExactMalIDWinsOverTitles' started at 2026-10-25 08:55:30.821
+Test Case 'AnilibriaTests.testExactMalIDWinsOverTitles' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testFallsBackToMirrorOnCloudflare520' started at 2026-10-25 08:55:30.822
+Test Case 'AnilibriaTests.testFallsBackToMirrorOnCloudflare520' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testHTTPErrorMapsToVideoSourceError' started at 2026-10-25 08:55:30.822
+Test Case 'AnilibriaTests.testHTTPErrorMapsToVideoSourceError' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testMatchCodeGeassSeason1' started at 2026-10-25 08:55:30.822
+Test Case 'AnilibriaTests.testMatchCodeGeassSeason1' passed (0.002 seconds)
+Test Case 'AnilibriaTests.testMatchCodeGeassSeason2' started at 2026-10-25 08:55:30.824
+Test Case 'AnilibriaTests.testMatchCodeGeassSeason2' passed (0.002 seconds)
+Test Case 'AnilibriaTests.testMatchFindsAnimeByEnglishTitle' started at 2026-10-25 08:55:30.826
+Test Case 'AnilibriaTests.testMatchFindsAnimeByEnglishTitle' passed (0.001 seconds)
+Test Case 'AnilibriaTests.testResolveFailsOnDeadPlaylist' started at 2026-10-25 08:55:30.827
+Test Case 'AnilibriaTests.testResolveFailsOnDeadPlaylist' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testResolveReturnsHLSWithRussianTrack' started at 2026-10-25 08:55:30.827
+Test Case 'AnilibriaTests.testResolveReturnsHLSWithRussianTrack' passed (0.001 seconds)
+Test Case 'AnilibriaTests.testSearchDecodesMalID' started at 2026-10-25 08:55:30.828
+Test Case 'AnilibriaTests.testSearchDecodesMalID' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testSearchMapsReleases' started at 2026-10-25 08:55:30.828
+Test Case 'AnilibriaTests.testSearchMapsReleases' passed (0.0 seconds)
+Test Case 'AnilibriaTests.testSeasonNumberRSuffix' started at 2026-10-25 08:55:30.828
+Test Case 'AnilibriaTests.testSeasonNumberRSuffix' passed (0.001 seconds)
+Test Suite 'AnilibriaTests' passed at 2026-10-25 08:55:30.829
+	 Executed 16 tests, with 0 failures (0 unexpected) in 0.012 (0.012) seconds
+Test Suite 'AuthRaceTests' started at 2026-10-25 08:55:30.829
+Test Case 'AuthRaceTests.testLateRefreshCannotUndoLogout' started at 2026-10-25 08:55:30.829
+Test Case 'AuthRaceTests.testLateRefreshCannotUndoLogout' passed (0.081 seconds)
+Test Suite 'AuthRaceTests' passed at 2026-10-25 08:55:30.910
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.081 (0.081) seconds
+Test Suite 'AuthTests' started at 2026-10-25 08:55:30.910
+Test Case 'AuthTests.testErrorMapping' started at 2026-10-25 08:55:30.910
+Test Case 'AuthTests.testErrorMapping' passed (0.001 seconds)
+Test Case 'AuthTests.testExpiredRefreshTokenClearsSession' started at 2026-10-25 08:55:30.911
+Test Case 'AuthTests.testExpiredRefreshTokenClearsSession' passed (0.0 seconds)
+Test Case 'AuthTests.testInputValidationHappensBeforeNetwork' started at 2026-10-25 08:55:30.911
+Test Case 'AuthTests.testInputValidationHappensBeforeNetwork' passed (0.0 seconds)
+Test Case 'AuthTests.testPublishableKeyIsNotSentAsBearer' started at 2026-10-25 08:55:30.911
+Test Case 'AuthTests.testPublishableKeyIsNotSentAsBearer' passed (0.0 seconds)
+Test Case 'AuthTests.testRefreshWhenExpiringAndSignOut' started at 2026-10-25 08:55:30.911
+Test Case 'AuthTests.testRefreshWhenExpiringAndSignOut' passed (0.0 seconds)
+Test Case 'AuthTests.testSignInStoresSessionAndSendsHeaders' started at 2026-10-25 08:55:30.911
+Test Case 'AuthTests.testSignInStoresSessionAndSendsHeaders' passed (0.0 seconds)
+Test Case 'AuthTests.testSignUpRequiringConfirmation' started at 2026-10-25 08:55:30.912
+Test Case 'AuthTests.testSignUpRequiringConfirmation' passed (0.0 seconds)
+Test Suite 'AuthTests' passed at 2026-10-25 08:55:30.912
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'Bugfix20261015Tests' started at 2026-10-25 08:55:30.912
+Test Case 'Bugfix20261015Tests.testBackgroundProgressDoesNotSilentlyCompleteADroppedTitle' started at 2026-10-25 08:55:30.912
+Test Case 'Bugfix20261015Tests.testBackgroundProgressDoesNotSilentlyCompleteADroppedTitle' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testCapturedTimestampKeepsExistingAccountProtection' started at 2026-10-25 08:55:30.912
+Test Case 'Bugfix20261015Tests.testCapturedTimestampKeepsExistingAccountProtection' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testDroppedListIsIndependentAndKeepsFavoritesAndHistory' started at 2026-10-25 08:55:30.912
+Test Case 'Bugfix20261015Tests.testDroppedListIsIndependentAndKeepsFavoritesAndHistory' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testDroppedStatusSurvivesPersistenceAndSyncDTO' started at 2026-10-25 08:55:30.912
+Test Case 'Bugfix20261015Tests.testDroppedStatusSurvivesPersistenceAndSyncDTO' passed (0.003 seconds)
+Test Case 'Bugfix20261015Tests.testEqualTimestampsWithoutEntryHintPreferLastWrittenProgress' started at 2026-10-25 08:55:30.915
+Test Case 'Bugfix20261015Tests.testEqualTimestampsWithoutEntryHintPreferLastWrittenProgress' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testFileRestartPreservesSubsecondOrderingOfDifferentEpisodes' started at 2026-10-25 08:55:30.916
+Test Case 'Bugfix20261015Tests.testFileRestartPreservesSubsecondOrderingOfDifferentEpisodes' passed (0.003 seconds)
+Test Case 'Bugfix20261015Tests.testFinishedSourceAdvancesOnlyUsingActualListIncludingNumberGaps' started at 2026-10-25 08:55:30.918
+Test Case 'Bugfix20261015Tests.testFinishedSourceAdvancesOnlyUsingActualListIncludingNumberGaps' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testFinishedSourceKeepsRecentCardAndExactAnchorAfterRestart' started at 2026-10-25 08:55:30.918
+Test Case 'Bugfix20261015Tests.testFinishedSourceKeepsRecentCardAndExactAnchorAfterRestart' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testFinishedSourceWithoutAvailableNextDoesNotRestartFirstEpisode' started at 2026-10-25 08:55:30.919
+Test Case 'Bugfix20261015Tests.testFinishedSourceWithoutAvailableNextDoesNotRestartFirstEpisode' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testLateExitSampleDoesNotUndoHistoryDeletionButNewPlaybackCan' started at 2026-10-25 08:55:30.919
+Test Case 'Bugfix20261015Tests.testLateExitSampleDoesNotUndoHistoryDeletionButNewPlaybackCan' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testLateOldPlayerCannotOverwriteNewPositionForSameSource' started at 2026-10-25 08:55:30.919
+Test Case 'Bugfix20261015Tests.testLateOldPlayerCannotOverwriteNewPositionForSameSource' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testLatePreviousEpisodeDoesNotChangeResumeOrLastEpisode' started at 2026-10-25 08:55:30.919
+Test Case 'Bugfix20261015Tests.testLatePreviousEpisodeDoesNotChangeResumeOrLastEpisode' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testLatestProgressDisplayKeepsCatalogueAndSourceSeparate' started at 2026-10-25 08:55:30.919
+Test Case 'Bugfix20261015Tests.testLatestProgressDisplayKeepsCatalogueAndSourceSeparate' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testLegacyDatesWithoutFractionalSecondsStillLoad' started at 2026-10-25 08:55:30.919
+Test Case 'Bugfix20261015Tests.testLegacyDatesWithoutFractionalSecondsStillLoad' passed (0.001 seconds)
+Test Case 'Bugfix20261015Tests.testLegacyEqualTimestampsPreferLastOpenedEpisodeNotArrayFirst' started at 2026-10-25 08:55:30.920
+Test Case 'Bugfix20261015Tests.testLegacyEqualTimestampsPreferLastOpenedEpisodeNotArrayFirst' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testLegacyKodikPayloadStillProvidesItsOriginalProgressKey' started at 2026-10-25 08:55:30.920
+Test Case 'Bugfix20261015Tests.testLegacyKodikPayloadStillProvidesItsOriginalProgressKey' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testRegistryAndDetailsUseSameSourceProgressIdentityAcrossVoices' started at 2026-10-25 08:55:30.920
+Test Case 'Bugfix20261015Tests.testRegistryAndDetailsUseSameSourceProgressIdentityAcrossVoices' passed (0.001 seconds)
+Test Case 'Bugfix20261015Tests.testRemovingOnlyListMembershipPreservesFavoriteAndProgress' started at 2026-10-25 08:55:30.921
+Test Case 'Bugfix20261015Tests.testRemovingOnlyListMembershipPreservesFavoriteAndProgress' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testResumeNeverTransfersBetweenVoicesOrTitles' started at 2026-10-25 08:55:30.921
+Test Case 'Bugfix20261015Tests.testResumeNeverTransfersBetweenVoicesOrTitles' passed (0.0 seconds)
+Test Case 'Bugfix20261015Tests.testUnknownDurationDoesNotEraseKnownDurationAndZeroSeekPersists' started at 2026-10-25 08:55:30.921
+Test Case 'Bugfix20261015Tests.testUnknownDurationDoesNotEraseKnownDurationAndZeroSeekPersists' passed (0.0 seconds)
+Test Suite 'Bugfix20261015Tests' passed at 2026-10-25 08:55:30.921
+	 Executed 20 tests, with 0 failures (0 unexpected) in 0.009 (0.009) seconds
+Test Suite 'CatalogTests' started at 2026-10-25 08:55:30.921
+Test Case 'CatalogTests.testCacheExpires' started at 2026-10-25 08:55:30.921
+Test Case 'CatalogTests.testCacheExpires' passed (0.001 seconds)
+Test Case 'CatalogTests.testDemoCatalogFilteringAndAlternativeTitles' started at 2026-10-25 08:55:30.922
+Test Case 'CatalogTests.testDemoCatalogFilteringAndAlternativeTitles' passed (0.001 seconds)
+Test Case 'CatalogTests.testDetailsMapping' started at 2026-10-25 08:55:30.923
+Test Case 'CatalogTests.testDetailsMapping' passed (0.003 seconds)
+Test Case 'CatalogTests.testDiskCacheSurvivesNewInstance' started at 2026-10-25 08:55:30.926
+Test Case 'CatalogTests.testDiskCacheSurvivesNewInstance' passed (0.001 seconds)
+Test Case 'CatalogTests.testHomeFeedUsesCurrentSeason' started at 2026-10-25 08:55:30.927
+Test Case 'CatalogTests.testHomeFeedUsesCurrentSeason' passed (0.001 seconds)
+Test Case 'CatalogTests.testNotFoundAndGraphQLErrors' started at 2026-10-25 08:55:30.928
+Test Case 'CatalogTests.testNotFoundAndGraphQLErrors' passed (0.001 seconds)
+Test Case 'CatalogTests.testRateLimitResponse' started at 2026-10-25 08:55:30.929
+Test Case 'CatalogTests.testRateLimitResponse' passed (0.0 seconds)
+Test Case 'CatalogTests.testResponsesAreCached' started at 2026-10-25 08:55:30.929
+Test Case 'CatalogTests.testResponsesAreCached' passed (0.0 seconds)
+Test Case 'CatalogTests.testSearchSendsFiltersAsGraphQLVariables' started at 2026-10-25 08:55:30.929
+Test Case 'CatalogTests.testSearchSendsFiltersAsGraphQLVariables' passed (0.001 seconds)
+Test Suite 'CatalogTests' passed at 2026-10-25 08:55:30.930
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.009 (0.009) seconds
+Test Suite 'CollectionOrderTests' started at 2026-10-25 08:55:30.930
+Test Case 'CollectionOrderTests.testMoveFoldersAndItemsPersistAndRejectInvalidOffsets' started at 2026-10-25 08:55:30.930
+Test Case 'CollectionOrderTests.testMoveFoldersAndItemsPersistAndRejectInvalidOffsets' passed (0.001 seconds)
+Test Suite 'CollectionOrderTests' passed at 2026-10-25 08:55:30.931
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'CollectionsCloudTests' started at 2026-10-25 08:55:30.931
+Test Case 'CollectionsCloudTests.testAccountMismatchDoesNotSendFolderData' started at 2026-10-25 08:55:30.931
+Test Case 'CollectionsCloudTests.testAccountMismatchDoesNotSendFolderData' passed (0.0 seconds)
+Test Case 'CollectionsCloudTests.testFolderPayloadIncludesOrderItemsAndDeletionAndUsesUserJWT' started at 2026-10-25 08:55:30.931
+Test Case 'CollectionsCloudTests.testFolderPayloadIncludesOrderItemsAndDeletionAndUsesUserJWT' passed (0.002 seconds)
+Test Suite 'CollectionsCloudTests' passed at 2026-10-25 08:55:30.933
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'CollectionsSyncTests' started at 2026-10-25 08:55:30.933
+Test Case 'CollectionsSyncTests.testAcknowledgedFoldersAreNotUploadedAgain' started at 2026-10-25 08:55:30.933
+Test Case 'CollectionsSyncTests.testAcknowledgedFoldersAreNotUploadedAgain' passed (0.0 seconds)
+Test Case 'CollectionsSyncTests.testDeleteTombstoneBeatsOldDevice' started at 2026-10-25 08:55:30.933
+Test Case 'CollectionsSyncTests.testDeleteTombstoneBeatsOldDevice' passed (0.0 seconds)
+Test Case 'CollectionsSyncTests.testEqualTimestampHasDeterministicTieBreak' started at 2026-10-25 08:55:30.933
+Test Case 'CollectionsSyncTests.testEqualTimestampHasDeterministicTieBreak' passed (0.0 seconds)
+Test Case 'CollectionsSyncTests.testIndependentFoldersMergeAndKeepOrderedItems' started at 2026-10-25 08:55:30.933
+Test Case 'CollectionsSyncTests.testIndependentFoldersMergeAndKeepOrderedItems' passed (0.0 seconds)
+Test Case 'CollectionsSyncTests.testLocalMutationDuringRequestRemainsDirty' started at 2026-10-25 08:55:30.933
+Test Case 'CollectionsSyncTests.testLocalMutationDuringRequestRemainsDirty' passed (0.0 seconds)
+Test Case 'CollectionsSyncTests.testReorderIsCapturedAndRoundTrips' started at 2026-10-25 08:55:30.933
+Test Case 'CollectionsSyncTests.testReorderIsCapturedAndRoundTrips' passed (0.0 seconds)
+Test Case 'CollectionsSyncTests.testServerClampOfSameMutationIsAccepted' started at 2026-10-25 08:55:30.934
+Test Case 'CollectionsSyncTests.testServerClampOfSameMutationIsAccepted' passed (0.0 seconds)
+Test Suite 'CollectionsSyncTests' passed at 2026-10-25 08:55:30.934
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'CollectionsTests' started at 2026-10-25 08:55:30.934
+Test Case 'CollectionsTests.testAddRemoveToggleNoDuplicates' started at 2026-10-25 08:55:30.934
+Test Case 'CollectionsTests.testAddRemoveToggleNoDuplicates' passed (0.0 seconds)
+Test Case 'CollectionsTests.testCreateUniqueNamesAndDefault' started at 2026-10-25 08:55:30.934
+Test Case 'CollectionsTests.testCreateUniqueNamesAndDefault' passed (0.0 seconds)
+Test Case 'CollectionsTests.testRenameDeleteMoveAndCodable' started at 2026-10-25 08:55:30.934
+Test Case 'CollectionsTests.testRenameDeleteMoveAndCodable' passed (0.0 seconds)
+Test Suite 'CollectionsTests' passed at 2026-10-25 08:55:30.934
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'CommunityTests' started at 2026-10-25 08:55:30.934
+Test Case 'CommunityTests.testAccountMismatchCannotIssuePurchase' started at 2026-10-25 08:55:30.934
+Test Case 'CommunityTests.testAccountMismatchCannotIssuePurchase' passed (0.0 seconds)
+Test Case 'CommunityTests.testCanonicalDescriptorSupportsStringAndOriginalRawValueObject' started at 2026-10-25 08:55:30.934
+Test Case 'CommunityTests.testCanonicalDescriptorSupportsStringAndOriginalRawValueObject' passed (0.0 seconds)
+Test Case 'CommunityTests.testLevelPreservesArbitrarilyLargeXpAsText' started at 2026-10-25 08:55:30.935
+Test Case 'CommunityTests.testLevelPreservesArbitrarilyLargeXpAsText' passed (0.0 seconds)
+Test Case 'CommunityTests.testMarkReadDecodesAtomicClaim' started at 2026-10-25 08:55:30.935
+Test Case 'CommunityTests.testMarkReadDecodesAtomicClaim' passed (0.001 seconds)
+Test Case 'CommunityTests.testMissingCommunityMigrationHasExplicitError' started at 2026-10-25 08:55:30.936
+Test Case 'CommunityTests.testMissingCommunityMigrationHasExplicitError' passed (0.0 seconds)
+Test Case 'CommunityTests.testNaNProgressNeverLeavesClient' started at 2026-10-25 08:55:30.936
+Test Case 'CommunityTests.testNaNProgressNeverLeavesClient' passed (0.0 seconds)
+Test Case 'CommunityTests.testNonFinitePositionsDoNotCauseSeeks' started at 2026-10-25 08:55:30.936
+Test Case 'CommunityTests.testNonFinitePositionsDoNotCauseSeeks' passed (0.0 seconds)
+Test Case 'CommunityTests.testPausedPositionDoesNotAdvanceAndClampsAtDuration' started at 2026-10-25 08:55:30.936
+Test Case 'CommunityTests.testPausedPositionDoesNotAdvanceAndClampsAtDuration' passed (0.0 seconds)
+Test Case 'CommunityTests.testPurchaseSendsOnlyItemAndIdempotencyKey' started at 2026-10-25 08:55:30.936
+Test Case 'CommunityTests.testPurchaseSendsOnlyItemAndIdempotencyKey' passed (0.0 seconds)
+Test Case 'CommunityTests.testReconciliationUsesElapsedMonotonicTimeNotWallClock' started at 2026-10-25 08:55:30.936
+Test Case 'CommunityTests.testReconciliationUsesElapsedMonotonicTimeNotWallClock' passed (0.0 seconds)
+Test Case 'CommunityTests.testTinyDriftDoesNotSeekEveryHeartbeat' started at 2026-10-25 08:55:30.936
+Test Case 'CommunityTests.testTinyDriftDoesNotSeekEveryHeartbeat' passed (0.0 seconds)
+Test Suite 'CommunityTests' passed at 2026-10-25 08:55:30.936
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'ConfigurationTests' started at 2026-10-25 08:55:30.936
+Test Case 'ConfigurationTests.testEmptyAndPlaceholderValuesMeanLocalMode' started at 2026-10-25 08:55:30.936
+Test Case 'ConfigurationTests.testEmptyAndPlaceholderValuesMeanLocalMode' passed (0.0 seconds)
+Test Case 'ConfigurationTests.testRejectsInsecureAndPartialConfig' started at 2026-10-25 08:55:30.937
+Test Case 'ConfigurationTests.testRejectsInsecureAndPartialConfig' passed (0.0 seconds)
+Test Case 'ConfigurationTests.testRejectsServiceRoleKey' started at 2026-10-25 08:55:30.937
+Test Case 'ConfigurationTests.testRejectsServiceRoleKey' passed (0.0 seconds)
+Test Case 'ConfigurationTests.testValidSupabase' started at 2026-10-25 08:55:30.937
+Test Case 'ConfigurationTests.testValidSupabase' passed (0.0 seconds)
+Test Suite 'ConfigurationTests' passed at 2026-10-25 08:55:30.937
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'EmailCodeAndOAuthTests' started at 2026-10-25 08:55:30.937
+Test Case 'EmailCodeAndOAuthTests.testCodeIsVerifiedByServerAndSessionStored' started at 2026-10-25 08:55:30.937
+Test Case 'EmailCodeAndOAuthTests.testCodeIsVerifiedByServerAndSessionStored' passed (0.0 seconds)
+Test Case 'EmailCodeAndOAuthTests.testResendUsesServerAndGooglePKCEExchangesOnlyCode' started at 2026-10-25 08:55:30.937
+Test Case 'EmailCodeAndOAuthTests.testResendUsesServerAndGooglePKCEExchangesOnlyCode' passed (0.0 seconds)
+Test Suite 'EmailCodeAndOAuthTests' passed at 2026-10-25 08:55:30.938
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'EpisodeTests' started at 2026-10-25 08:55:30.938
+Test Case 'EpisodeTests.testBestMatchRespectsSeasonAndThreshold' started at 2026-10-25 08:55:30.938
+Test Case 'EpisodeTests.testBestMatchRespectsSeasonAndThreshold' passed (0.001 seconds)
+Test Case 'EpisodeTests.testEpisodeListForFinishedSeriesWithTitles' started at 2026-10-25 08:55:30.939
+Test Case 'EpisodeTests.testEpisodeListForFinishedSeriesWithTitles' passed (0.0 seconds)
+Test Case 'EpisodeTests.testEpisodeListNotYetReleased' started at 2026-10-25 08:55:30.939
+Test Case 'EpisodeTests.testEpisodeListNotYetReleased' passed (0.0 seconds)
+Test Case 'EpisodeTests.testEpisodeListOngoingUsesAiredCountOnly' started at 2026-10-25 08:55:30.939
+Test Case 'EpisodeTests.testEpisodeListOngoingUsesAiredCountOnly' passed (0.0 seconds)
+Test Case 'EpisodeTests.testEpisodeListUnknownCount' started at 2026-10-25 08:55:30.940
+Test Case 'EpisodeTests.testEpisodeListUnknownCount' passed (0.0 seconds)
+Test Case 'EpisodeTests.testEpisodeMatcher' started at 2026-10-25 08:55:30.940
+Test Case 'EpisodeTests.testEpisodeMatcher' passed (0.0 seconds)
+Test Case 'EpisodeTests.testEpisodeNumberParser' started at 2026-10-25 08:55:30.940
+Test Case 'EpisodeTests.testEpisodeNumberParser' passed (0.0 seconds)
+Test Case 'EpisodeTests.testTitleMatcher' started at 2026-10-25 08:55:30.940
+Test Case 'EpisodeTests.testTitleMatcher' passed (0.001 seconds)
+Test Suite 'EpisodeTests' passed at 2026-10-25 08:55:30.941
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'KodikTests' started at 2026-10-25 08:55:30.941
+Test Case 'KodikTests.testAmbiguousCatalogueMappingRequiresExplicitSourceEpisode' started at 2026-10-25 08:55:30.941
+Test Case 'KodikTests.testAmbiguousCatalogueMappingRequiresExplicitSourceEpisode' passed (0.0 seconds)
+Test Case 'KodikTests.testCatalogueRoutingKeepsActualKodikTranslationAndSourceIdentity' started at 2026-10-25 08:55:30.941
+Test Case 'KodikTests.testCatalogueRoutingKeepsActualKodikTranslationAndSourceIdentity' passed (0.0 seconds)
+Test Case 'KodikTests.testDecodeLinksUsesRealQuality' started at 2026-10-25 08:55:30.941
+Test Case 'KodikTests.testDecodeLinksUsesRealQuality' passed (0.001 seconds)
+Test Case 'KodikTests.testErrorFieldMapsToUnauthorized' started at 2026-10-25 08:55:30.942
+Test Case 'KodikTests.testErrorFieldMapsToUnauthorized' passed (0.0 seconds)
+Test Case 'KodikTests.testHTTPErrorIsPropagated' started at 2026-10-25 08:55:30.942
+Test Case 'KodikTests.testHTTPErrorIsPropagated' passed (0.0 seconds)
+Test Case 'KodikTests.testMovieAndOngoingKodikRouting' started at 2026-10-25 08:55:30.942
+Test Case 'KodikTests.testMovieAndOngoingKodikRouting' passed (0.0 seconds)
+Test Case 'KodikTests.testParsePlayerPageAndEndpoint' started at 2026-10-25 08:55:30.943
+Test Case 'KodikTests.testParsePlayerPageAndEndpoint' passed (0.0 seconds)
+Test Case 'KodikTests.testPlayerURLNormalization' started at 2026-10-25 08:55:30.943
+Test Case 'KodikTests.testPlayerURLNormalization' passed (0.0 seconds)
+Test Case 'KodikTests.testProviderMergesVoicesPerEpisodeAndPrefersChosenVoice' started at 2026-10-25 08:55:30.943
+Test Case 'KodikTests.testProviderMergesVoicesPerEpisodeAndPrefersChosenVoice' passed (0.002 seconds)
+Test Case 'KodikTests.testSearchByShikimoriIDFirst' started at 2026-10-25 08:55:30.945
+Test Case 'KodikTests.testSearchByShikimoriIDFirst' passed (0.0 seconds)
+Test Case 'KodikTests.testSearchDoesNotGuessByYear' started at 2026-10-25 08:55:30.946
+Test Case 'KodikTests.testSearchDoesNotGuessByYear' passed (0.001 seconds)
+Test Case 'KodikTests.testSearchFallsBackToNextTitle' started at 2026-10-25 08:55:30.947
+Test Case 'KodikTests.testSearchFallsBackToNextTitle' passed (0.002 seconds)
+Test Case 'KodikTests.testSearchGroupsTranslationsAndEpisodes' started at 2026-10-25 08:55:30.949
+Test Case 'KodikTests.testSearchGroupsTranslationsAndEpisodes' passed (0.002 seconds)
+Test Case 'KodikTests.testSearchSendsTokenAndParameters' started at 2026-10-25 08:55:30.951
+Test Case 'KodikTests.testSearchSendsTokenAndParameters' passed (0.0 seconds)
+Test Case 'KodikTests.testStreamsFullFlow' started at 2026-10-25 08:55:30.951
+Test Case 'KodikTests.testStreamsFullFlow' passed (0.0 seconds)
+Test Case 'KodikTests.testTitleSearchRejectsDifferentShikimoriID' started at 2026-10-25 08:55:30.951
+Test Case 'KodikTests.testTitleSearchRejectsDifferentShikimoriID' passed (0.0 seconds)
+Test Case 'KodikTests.testWebFallbackUsesChosenTranslationAndRejectsWrongProviderOrHTTP' started at 2026-10-25 08:55:30.952
+Test Case 'KodikTests.testWebFallbackUsesChosenTranslationAndRejectsWrongProviderOrHTTP' passed (0.0 seconds)
+Test Suite 'KodikTests' passed at 2026-10-25 08:55:30.952
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.011 (0.011) seconds
+Test Suite 'LatestTaskRunnerTests' started at 2026-10-25 08:55:30.952
+Test Case 'LatestTaskRunnerTests.testOnlyLatestResultIsDelivered' started at 2026-10-25 08:55:30.952
+Test Case 'LatestTaskRunnerTests.testOnlyLatestResultIsDelivered' passed (0.321 seconds)
+Test Suite 'LatestTaskRunnerTests' passed at 2026-10-25 08:55:31.273
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.321 (0.321) seconds
+Test Suite 'LibraryTests' started at 2026-10-25 08:55:31.273
+Test Case 'LibraryTests.testChangesSince' started at 2026-10-25 08:55:31.273
+Test Case 'LibraryTests.testChangesSince' passed (0.0 seconds)
+Test Case 'LibraryTests.testContinueWatchingOrderAndExclusions' started at 2026-10-25 08:55:31.273
+Test Case 'LibraryTests.testContinueWatchingOrderAndExclusions' passed (0.0 seconds)
+Test Case 'LibraryTests.testCorruptedFileDoesNotCrash' started at 2026-10-25 08:55:31.273
+Test Case 'LibraryTests.testCorruptedFileDoesNotCrash' passed (0.001 seconds)
+Test Case 'LibraryTests.testFilePersistenceRoundTrip' started at 2026-10-25 08:55:31.274
+Test Case 'LibraryTests.testFilePersistenceRoundTrip' passed (0.002 seconds)
+Test Case 'LibraryTests.testFinishingLastEpisodeCompletes' started at 2026-10-25 08:55:31.276
+Test Case 'LibraryTests.testFinishingLastEpisodeCompletes' passed (0.0 seconds)
+Test Case 'LibraryTests.testHistoryLimitAndClear' started at 2026-10-25 08:55:31.276
+Test Case 'LibraryTests.testHistoryLimitAndClear' passed (0.103 seconds)
+Test Case 'LibraryTests.testInvalidProgressIgnored' started at 2026-10-25 08:55:31.379
+Test Case 'LibraryTests.testInvalidProgressIgnored' passed (0.0 seconds)
+Test Case 'LibraryTests.testMarkCompletedAndEpisodeWatched' started at 2026-10-25 08:55:31.380
+Test Case 'LibraryTests.testMarkCompletedAndEpisodeWatched' passed (0.0 seconds)
+Test Case 'LibraryTests.testMergeLastWriteWins' started at 2026-10-25 08:55:31.380
+Test Case 'LibraryTests.testMergeLastWriteWins' passed (0.0 seconds)
+Test Case 'LibraryTests.testRecordProgressUpdatesStatusLastEpisodeAndHistory' started at 2026-10-25 08:55:31.380
+Test Case 'LibraryTests.testRecordProgressUpdatesStatusLastEpisodeAndHistory' passed (0.0 seconds)
+Test Case 'LibraryTests.testResumePoint' started at 2026-10-25 08:55:31.380
+Test Case 'LibraryTests.testResumePoint' passed (0.0 seconds)
+Test Case 'LibraryTests.testResumeRespectsReleasedEpisodesOfOngoing' started at 2026-10-25 08:55:31.380
+Test Case 'LibraryTests.testResumeRespectsReleasedEpisodesOfOngoing' passed (0.0 seconds)
+Test Case 'LibraryTests.testStatusFavoriteAndRemove' started at 2026-10-25 08:55:31.380
+Test Case 'LibraryTests.testStatusFavoriteAndRemove' passed (0.0 seconds)
+Test Suite 'LibraryTests' passed at 2026-10-25 08:55:31.380
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.107 (0.107) seconds
+Test Suite 'LiveIntegrationTests' started at 2026-10-25 08:55:31.380
+Test Case 'LiveIntegrationTests.testAniListAlternativeTitleSearch' started at 2026-10-25 08:55:31.380
+/vercel/sandbox/data/work/Anivibe/Packages/AnivibeCore/Tests/AnivibeCoreTests/LiveIntegrationTests.swift:11: LiveIntegrationTests.testAniListAlternativeTitleSearch : Test skipped: required false value but got true - Live-тесты отключены
+Test Case 'LiveIntegrationTests.testAniListAlternativeTitleSearch' skipped (0.001 seconds)
+Test Case 'LiveIntegrationTests.testAniListDetailsHomeAndGenres' started at 2026-10-25 08:55:31.381
+/vercel/sandbox/data/work/Anivibe/Packages/AnivibeCore/Tests/AnivibeCoreTests/LiveIntegrationTests.swift:11: LiveIntegrationTests.testAniListDetailsHomeAndGenres : Test skipped: required false value but got true - Live-тесты отключены
+Test Case 'LiveIntegrationTests.testAniListDetailsHomeAndGenres' skipped (0.0 seconds)
+Test Case 'LiveIntegrationTests.testAniListSearchWithFilters' started at 2026-10-25 08:55:31.381
+/vercel/sandbox/data/work/Anivibe/Packages/AnivibeCore/Tests/AnivibeCoreTests/LiveIntegrationTests.swift:11: LiveIntegrationTests.testAniListSearchWithFilters : Test skipped: required false value but got true - Live-тесты отключены
+Test Case 'LiveIntegrationTests.testAniListSearchWithFilters' skipped (0.0 seconds)
+Test Case 'LiveIntegrationTests.testAnilibriaMatchesByMalIDLive' started at 2026-10-25 08:55:31.381
+/vercel/sandbox/data/work/Anivibe/Packages/AnivibeCore/Tests/AnivibeCoreTests/LiveIntegrationTests.swift:11: LiveIntegrationTests.testAnilibriaMatchesByMalIDLive : Test skipped: required false value but got true - Live-тесты отключены
+Test Case 'LiveIntegrationTests.testAnilibriaMatchesByMalIDLive' skipped (0.0 seconds)
+Test Case 'LiveIntegrationTests.testTestStreamsAreReachableAndDeclareTracks' started at 2026-10-25 08:55:31.381
+/vercel/sandbox/data/work/Anivibe/Packages/AnivibeCore/Tests/AnivibeCoreTests/LiveIntegrationTests.swift:11: LiveIntegrationTests.testTestStreamsAreReachableAndDeclareTracks : Test skipped: required false value but got true - Live-тесты отключены
+Test Case 'LiveIntegrationTests.testTestStreamsAreReachableAndDeclareTracks' skipped (0.0 seconds)
+Test Suite 'LiveIntegrationTests' passed at 2026-10-25 08:55:31.381
+	 Executed 5 tests, with 5 tests skipped and 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ModelsTests' started at 2026-10-25 08:55:31.381
+Test Case 'ModelsTests.testAiredEpisodesText' started at 2026-10-25 08:55:31.381
+Test Case 'ModelsTests.testAiredEpisodesText' passed (0.0 seconds)
+Test Case 'ModelsTests.testAllTitlesIncludeSynonymsWithoutDuplicates' started at 2026-10-25 08:55:31.381
+Test Case 'ModelsTests.testAllTitlesIncludeSynonymsWithoutDuplicates' passed (0.0 seconds)
+Test Case 'ModelsTests.testAniListMediaDecodesMalID' started at 2026-10-25 08:55:31.381
+Test Case 'ModelsTests.testAniListMediaDecodesMalID' passed (0.0 seconds)
+Test Case 'ModelsTests.testCatalogQueryValidation' started at 2026-10-25 08:55:31.382
+Test Case 'ModelsTests.testCatalogQueryValidation' passed (0.0 seconds)
+Test Case 'ModelsTests.testCurrentSeason' started at 2026-10-25 08:55:31.382
+Test Case 'ModelsTests.testCurrentSeason' passed (0.0 seconds)
+Test Case 'ModelsTests.testHTMLToPlainText' started at 2026-10-25 08:55:31.382
+Test Case 'ModelsTests.testHTMLToPlainText' passed (0.0 seconds)
+Test Case 'ModelsTests.testPreferredTitleFallbacks' started at 2026-10-25 08:55:31.382
+Test Case 'ModelsTests.testPreferredTitleFallbacks' passed (0.0 seconds)
+Test Case 'ModelsTests.testRelationsSplitIntoSeasonsAndOther' started at 2026-10-25 08:55:31.382
+Test Case 'ModelsTests.testRelationsSplitIntoSeasonsAndOther' passed (0.0 seconds)
+Test Case 'ModelsTests.testReleasedEpisodeCountIsNotInvented' started at 2026-10-25 08:55:31.382
+Test Case 'ModelsTests.testReleasedEpisodeCountIsNotInvented' passed (0.0 seconds)
+Test Case 'ModelsTests.testWatchProgressFraction' started at 2026-10-25 08:55:31.382
+Test Case 'ModelsTests.testWatchProgressFraction' passed (0.0 seconds)
+Test Suite 'ModelsTests' passed at 2026-10-25 08:55:31.382
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'MotionPerformanceTests' started at 2026-10-25 08:55:31.382
+Test Case 'MotionPerformanceTests.testContinueWatchingAcceptsZeroAndNegativeLimits' started at 2026-10-25 08:55:31.382
+Test Case 'MotionPerformanceTests.testContinueWatchingAcceptsZeroAndNegativeLimits' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testCorruptExtremeEpisodeDoesNotOverflowResumePoint' started at 2026-10-25 08:55:31.382
+Test Case 'MotionPerformanceTests.testCorruptExtremeEpisodeDoesNotOverflowResumePoint' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testDuplicateLegacyEntriesPreserveFirstEntryWithoutDictionaryTrap' started at 2026-10-25 08:55:31.382
+Test Case 'MotionPerformanceTests.testDuplicateLegacyEntriesPreserveFirstEntryWithoutDictionaryTrap' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testEqualTimestampsHaveStableTitleIDOrder' started at 2026-10-25 08:55:31.383
+Test Case 'MotionPerformanceTests.testEqualTimestampsHaveStableTitleIDOrder' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testGridPosterKeepsRetinaResolution' started at 2026-10-25 08:55:31.383
+Test Case 'MotionPerformanceTests.testGridPosterKeepsRetinaResolution' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testInvalidGeometryAndSourceDimensionsAreSafe' started at 2026-10-25 08:55:31.383
+Test Case 'MotionPerformanceTests.testInvalidGeometryAndSourceDimensionsAreSafe' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testLargeLibraryUsesSameResumeSemanticsAndHonorsLimit' started at 2026-10-25 08:55:31.383
+Test Case 'MotionPerformanceTests.testLargeLibraryUsesSameResumeSemanticsAndHonorsLimit' passed (0.025 seconds)
+Test Case 'MotionPerformanceTests.testNearbyLayoutSizesShareCacheBucket' started at 2026-10-25 08:55:31.408
+Test Case 'MotionPerformanceTests.testNearbyLayoutSizesShareCacheBucket' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testSmallOriginalIsNeverUpscaledAndLargeDecodeIsCapped' started at 2026-10-25 08:55:31.408
+Test Case 'MotionPerformanceTests.testSmallOriginalIsNeverUpscaledAndLargeDecodeIsCapped' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testSmallPosterUsesDisplayPixelsRatherThan1600' started at 2026-10-25 08:55:31.408
+Test Case 'MotionPerformanceTests.testSmallPosterUsesDisplayPixelsRatherThan1600' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testSourceScopedProgressNeverGuessesNextEpisode' started at 2026-10-25 08:55:31.408
+Test Case 'MotionPerformanceTests.testSourceScopedProgressNeverGuessesNextEpisode' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testViewStateIncludesStorageFailureWithoutInventingData' started at 2026-10-25 08:55:31.408
+Test Case 'MotionPerformanceTests.testViewStateIncludesStorageFailureWithoutInventingData' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testViewStateKeepsAccountSnapshotAndContinueRowTogether' started at 2026-10-25 08:55:31.409
+Test Case 'MotionPerformanceTests.testViewStateKeepsAccountSnapshotAndContinueRowTogether' passed (0.0 seconds)
+Test Case 'MotionPerformanceTests.testWideBannerUsesAspectFillRatherThanLongestDisplaySide' started at 2026-10-25 08:55:31.409
+Test Case 'MotionPerformanceTests.testWideBannerUsesAspectFillRatherThanLongestDisplaySide' passed (0.0 seconds)
+Test Suite 'MotionPerformanceTests' passed at 2026-10-25 08:55:31.409
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.026 (0.026) seconds
+Test Suite 'ProviderTests' started at 2026-10-25 08:55:31.409
+Test Case 'ProviderTests.testDefaultMatchUsesTitles' started at 2026-10-25 08:55:31.409
+Test Case 'ProviderTests.testDefaultMatchUsesTitles' passed (0.001 seconds)
+Test Case 'ProviderTests.testDisabledKodikDoesNotOverrideExplicitSetting' started at 2026-10-25 08:55:31.409
+Test Case 'ProviderTests.testDisabledKodikDoesNotOverrideExplicitSetting' passed (0.001 seconds)
+Test Case 'ProviderTests.testErrorMapping' started at 2026-10-25 08:55:31.411
+Test Case 'ProviderTests.testErrorMapping' passed (0.0 seconds)
+Test Case 'ProviderTests.testHLSInspector' started at 2026-10-25 08:55:31.411
+Test Case 'ProviderTests.testHLSInspector' passed (0.001 seconds)
+Test Case 'ProviderTests.testKodikWinsRegardlessOfRegistrationOrder' started at 2026-10-25 08:55:31.411
+Test Case 'ProviderTests.testKodikWinsRegardlessOfRegistrationOrder' passed (0.001 seconds)
+Test Case 'ProviderTests.testManifestCacheNeverOutlivesTemporaryLinks' started at 2026-10-25 08:55:31.412
+Test Case 'ProviderTests.testManifestCacheNeverOutlivesTemporaryLinks' passed (0.001 seconds)
+Test Case 'ProviderTests.testManifestErrors' started at 2026-10-25 08:55:31.413
+Test Case 'ProviderTests.testManifestErrors' passed (0.0 seconds)
+Test Case 'ProviderTests.testManifestProviderMatchesByAniListIDThenTitle' started at 2026-10-25 08:55:31.413
+Test Case 'ProviderTests.testManifestProviderMatchesByAniListIDThenTitle' passed (0.001 seconds)
+Test Case 'ProviderTests.testManifestProviderRejectsExpiredAndInsecureLinks' started at 2026-10-25 08:55:31.415
+Test Case 'ProviderTests.testManifestProviderRejectsExpiredAndInsecureLinks' passed (0.0 seconds)
+Test Case 'ProviderTests.testManifestProviderResolve' started at 2026-10-25 08:55:31.415
+Test Case 'ProviderTests.testManifestProviderResolve' passed (0.001 seconds)
+Test Case 'ProviderTests.testRegistryDisabledProvidersAndMissingEpisodes' started at 2026-10-25 08:55:31.416
+Test Case 'ProviderTests.testRegistryDisabledProvidersAndMissingEpisodes' passed (0.001 seconds)
+Test Case 'ProviderTests.testRegistryOrdersRealBeforeTestAndAvailableFirst' started at 2026-10-25 08:55:31.417
+Test Case 'ProviderTests.testRegistryOrdersRealBeforeTestAndAvailableFirst' passed (0.001 seconds)
+Test Case 'ProviderTests.testRegistryTimeout' started at 2026-10-25 08:55:31.418
+Test Case 'ProviderTests.testRegistryTimeout' passed (0.201 seconds)
+Test Case 'ProviderTests.testTestStreamProviderReportsUnavailable' started at 2026-10-25 08:55:31.619
+Test Case 'ProviderTests.testTestStreamProviderReportsUnavailable' passed (0.0 seconds)
+Test Case 'ProviderTests.testTestStreamProviderResolvesAndMarksAsTest' started at 2026-10-25 08:55:31.620
+Test Case 'ProviderTests.testTestStreamProviderResolvesAndMarksAsTest' passed (0.001 seconds)
+Test Case 'ProviderTests.testUnavailableKodikDoesNotBlockWorkingBackup' started at 2026-10-25 08:55:31.621
+Test Case 'ProviderTests.testUnavailableKodikDoesNotBlockWorkingBackup' passed (0.001 seconds)
+Test Suite 'ProviderTests' passed at 2026-10-25 08:55:31.622
+	 Executed 16 tests, with 0 failures (0 unexpected) in 0.213 (0.213) seconds
+Test Suite 'RateLimiterTests' started at 2026-10-25 08:55:31.622
+Test Case 'RateLimiterTests.testBlockAfter429AndMaxWait' started at 2026-10-25 08:55:31.622
+Test Case 'RateLimiterTests.testBlockAfter429AndMaxWait' passed (0.0 seconds)
+Test Case 'RateLimiterTests.testSlidingWindow' started at 2026-10-25 08:55:31.622
+Test Case 'RateLimiterTests.testSlidingWindow' passed (0.0 seconds)
+Test Suite 'RateLimiterTests' passed at 2026-10-25 08:55:31.622
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'RegistryInfoTests' started at 2026-10-25 08:55:31.622
+Test Case 'RegistryInfoTests.testProviderInfoReflectsEnabledState' started at 2026-10-25 08:55:31.622
+Test Case 'RegistryInfoTests.testProviderInfoReflectsEnabledState' passed (0.0 seconds)
+Test Suite 'RegistryInfoTests' passed at 2026-10-25 08:55:31.622
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'Regression20261013Tests' started at 2026-10-25 08:55:31.622
+Test Case 'Regression20261013Tests.testBufferingSeekingAndPauseNeverAutoHideControls' started at 2026-10-25 08:55:31.622
+Test Case 'Regression20261013Tests.testBufferingSeekingAndPauseNeverAutoHideControls' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testControlMenuCanStayOpenForHoursAndDismissalStartsFreshTimer' started at 2026-10-25 08:55:31.622
+Test Case 'Regression20261013Tests.testControlMenuCanStayOpenForHoursAndDismissalStartsFreshTimer' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testLegacyEpisodeAndLibraryDecodeWithoutSourceOrRussianFields' started at 2026-10-25 08:55:31.622
+Test Case 'Regression20261013Tests.testLegacyEpisodeAndLibraryDecodeWithoutSourceOrRussianFields' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testNoSeasonTwoGuessWithoutVerifiedOffsetAndNoAmbiguousMatch' started at 2026-10-25 08:55:31.622
+Test Case 'Regression20261013Tests.testNoSeasonTwoGuessWithoutVerifiedOffsetAndNoAmbiguousMatch' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testObservedSteelBallRunCatalogueAndSourceStaySeparate' started at 2026-10-25 08:55:31.622
+Test Case 'Regression20261013Tests.testObservedSteelBallRunCatalogueAndSourceStaySeparate' passed (0.001 seconds)
+Test Case 'Regression20261013Tests.testRussianTitleAliasTransliterationTyposAndRanking' started at 2026-10-25 08:55:31.624
+Test Case 'Regression20261013Tests.testRussianTitleAliasTransliterationTyposAndRanking' passed (0.001 seconds)
+Test Case 'Regression20261013Tests.testSourceListPreservesSpecialsGapsAndIdenticalTitles' started at 2026-10-25 08:55:31.625
+Test Case 'Regression20261013Tests.testSourceListPreservesSpecialsGapsAndIdenticalTitles' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testSourceProgressDoesNotOverwriteCatalogueOrCompleteWrongTitle' started at 2026-10-25 08:55:31.625
+Test Case 'Regression20261013Tests.testSourceProgressDoesNotOverwriteCatalogueOrCompleteWrongTitle' passed (0.0 seconds)
+Test Case 'Regression20261013Tests.testSourceScopeSurvivesSyncDTOAndNoTitleBasedGuess' started at 2026-10-25 08:55:31.625
+Test Case 'Regression20261013Tests.testSourceScopeSurvivesSyncDTOAndNoTitleBasedGuess' passed (0.0 seconds)
+Test Suite 'Regression20261013Tests' passed at 2026-10-25 08:55:31.626
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+Test Suite 'RussianCatalogLiveTests' started at 2026-10-25 08:55:31.626
+Test Case 'RussianCatalogLiveTests.testRussianTitleAndTensuraAliasAgainstPublicAPIs' started at 2026-10-25 08:55:31.626
+/vercel/sandbox/data/work/Anivibe/Packages/AnivibeCore/Tests/AnivibeCoreTests/RussianCatalogLiveTests.swift:5: RussianCatalogLiveTests.testRussianTitleAndTensuraAliasAgainstPublicAPIs : Test skipped: required false value but got true - Live-тест отключён
+Test Case 'RussianCatalogLiveTests.testRussianTitleAndTensuraAliasAgainstPublicAPIs' skipped (0.0 seconds)
+Test Suite 'RussianCatalogLiveTests' passed at 2026-10-25 08:55:31.626
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'RussianMetadataTests' started at 2026-10-25 08:55:31.626
+Test Case 'RussianMetadataTests.testFailureOfBothSourcesIsNotReportedAsEmptySearch' started at 2026-10-25 08:55:31.626
+Test Case 'RussianMetadataTests.testFailureOfBothSourcesIsNotReportedAsEmptySearch' passed (0.001 seconds)
+Test Case 'RussianMetadataTests.testMetadataIsCachedAndOfficialIDsMustAgree' started at 2026-10-25 08:55:31.626
+Test Case 'RussianMetadataTests.testMetadataIsCachedAndOfficialIDsMustAgree' passed (0.0 seconds)
+Test Case 'RussianMetadataTests.testUnavailableTranslationDoesNotBlockOriginalDetails' started at 2026-10-25 08:55:31.627
+Test Case 'RussianMetadataTests.testUnavailableTranslationDoesNotBlockOriginalDetails' passed (0.001 seconds)
+Test Suite 'RussianMetadataTests' passed at 2026-10-25 08:55:31.627
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'SocialServiceTests' started at 2026-10-25 08:55:31.627
+Test Case 'SocialServiceTests.testAvatarAccountAndSizeGuards' started at 2026-10-25 08:55:31.627
+Test Case 'SocialServiceTests.testAvatarAccountAndSizeGuards' passed (0.001 seconds)
+Test Case 'SocialServiceTests.testAvatarDeleteAndNullLink' started at 2026-10-25 08:55:31.628
+Test Case 'SocialServiceTests.testAvatarDeleteAndNullLink' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testAvatarSigningIsCoalescedAcrossConcurrentCells' started at 2026-10-25 08:55:31.628
+Test Case 'SocialServiceTests.testAvatarSigningIsCoalescedAcrossConcurrentCells' passed (0.101 seconds)
+Test Case 'SocialServiceTests.testAvatarUploadUsesUserJWTAndBinaryBody' started at 2026-10-25 08:55:31.729
+Test Case 'SocialServiceTests.testAvatarUploadUsesUserJWTAndBinaryBody' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testCommentAccountChangeDoesNotSend' started at 2026-10-25 08:55:31.729
+Test Case 'SocialServiceTests.testCommentAccountChangeDoesNotSend' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testCommentActionHasNoActorOrCounters' started at 2026-10-25 08:55:31.730
+Test Case 'SocialServiceTests.testCommentActionHasNoActorOrCounters' passed (0.001 seconds)
+Test Case 'SocialServiceTests.testCommentsPaginationRequest' started at 2026-10-25 08:55:31.730
+Test Case 'SocialServiceTests.testCommentsPaginationRequest' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testDraftNormalization' started at 2026-10-25 08:55:31.730
+Test Case 'SocialServiceTests.testDraftNormalization' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testFriendAccountMismatchDoesNotUseNetwork' started at 2026-10-25 08:55:31.731
+Test Case 'SocialServiceTests.testFriendAccountMismatchDoesNotUseNetwork' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testFriendActionCannotSendActorOrStatus' started at 2026-10-25 08:55:31.731
+Test Case 'SocialServiceTests.testFriendActionCannotSendActorOrStatus' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testInvalidDrafts' started at 2026-10-25 08:55:31.731
+Test Case 'SocialServiceTests.testInvalidDrafts' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testInvalidFriendIDDoesNotUseNetwork' started at 2026-10-25 08:55:31.731
+Test Case 'SocialServiceTests.testInvalidFriendIDDoesNotUseNetwork' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testInvalidProfileDoesNotUseNetwork' started at 2026-10-25 08:55:31.731
+Test Case 'SocialServiceTests.testInvalidProfileDoesNotUseNetwork' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testMissingMigrationIsExplicit' started at 2026-10-25 08:55:31.731
+Test Case 'SocialServiceTests.testMissingMigrationIsExplicit' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testOldProfileDefaultsEverySharedSectionToPrivate' started at 2026-10-25 08:55:31.731
+Test Case 'SocialServiceTests.testOldProfileDefaultsEverySharedSectionToPrivate' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testOldProfileWithoutAvatarStillDecodes' started at 2026-10-25 08:55:31.732
+Test Case 'SocialServiceTests.testOldProfileWithoutAvatarStillDecodes' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testOwnProfileHeadersAndFilter' started at 2026-10-25 08:55:31.732
+Test Case 'SocialServiceTests.testOwnProfileHeadersAndFilter' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testProfileAccountMismatchDoesNotUseNetwork' started at 2026-10-25 08:55:31.732
+Test Case 'SocialServiceTests.testProfileAccountMismatchDoesNotUseNetwork' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testProfilePatchHasNoOwnershipOrAdminFields' started at 2026-10-25 08:55:31.732
+Test Case 'SocialServiceTests.testProfilePatchHasNoOwnershipOrAdminFields' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testRateLimitError' started at 2026-10-25 08:55:31.733
+Test Case 'SocialServiceTests.testRateLimitError' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testSearchUsesServerRPC' started at 2026-10-25 08:55:31.733
+Test Case 'SocialServiceTests.testSearchUsesServerRPC' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testSharingSettingsEncodeOnlyExplicitFields' started at 2026-10-25 08:55:31.733
+Test Case 'SocialServiceTests.testSharingSettingsEncodeOnlyExplicitFields' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testSocialProfileChecksViewingAccountBeforeNetwork' started at 2026-10-25 08:55:31.733
+Test Case 'SocialServiceTests.testSocialProfileChecksViewingAccountBeforeNetwork' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testSocialProfileUsesSafeRPCAndIndependentOffsets' started at 2026-10-25 08:55:31.733
+Test Case 'SocialServiceTests.testSocialProfileUsesSafeRPCAndIndependentOffsets' passed (0.0 seconds)
+Test Case 'SocialServiceTests.testTakenUsernameError' started at 2026-10-25 08:55:31.734
+Test Case 'SocialServiceTests.testTakenUsernameError' passed (0.0 seconds)
+Test Suite 'SocialServiceTests' passed at 2026-10-25 08:55:31.734
+	 Executed 25 tests, with 0 failures (0 unexpected) in 0.106 (0.106) seconds
+Test Suite 'SyncPaginationTests' started at 2026-10-25 08:55:31.734
+Test Case 'SyncPaginationTests.testMoreThanFiveHundredRowsAreNotTruncated' started at 2026-10-25 08:55:31.734
+Test Case 'SyncPaginationTests.testMoreThanFiveHundredRowsAreNotTruncated' passed (0.141 seconds)
+Test Suite 'SyncPaginationTests' passed at 2026-10-25 08:55:31.875
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.141 (0.141) seconds
+Test Suite 'SyncTests' started at 2026-10-25 08:55:31.875
+Test Case 'SyncTests.testSyncPushesLocalChangesAndMergesRemote' started at 2026-10-25 08:55:31.875
+Test Case 'SyncTests.testSyncPushesLocalChangesAndMergesRemote' passed (0.002 seconds)
+Test Case 'SyncTests.testSyncRequiresSignIn' started at 2026-10-25 08:55:31.877
+Test Case 'SyncTests.testSyncRequiresSignIn' passed (0.0 seconds)
+Test Case 'SyncTests.testSyncSurfacesRLSForbidden' started at 2026-10-25 08:55:31.877
+Test Case 'SyncTests.testSyncSurfacesRLSForbidden' passed (0.0 seconds)
+Test Suite 'SyncTests' passed at 2026-10-25 08:55:31.877
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'Update20261025Tests' started at 2026-10-25 08:55:31.877
+Test Case 'Update20261025Tests.testBoostIsRefusedWhenPausedLoadingBufferingSeekingSharedOrCovered' started at 2026-10-25 08:55:31.877
+Test Case 'Update20261025Tests.testBoostIsRefusedWhenPausedLoadingBufferingSeekingSharedOrCovered' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testBoostStartsOnlyWhilePlaybackIsReadyAndPlaying' started at 2026-10-25 08:55:31.878
+Test Case 'Update20261025Tests.testBoostStartsOnlyWhilePlaybackIsReadyAndPlaying' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testCancelledBackoffSurfacesAsCancelled' started at 2026-10-25 08:55:31.878
+Test Case 'Update20261025Tests.testCancelledBackoffSurfacesAsCancelled' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testControlsCanBeHiddenImmediately' started at 2026-10-25 08:55:31.878
+Test Case 'Update20261025Tests.testControlsCanBeHiddenImmediately' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testEmptyRegistryFinishesWithoutCandidates' started at 2026-10-25 08:55:31.878
+Test Case 'Update20261025Tests.testEmptyRegistryFinishesWithoutCandidates' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testFastTopPriorityProviderIsDecisiveBeforeSlowBackupFinishes' started at 2026-10-25 08:55:31.878
+Test Case 'Update20261025Tests.testFastTopPriorityProviderIsDecisiveBeforeSlowBackupFinishes' passed (1.501 seconds)
+Test Case 'Update20261025Tests.testGatewayErrorsAreRetriedBoundedAndLongRetryAfterIsRespected' started at 2026-10-25 08:55:33.379
+Test Case 'Update20261025Tests.testGatewayErrorsAreRetriedBoundedAndLongRetryAfterIsRespected' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testGetIsRetriedAfterDroppedConnectionWithBackoff' started at 2026-10-25 08:55:33.380
+Test Case 'Update20261025Tests.testGetIsRetriedAfterDroppedConnectionWithBackoff' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testHeadHonoursShortRetryAfter' started at 2026-10-25 08:55:33.380
+Test Case 'Update20261025Tests.testHeadHonoursShortRetryAfter' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testInvalidOrHTTPDateRetryAfterNeverRetriesEarly' started at 2026-10-25 08:55:33.380
+Test Case 'Update20261025Tests.testInvalidOrHTTPDateRetryAfterNeverRetriesEarly' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testLowerPriorityResultWaitsWhileBetterProviderIsPending' started at 2026-10-25 08:55:33.380
+Test Case 'Update20261025Tests.testLowerPriorityResultWaitsWhileBetterProviderIsPending' passed (0.402 seconds)
+Test Case 'Update20261025Tests.testReleaseRestoresEverySupportedSpeedIncludingTwoX' started at 2026-10-25 08:55:33.782
+Test Case 'Update20261025Tests.testReleaseRestoresEverySupportedSpeedIncludingTwoX' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testReleaseRestoresTheUsersOwnSpeedNotOneX' started at 2026-10-25 08:55:33.782
+Test Case 'Update20261025Tests.testReleaseRestoresTheUsersOwnSpeedNotOneX' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testResetForgetsBoostWithoutRestoringAndBadRatesFallBackToOneX' started at 2026-10-25 08:55:33.782
+Test Case 'Update20261025Tests.testResetForgetsBoostWithoutRestoringAndBadRatesFallBackToOneX' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testSharedDateCodecKeepsFractionsAndReadsLegacyDates' started at 2026-10-25 08:55:33.782
+Test Case 'Update20261025Tests.testSharedDateCodecKeepsFractionsAndReadsLegacyDates' passed (0.001 seconds)
+Test Case 'Update20261025Tests.testSharedDateCodecSupportsConcurrentReadAndWriteFormatting' started at 2026-10-25 08:55:33.783
+Test Case 'Update20261025Tests.testSharedDateCodecSupportsConcurrentReadAndWriteFormatting' passed (0.005 seconds)
+Test Case 'Update20261025Tests.testSpeedLabelsAreShortAndConsistent' started at 2026-10-25 08:55:33.788
+Test Case 'Update20261025Tests.testSpeedLabelsAreShortAndConsistent' passed (0.0 seconds)
+Test Case 'Update20261025Tests.testUnavailableTopProviderLetsBackupBecomeDecisive' started at 2026-10-25 08:55:33.789
+Test Case 'Update20261025Tests.testUnavailableTopProviderLetsBackupBecomeDecisive' passed (0.002 seconds)
+Test Case 'Update20261025Tests.testWritesOfflineAndTimeoutsAreNeverRetried' started at 2026-10-25 08:55:33.791
+Test Case 'Update20261025Tests.testWritesOfflineAndTimeoutsAreNeverRetried' passed (0.0 seconds)
+Test Suite 'Update20261025Tests' passed at 2026-10-25 08:55:33.791
+	 Executed 19 tests, with 0 failures (0 unexpected) in 1.914 (1.914) seconds
+Test Suite 'debug.xctest' passed at 2026-10-25 08:55:33.791
+	 Executed 234 tests, with 6 tests skipped and 0 failures (0 unexpected) in 2.974 (2.974) seconds
+Test Suite 'All tests' passed at 2026-10-25 08:55:33.791
+	 Executed 234 tests, with 6 tests skipped and 0 failures (0 unexpected) in 2.974 (2.974) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.0.3 (18c42c19cac3faf)
+✔ Test run with 0 tests passed after 0.001 seconds.

@@ -99,7 +99,7 @@ final class CatalogViewModel {
     /// Постраничная подгрузка при прокрутке к концу списка.
     func loadMoreIfNeeded(current anime: Anime, catalog: CatalogService) {
         guard hasNextPage, !isReloading, !isLoadingMore, phase == .loaded,
-              let index = items.firstIndex(of: anime), index >= items.count - 6 else { return }
+              let index = items.firstIndex(where: { $0.id == anime.id }), index >= items.count - 6 else { return }
         isLoadingMore = true
         let requestID = UUID()
         loadMoreRequestID = requestID

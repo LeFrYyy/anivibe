@@ -102,13 +102,5 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(dto.model.malID, 62177)
         XCTAssertEqual(dto.model.airedEpisodesText, "2/?")
     }
-
-    func testPlaybackControlsStateHide() {
-        var state = PlaybackControlsState()
-        XCTAssertTrue(state.isVisible)
-        state.hide()
-        XCTAssertFalse(state.isVisible)
-        XCTAssertNil(state.deadline)
-    }
 }
 

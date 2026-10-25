@@ -51,7 +51,8 @@ struct LibraryView: View {
     }
 
     private var libraryContent: some View {
-        Group {
+        let counts = sectionCounts
+        return Group {
             VStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Theme.Spacing.s) {
@@ -59,7 +60,7 @@ struct LibraryView: View {
                             Button {
                                 section = s
                             } label: {
-                                Text("\(s.title) \(count(s))")
+                                Text("\(s.title) \(countLabel(counts[s, default: 0]))")
                                     .font(.subheadline.weight(.medium))
                                     .padding(.horizontal, 14).frame(minHeight: 44)
                                     .background {
@@ -95,14 +96,18 @@ struct LibraryView: View {
         }
     }
 
-    private func count(_ s: LibrarySection) -> String {
-        let n: Int
-        switch s {
-        case .list(let status): n = library.snapshot.entries.lazy.filter { !$0.isDeleted && $0.status == status }.count
-        case .favorites: n = library.snapshot.entries.lazy.filter { !$0.isDeleted && $0.isFavorite }.count
-        case .history: n = library.snapshot.history.count
+    /// One pass per body evaluation, not one full scan for every status chip.
+    private var sectionCounts: [LibrarySection: Int] {
+        var result: [LibrarySection: Int] = [.history: library.snapshot.history.count]
+        for entry in library.snapshot.entries where !entry.isDeleted {
+            if let status = entry.status { result[.list(status), default: 0] += 1 }
+            if entry.isFavorite { result[.favorites, default: 0] += 1 }
         }
-        return n > 0 ? "· \(n)" : ""
+        return result
+    }
+
+    private func countLabel(_ value: Int) -> String {
+        value > 0 ? "· \(value)" : ""
     }
 
     @ViewBuilder private var content: some View {

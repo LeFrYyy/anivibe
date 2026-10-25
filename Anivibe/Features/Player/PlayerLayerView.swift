@@ -1,5 +1,6 @@
 import AVKit
 import SwiftUI
+import AnivibeCore
 
 /// Состояние Picture in Picture для текущего плеера.
 @Observable
@@ -54,75 +55,72 @@ final class PictureInPictureModel: NSObject, AVPictureInPictureControllerDelegat
     }
 }
 
+/// Gestures belong only to the video surface, never to the controls above it.
+@MainActor
+struct PlayerSurfaceGestures {
+    let tap: @MainActor () -> Void
+    let holdBegan: @MainActor () -> Bool
+    let holdEnded: @MainActor () -> Void
+}
+
 /// Поверхность видео (AVPlayerLayer) для SwiftUI.
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
     let pip: PictureInPictureModel
-    var onTap: (() -> Void)? = nil
-    var onHoldBegan: (() -> Void)? = nil
-    var onHoldEnded: (() -> Void)? = nil
+    let gestures: PlayerSurfaceGestures
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
+    func makeCoordinator() -> Coordinator { Coordinator(gestures: gestures) }
 
     func makeUIView(context: Context) -> PlayerContainerView {
         let view = PlayerContainerView()
         view.playerLayer.player = player
         view.playerLayer.videoGravity = .resizeAspect
         view.backgroundColor = .black
-        view.isUserInteractionEnabled = true
-        pip.attach(to: view.playerLayer)
-
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
-        let longPress = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
-        longPress.minimumPressDuration = 0.28
-        longPress.allowableMovement = .greatestFiniteMagnitude
-        tap.require(toFail: longPress)
-
+        let hold = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.hold(_:)))
+        hold.minimumPressDuration = PlaybackSpeedBoost.activationDelay
+        hold.allowableMovement = CGFloat(PlaybackSpeedBoost.allowableMovement)
+        hold.numberOfTouchesRequired = 1
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tap(_:)))
+        tap.require(toFail: hold)
+        view.addGestureRecognizer(hold)
         view.addGestureRecognizer(tap)
-        view.addGestureRecognizer(longPress)
-        context.coordinator.onTap = onTap
-        context.coordinator.onHoldBegan = onHoldBegan
-        context.coordinator.onHoldEnded = onHoldEnded
+        pip.attach(to: view.playerLayer)
         return view
     }
 
     func updateUIView(_ uiView: PlayerContainerView, context: Context) {
+        context.coordinator.gestures = gestures
         if uiView.playerLayer.player !== player { uiView.playerLayer.player = player }
-        context.coordinator.onTap = onTap
-        context.coordinator.onHoldBegan = onHoldBegan
-        context.coordinator.onHoldEnded = onHoldEnded
     }
 
     static func dismantleUIView(_ uiView: PlayerContainerView, coordinator: Coordinator) {
+        coordinator.endHold()
         uiView.playerLayer.player = nil
-        uiView.gestureRecognizers?.forEach { uiView.removeGestureRecognizer($0) }
-        coordinator.onTap = nil
-        coordinator.onHoldBegan = nil
-        coordinator.onHoldEnded = nil
     }
 
+    @MainActor
     final class Coordinator: NSObject {
-        var onTap: (() -> Void)?
-        var onHoldBegan: (() -> Void)?
-        var onHoldEnded: (() -> Void)?
+        var gestures: PlayerSurfaceGestures
+        private var holding = false
 
-        @objc func handleTap(_ sender: UITapGestureRecognizer) {
-            if sender.state == .ended {
-                onTap?()
+        init(gestures: PlayerSurfaceGestures) { self.gestures = gestures }
+
+        @objc func tap(_ recognizer: UITapGestureRecognizer) {
+            if recognizer.state == .ended { gestures.tap() }
+        }
+
+        @objc func hold(_ recognizer: UILongPressGestureRecognizer) {
+            switch recognizer.state {
+            case .began: holding = gestures.holdBegan()
+            case .ended, .cancelled, .failed: endHold()
+            default: break // Movement after recognition never becomes a seek or tap.
             }
         }
 
-        @objc func handleLongPress(_ sender: UILongPressGestureRecognizer) {
-            switch sender.state {
-            case .began:
-                onHoldBegan?()
-            case .ended, .cancelled, .failed:
-                onHoldEnded?()
-            default:
-                break
-            }
+        func endHold() {
+            guard holding else { return }
+            holding = false
+            gestures.holdEnded()
         }
     }
 }

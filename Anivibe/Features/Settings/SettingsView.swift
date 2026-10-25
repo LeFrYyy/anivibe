@@ -17,7 +17,7 @@ struct SettingsView: View {
             }
             Section("Основной цвет") {
                 HStack {
-                    ForEach(["275D8C", "2563EB", "0F766E", "BE185D", "B45309"], id: \.self) { hex in
+                    ForEach(["8467FF", "2563EB", "0F766E", "BE185D", "B45309"], id: \.self) { hex in
                         Button { settings.accentHex = hex } label: {
                             Circle().fill(Color(UIColor(hexString: hex)!)).frame(width: 36, height: 36)
                                 .overlay { if settings.accentHex == hex { Image(systemName: "checkmark").foregroundStyle(Theme.onAccent) } }
@@ -31,7 +31,7 @@ struct SettingsView: View {
                 }), supportsOpacity: false)
                 Text("Предварительный просмотр").padding().frame(maxWidth: .infinity)
                     .background(Theme.accent, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(Theme.onAccent)
-                Button("Вернуть стандартный цвет") { settings.accentHex = nil }
+                Button("Вернуть стандартный фиолетовый") { settings.accentHex = nil }
                 NavigationLink("Пользовательский фон") { BackgroundSettingsView() }
                 Toggle("Библиотека на главной", isOn: $settings.libraryPinned)
                 Text("Оформление сохраняется на устройстве. Папки, их содержимое и порядок синхронизируются в аккаунте вместе с библиотекой.")

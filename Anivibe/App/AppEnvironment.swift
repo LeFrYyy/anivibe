@@ -38,7 +38,7 @@ final class AppEnvironment {
 
     static func live(bundle: Bundle = .main) -> AppEnvironment {
         let config = AppConfiguration.from(infoDictionary: bundle.infoDictionary ?? [:])
-        let transport = URLSessionTransport.standard()
+        let transport = RetryingTransport(base: URLSessionTransport.standard())
         let cachesDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("AnivibeMetadata", isDirectory: true)
         let cache = MetadataCache(directory: cachesDir)

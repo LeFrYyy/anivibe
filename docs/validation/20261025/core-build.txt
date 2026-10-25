@@ -1,0 +1,91 @@
+Building for debugging...
+[0/14] Copying Fixtures
+[1/14] Write sources
+[3/14] Write swift-version-14A76E73EECAC58F.txt
+[5/37] Emitting module AnivibeCore
+[6/58] Compiling AnivibeCore AniListCatalogService.swift
+[7/58] Compiling AnivibeCore AniListDTO.swift
+[8/58] Compiling AnivibeCore AniListQueries.swift
+[9/58] Compiling AnivibeCore CatalogLocalization.swift
+[10/58] Compiling AnivibeCore CatalogService.swift
+[11/58] Compiling AnivibeCore DemoCatalogService.swift
+[12/58] Compiling AnivibeCore RussianCatalogService.swift
+[13/58] Compiling AnivibeCore RussianMetadataService.swift
+[14/58] Compiling AnivibeCore CommunityModels.swift
+[15/58] Compiling AnivibeCore SupabaseCommunityService.swift
+[16/58] Compiling AnivibeCore AppConfiguration.swift
+[17/58] Compiling AnivibeCore LibraryPersistence.swift
+[18/58] Compiling AnivibeCore LibraryRepository.swift
+[19/58] Compiling AnivibeCore Anime.swift
+[20/58] Compiling AnivibeCore AnimeCollection.swift
+[21/58] Compiling AnivibeCore CatalogQuery.swift
+[22/58] Compiling AnivibeCore Episode.swift
+[23/58] Compiling AnivibeCore Library.swift
+[24/58] Compiling AnivibeCore Playback.swift
+[25/58] Compiling AnivibeCore PlaybackControlsState.swift
+[26/58] Compiling AnivibeCore PlaybackSpeedBoost.swift
+[27/58] Compiling AnivibeCore HTTPTransport.swift
+[28/58] Compiling AnivibeCore MetadataCache.swift
+[29/58] Compiling AnivibeCore RateLimiter.swift
+[30/58] Compiling AnivibeCore RetryingTransport.swift
+[31/58] Compiling AnivibeCore KodikClient.swift
+[32/58] Compiling AnivibeCore KodikModels.swift
+[33/58] Compiling AnivibeCore KodikStreams.swift
+[34/58] Compiling AnivibeCore AnilibriaProvider.swift
+[35/58] Compiling AnivibeCore HLSManifestInspector.swift
+[36/58] Compiling AnivibeCore KodikProvider.swift
+[37/58] Compiling AnivibeCore ManifestProvider.swift
+[38/58] Compiling AnivibeCore ProviderRegistry.swift
+[39/58] Compiling AnivibeCore TestStreamProvider.swift
+[40/58] Compiling AnivibeCore VideoSourceProvider.swift
+[41/58] Compiling AnivibeCore Extensions.swift
+[42/58] Compiling AnivibeCore ImageDownsampling.swift
+[43/58] Compiling AnivibeCore LatestTaskRunner.swift
+[44/58] Compiling AnivibeCore Matching.swift
+[45/58] Compiling AnivibeCore SupabaseAuthClient.swift
+[46/58] Compiling AnivibeCore SupabaseSocialService.swift
+[47/58] Compiling AnivibeCore SupabaseSyncService.swift
+[48/58] Compiling AnivibeCore TitleComment.swift
+[49/59] Wrapping AST for AnivibeCore for debugging
+[51/73] Compiling AnivibeCoreTests AccountAndHistoryTests.swift
+[52/73] Compiling AnivibeCoreTests AnilibriaTests.swift
+[53/73] Compiling AnivibeCoreTests AuthRaceTests.swift
+[54/73] Compiling AnivibeCoreTests Bugfix20261015Tests.swift
+[55/73] Compiling AnivibeCoreTests CatalogTests.swift
+[56/73] Compiling AnivibeCoreTests CollectionOrderTests.swift
+[57/73] Compiling AnivibeCoreTests CollectionsSyncTests.swift
+[58/73] Compiling AnivibeCoreTests CollectionsTests.swift
+[59/73] Compiling AnivibeCoreTests CommunityTests.swift
+[60/73] Compiling AnivibeCoreTests ConfigAndSyncTests.swift
+[61/73] Compiling AnivibeCoreTests EmailCodeAndOAuthTests.swift
+[62/73] Compiling AnivibeCoreTests EpisodeTests.swift
+[63/73] Compiling AnivibeCoreTests KodikTests.swift
+[64/73] Emitting module AnivibeCoreTests
+[65/86] Compiling AnivibeCoreTests LibraryTests.swift
+[66/86] Compiling AnivibeCoreTests LiveIntegrationTests.swift
+[67/86] Compiling AnivibeCoreTests ModelsTests.swift
+[68/86] Compiling AnivibeCoreTests MotionPerformanceTests.swift
+[69/86] Compiling AnivibeCoreTests ProviderTests.swift
+[70/86] Compiling AnivibeCoreTests Regression20261013Tests.swift
+[71/86] Compiling AnivibeCoreTests RussianCatalogLiveTests.swift
+[72/86] Compiling AnivibeCoreTests RussianMetadataTests.swift
+[73/86] Compiling AnivibeCoreTests SocialServiceTests.swift
+[74/86] Compiling AnivibeCoreTests SyncPaginationTests.swift
+[75/86] Compiling AnivibeCoreTests TestSupport.swift
+[76/86] Compiling AnivibeCoreTests Update20261025Tests.swift
+[77/86] Compiling AnivibeCoreTests resource_bundle_accessor.swift
+[78/87] /vercel/sandbox/data/work/Anivibe/Packages/AnivibeCore/.build/x86_64-unknown-linux-gnu/debug/AnivibeCorePackageDiscoveredTests.derived/all-discovered-tests.swift
+[79/87] Write sources
+[80/87] Wrapping AST for AnivibeCoreTests for debugging
+[82/89] Emitting module AnivibeCorePackageDiscoveredTests
+[83/89] Compiling AnivibeCorePackageDiscoveredTests AnivibeCoreTests.swift
+[84/90] Compiling AnivibeCorePackageDiscoveredTests all-discovered-tests.swift
+[85/91] /vercel/sandbox/data/work/Anivibe/Packages/AnivibeCore/.build/x86_64-unknown-linux-gnu/debug/AnivibeCorePackageTests.derived/runner.swift
+[86/91] Write sources
+[87/91] Wrapping AST for AnivibeCorePackageDiscoveredTests for debugging
+[89/93] Compiling AnivibeCorePackageTests runner.swift
+[90/93] Emitting module AnivibeCorePackageTests
+[91/94] Wrapping AST for AnivibeCorePackageTests for debugging
+[92/94] Write Objects.LinkFileList
+[93/94] Linking AnivibeCorePackageTests.xctest
+Build complete! (21.06s)

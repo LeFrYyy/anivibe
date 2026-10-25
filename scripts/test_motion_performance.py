@@ -14,6 +14,12 @@ def source(relative):
 class MotionPerformanceSourceTests(unittest.TestCase):
     def test_no_routine_navigation_haptics(self):
         swift = "\n".join(path.read_text() for path in (ROOT / "Anivibe").rglob("*.swift"))
+        # The only deliberate haptic is activation of hold-to-2x, not navigation.
+        player = source("Anivibe/Features/Player/PlayerScreen.swift")
+        boost_haptic = ".sensoryFeedback(.impact(weight: .light), trigger: model.isSpeedBoosted) { _, active in active }"
+        self.assertEqual(swift.count(".sensoryFeedback("), 1)
+        self.assertIn(boost_haptic, player)
+        swift = swift.replace(boost_haptic, "")
         for call in ("UIImpactFeedbackGenerator(", "UISelectionFeedbackGenerator(",
                      "UINotificationFeedbackGenerator(", ".sensoryFeedback("):
             self.assertNotIn(call, swift)
@@ -41,17 +47,17 @@ class MotionPerformanceSourceTests(unittest.TestCase):
         self.assertIn("AppMotion.panelTransition(reduceMotion: reduceMotion)", overlay)
         self.assertNotIn(".scale(scale: 0.86)", overlay)
         self.assertIn(".accessibilityHidden(openedFolder != nil)", home)
-        folders = source("Anivibe/Features/Home/FolderViews.swift")
-        self.assertIn("env.collections.activeAccountID == presentedAccountID", folders)
+        self.assertIn("env.collections.activeAccountID == presentedAccountID", home)
 
     def test_scrolling_folder_tiles_do_not_each_blur_and_double_shadow(self):
-        folders = source("Anivibe/Features/Home/FolderViews.swift")
-        background = folders.split("struct FolderBackground:", 1)[1].split("struct NewFolderTile:", 1)[0]
-        self.assertIn(".fill(Theme.surface)", background)
-        self.assertIn(".strokeBorder(Theme.separator, lineWidth: 1)", background)
+        home = source("Anivibe/Features/Home/HomeView.swift")
+        background = home.split("struct FolderBackground:", 1)[1].split("struct NewFolderTile:", 1)[0]
+        self.assertIn(".fill(Theme.Folder.background)", background)
+        self.assertIn(".strokeBorder(Theme.Folder.border", background)
         self.assertNotIn("Material", background)
+        self.assertNotIn("Gradient", background)
         self.assertNotIn(".shadow(", background)
-        self.assertIn("FolderBackground(cornerRadius: 16)", folders)
+        self.assertIn("Theme.Folder.panelMaxHeight", home)
 
     def test_posters_request_bucketed_actual_display_size(self):
         poster = source("Anivibe/DesignSystem/Components/PosterImage.swift")

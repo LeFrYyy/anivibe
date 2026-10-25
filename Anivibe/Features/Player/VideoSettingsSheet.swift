@@ -38,7 +38,7 @@ struct VideoSettingsSheet: View {
                 Section("Скорость") {
                     if model.sharedWatch != nil { Text("Совместный просмотр синхронизируется на 1×. Одиночная скорость не изменяется.").font(.footnote) }
                     ForEach(PlayerViewModel.speeds, id: \.self) { speed in
-                        choice(KodikPlayerScreen.speedLabel(speed), selected: speed == model.playbackSpeed) { model.setSpeed(speed) }.disabled(model.sharedWatch != nil)
+                        choice(PlaybackSpeedLabel.text(speed), selected: speed == model.playbackSpeed) { model.setSpeed(speed) }.disabled(model.sharedWatch != nil)
                     }
                 }
                 Section("Аудиодорожки") {

@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// One motion language: quiet presses, quick fades and a restrained panel spring.
-/// Every caller passes the system Reduce Motion preference; no looping effects.
+/// Every caller respects Reduce Motion; only the temporary speed HUD pulses while held.
 enum AppMotion {
     static func press(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.9)
@@ -17,6 +17,12 @@ enum AppMotion {
 
     static func fade(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeOut(duration: 0.18)
+    }
+
+    static let hudPulseStep: Animation = .easeInOut(duration: 0.42)
+
+    static func hudTransition(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.94))
     }
 
     static func panelTransition(reduceMotion: Bool) -> AnyTransition {

@@ -35,13 +35,14 @@ public struct FileLibraryPersistence: LibraryPersistence {
         try data.write(to: fileURL, options: [.atomic])
     }
 
+    /// Built once: an ISO8601DateFormatter costs far more than one progress sample,
+    /// and the player saves every few seconds. Access is serialised by the codec.
     static var encoder: JSONEncoder {
         let e = JSONEncoder()
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let codec = LibraryDateCodec.shared
         e.dateEncodingStrategy = .custom { date, encoder in
             var value = encoder.singleValueContainer()
-            try value.encode(formatter.string(from: date))
+            try value.encode(codec.string(from: date))
         }
         e.outputFormatting = [.sortedKeys]
         return e
@@ -49,18 +50,40 @@ public struct FileLibraryPersistence: LibraryPersistence {
 
     static var decoder: JSONDecoder {
         let d = JSONDecoder()
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let legacy = ISO8601DateFormatter()
+        let codec = LibraryDateCodec.shared
         d.dateDecodingStrategy = .custom { decoder in
             let value = try decoder.singleValueContainer().decode(String.self)
-            if let date = fractional.date(from: value) ?? legacy.date(from: value) {
+            if let date = codec.date(from: value) {
                 return date
             }
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
                                                     debugDescription: "Invalid library date: \(value)"))
         }
         return d
+    }
+}
+
+/// Shared ISO-8601 formatters (fractional seconds + legacy fallback).
+/// A lock protects the shared Foundation formatters on every supported platform.
+final class LibraryDateCodec: @unchecked Sendable {
+    static let shared = LibraryDateCodec()
+    private let lock = NSLock()
+    private let fractional: ISO8601DateFormatter
+    private let legacy: ISO8601DateFormatter
+
+    private init() {
+        fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        legacy = ISO8601DateFormatter()
+    }
+
+    func string(from date: Date) -> String {
+        lock.lock(); defer { lock.unlock() }
+        return fractional.string(from: date)
+    }
+    func date(from value: String) -> Date? {
+        lock.lock(); defer { lock.unlock() }
+        return fractional.date(from: value) ?? legacy.date(from: value)
     }
 }
 

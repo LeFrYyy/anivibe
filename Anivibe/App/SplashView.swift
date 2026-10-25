@@ -12,7 +12,7 @@ struct SplashView: View {
                     .frame(width: 140, height: 140)
                     .scaleEffect(appeared || reduceMotion ? 1 : 0.92)
                 Text("Anivibe")
-                    .font(.system(.largeTitle, design: .default, weight: .semibold))
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .foregroundStyle(.white)
             }
             .opacity(appeared ? 1 : 0)
@@ -34,6 +34,7 @@ struct AnivibeMark: View {
                 .scaledToFill()
                 .frame(width: s, height: s)
                 .clipShape(RoundedRectangle(cornerRadius: s * 0.225, style: .continuous))
+                .shadow(color: Color(red: 0.3, green: 0.55, blue: 1).opacity(0.35), radius: s * 0.15)
         }
         .aspectRatio(1, contentMode: .fit)
     }

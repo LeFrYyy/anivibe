@@ -19,6 +19,23 @@ public struct SourceCandidate: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Progressive snapshot of a source search (see `ProviderRegistry.candidateUpdates`).
+public struct CandidateSearchUpdate: Equatable, Sendable {
+    /// Resolved candidates so far, already in priority order.
+    public let candidates: [SourceCandidate]
+    /// Providers still being checked.
+    public let pendingProviderIDs: [ProviderID]
+    /// Best available candidate that no pending provider can outrank; safe to play now.
+    public let decisive: SourceCandidate?
+    public var isComplete: Bool { pendingProviderIDs.isEmpty }
+
+    public init(candidates: [SourceCandidate], pendingProviderIDs: [ProviderID], decisive: SourceCandidate?) {
+        self.candidates = candidates
+        self.pendingProviderIDs = pendingProviderIDs
+        self.decisive = decisive
+    }
+}
+
 public struct ProviderInfo: Identifiable, Hashable, Sendable {
     public let id: ProviderID
     public let name: String
@@ -65,29 +82,74 @@ public actor ProviderRegistry {
     /// Доступным считается только источник, чья ссылка реально проверена.
     /// Реальные источники идут перед тестовыми.
     public func candidates(for anime: Anime, season: Int = 1, episode number: Int, excluding: Set<ProviderID> = []) async -> [SourceCandidate] {
+        var last: [SourceCandidate] = []
+        for await update in candidateUpdates(for: anime, season: season, episode: number, excluding: excluding) {
+            last = update.candidates
+        }
+        return last
+    }
+
+    /// Same search, reported progressively. Every element is a full, priority-sorted
+    /// snapshot. `decisive` appears as soon as no still-pending provider could outrank
+    /// the best available result, so playback does not wait for the slowest mirror.
+    /// Cancelling the consumer cancels the remaining provider checks.
+    public func candidateUpdates(for anime: Anime, season: Int = 1, episode number: Int,
+                                 excluding: Set<ProviderID> = []) -> AsyncStream<CandidateSearchUpdate> {
         let active = providers.filter { !disabled.contains($0.id) && !excluding.contains($0.id) }
         let timeout = self.timeout
-        let results = await withTaskGroup(of: (Int, SourceCandidate).self) { group -> [(Int, SourceCandidate)] in
-            for (index, provider) in active.enumerated() {
-                group.addTask {
-                    let candidate = await Self.withTimeout(timeout, provider: provider) {
-                        await Self.check(provider: provider, anime: anime, season: season, number: number)
+        return AsyncStream { continuation in
+            let task = Task {
+                var resolved: [(Int, SourceCandidate)] = []
+                var pending = Set(active.indices)
+                continuation.yield(Self.update(resolved: resolved, pending: pending, active: active))
+                await withTaskGroup(of: (Int, SourceCandidate).self) { group in
+                    for (index, provider) in active.enumerated() {
+                        group.addTask {
+                            let candidate = await Self.withTimeout(timeout, provider: provider) {
+                                await Self.check(provider: provider, anime: anime, season: season, number: number)
+                            }
+                            return (index, candidate)
+                        }
                     }
-                    return (index, candidate)
+                    for await result in group {
+                        resolved.append(result)
+                        pending.remove(result.0)
+                        continuation.yield(Self.update(resolved: resolved, pending: pending, active: active))
+                    }
                 }
+                continuation.finish()
             }
-            var out: [(Int, SourceCandidate)] = []
-            for await r in group { out.append(r) }
-            return out
+            continuation.onTermination = { _ in task.cancel() }
         }
-        return results.sorted { lhs, rhs in
-            if lhs.1.isTestContent != rhs.1.isTestContent { return !lhs.1.isTestContent }
-            if lhs.1.availability.isAvailable != rhs.1.availability.isAvailable { return lhs.1.availability.isAvailable }
-            if (lhs.1.providerID == KodikProvider.providerID) != (rhs.1.providerID == KodikProvider.providerID) {
-                return lhs.1.providerID == KodikProvider.providerID
-            }
-            return lhs.0 < rhs.0
-        }.map(\.1)
+    }
+
+    /// Priority: real before test, available first, Kodik first, then registration order.
+    static func precedes(_ lhs: (Int, SourceCandidate), _ rhs: (Int, SourceCandidate)) -> Bool {
+        if lhs.1.isTestContent != rhs.1.isTestContent { return !lhs.1.isTestContent }
+        if lhs.1.availability.isAvailable != rhs.1.availability.isAvailable { return lhs.1.availability.isAvailable }
+        if (lhs.1.providerID == KodikProvider.providerID) != (rhs.1.providerID == KodikProvider.providerID) {
+            return lhs.1.providerID == KodikProvider.providerID
+        }
+        return lhs.0 < rhs.0
+    }
+
+    static func update(resolved: [(Int, SourceCandidate)], pending: Set<Int>,
+                       active: [VideoSourceProvider]) -> CandidateSearchUpdate {
+        let sorted = resolved.sorted(by: precedes)
+        let pendingIndices = pending.sorted()
+        // The best a pending provider could still achieve is "available".
+        let bestPossible = pendingIndices.map { index in
+            (index, SourceCandidate(providerID: active[index].id, providerName: active[index].displayName,
+                                    isTestContent: active[index].providesTestContent, episode: nil, availability: .available))
+        }
+        var decisive: SourceCandidate?
+        if let best = sorted.first(where: { $0.1.availability.isAvailable }),
+           bestPossible.allSatisfy({ precedes(best, $0) }) {
+            decisive = best.1
+        }
+        return CandidateSearchUpdate(candidates: sorted.map(\.1),
+                                     pendingProviderIDs: pendingIndices.map { active[$0].id },
+                                     decisive: decisive)
     }
 
     static func check(provider: VideoSourceProvider, anime: Anime, season: Int, number: Int) async -> SourceCandidate {

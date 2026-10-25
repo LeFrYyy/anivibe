@@ -6,7 +6,7 @@ class KodikWiringTests(unittest.TestCase):
     def test_default_player_does_not_exclude_kodik(self):
         source = (ROOT/'Anivibe/Features/Player/PlayerViewModel.swift').read_text()
         self.assertNotIn('excluding: [KodikProvider.providerID]',source)
-        self.assertIn('registry.candidates(for: anime, season:',source)
+        self.assertIn('registry.candidateUpdates(for: anime, season:',source)
     def test_watch_waits_for_voice_lookup_before_routing(self):
         source = (ROOT/'Anivibe/Features/AnimeDetails/AnimeDetailsView.swift').read_text()
         flow = source.split('private func startPreferredPlayback() async {',1)[1]

@@ -15,13 +15,14 @@ public struct PlaybackControlsState: Equatable, Sendable {
         isVisible.toggle()
         deadline = isVisible ? now.addingTimeInterval(delay) : nil
     }
+    /// Hide immediately (e.g. while the user holds the video for 2×).
+    public mutating func hide() {
+        isVisible = false
+        deadline = nil
+    }
     public mutating func tick(at now: Date, playing: Bool, blocked: Bool) {
         guard playing, !blocked, let deadline, now >= deadline else { return }
         isVisible = false
         self.deadline = nil
-    }
-    public mutating func hide() {
-        isVisible = false
-        deadline = nil
     }
 }

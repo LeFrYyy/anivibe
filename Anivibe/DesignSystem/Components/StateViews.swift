@@ -8,7 +8,7 @@ struct SectionHeader: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
-                .font(.title3.weight(.semibold))
+                .font(.title3.weight(.bold))
                 .foregroundStyle(Theme.textPrimary)
                 .accessibilityAddTraits(.isHeader)
             Spacer()

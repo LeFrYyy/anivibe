@@ -13,19 +13,18 @@ struct PlayerControlsView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
-                .padding(Theme.Spacing.m)
-                .background(Color.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 12))
             Spacer()
             if model.phase == .ready { centerControls }
             Spacer()
-            if model.phase == .ready {
-                bottomBar
-                    .padding(Theme.Spacing.m)
-                    .background(Color.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 12))
-            }
+            if model.phase == .ready { bottomBar }
         }
         .padding(.horizontal, Theme.Spacing.l)
         .padding(.vertical, Theme.Spacing.m)
+        .background {
+            LinearGradient(colors: [.black.opacity(0.6), .clear, .clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+        }
         .foregroundStyle(.white)
         .environment(\.colorScheme, .dark)
     }
@@ -69,7 +68,7 @@ struct PlayerControlsView: View {
                 .background(source.isTestContent ? Theme.secondaryAccent.opacity(0.25) : Color.white.opacity(0.12),
                             in: RoundedRectangle(cornerRadius: 6))
                 if let attribution = source.attribution {
-                    Text(attribution).font(.caption).foregroundStyle(.white.opacity(0.8))
+                    Text(attribution).font(.caption2).foregroundStyle(.white.opacity(0.6))
                 }
             }
         }
@@ -80,9 +79,7 @@ struct PlayerControlsView: View {
     private var centerControls: some View {
         HStack(spacing: 44) {
             Button { model.skip(by: -10); interacted() } label: {
-                Image(systemName: "gobackward.10").font(.system(size: 28))
-                    .frame(width: 56, height: 56)
-                    .background(Color.black.opacity(0.76), in: Circle())
+                Image(systemName: "gobackward.10").font(.system(size: 30))
             }
             .accessibilityLabel("Назад на 10 секунд")
             Button { model.togglePlay(); interacted() } label: {
@@ -94,13 +91,10 @@ struct PlayerControlsView: View {
                     }
                 }
                 .frame(width: 64, height: 64)
-                .background(Color.black.opacity(0.76), in: Circle())
             }
             .accessibilityLabel(model.isPlaying ? "Пауза" : "Воспроизвести")
             Button { model.skip(by: 10); interacted() } label: {
-                Image(systemName: "goforward.10").font(.system(size: 28))
-                    .frame(width: 56, height: 56)
-                    .background(Color.black.opacity(0.76), in: Circle())
+                Image(systemName: "goforward.10").font(.system(size: 30))
             }
             .accessibilityLabel("Вперёд на 10 секунд")
         }
@@ -115,30 +109,18 @@ struct PlayerControlsView: View {
                 VideoTimelineSlider(model: model, interacted: interacted)
                 Text(model.duration > 0 ? TimeFormat.string(model.duration) : "--:--").font(.caption.monospacedDigit())
             }
-            ViewThatFits(in: .horizontal) {
-                bottomActions
-                    .labelStyle(.titleAndIcon)
-                    .fixedSize(horizontal: true, vertical: false)
-                bottomActions
-                    .labelStyle(.iconOnly)
+            HStack(spacing: Theme.Spacing.l) {
+                tracksMenu
+                Button(action: showSources) { Label("Источник", systemImage: "server.rack") }
+                Spacer()
+                Button(action: showEpisodes) { Label("Серии", systemImage: "list.bullet") }
+                if model.hasNextEpisode {
+                    Button(action: model.playNextEpisode) { Label("Далее", systemImage: "forward.end.fill") }
+                        .accessibilityLabel("Следующая серия")
+                }
             }
-            .font(.subheadline.weight(.medium))
-            .frame(maxWidth: .infinity)
-        }
-    }
-
-    private var bottomActions: some View {
-        HStack(spacing: Theme.Spacing.l) {
-            tracksMenu.frame(minWidth: 44, minHeight: 44)
-            Button(action: showSources) { Label("Источник", systemImage: "server.rack") }
-                .frame(minWidth: 44, minHeight: 44)
-            Button(action: showEpisodes) { Label("Серии", systemImage: "list.bullet") }
-                .frame(minWidth: 44, minHeight: 44)
-            if model.hasNextEpisode {
-                Button(action: model.playNextEpisode) { Label("Далее", systemImage: "forward.end.fill") }
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityLabel("Следующая серия")
-            }
+            .font(.footnote.weight(.medium))
+            .labelStyle(.titleAndIcon)
         }
     }
 
@@ -154,9 +136,14 @@ struct PlayerControlsView: View {
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 12)
-            .frame(minHeight: 44)
-            .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
+            .frame(height: 36)
+            .background {
+                Capsule().fill(.ultraThinMaterial)
+                    .overlay(Capsule().fill(LinearGradient(colors: [Theme.accent.opacity(0.55), Theme.secondaryAccent.opacity(0.35)],
+                                                           startPoint: .leading, endPoint: .trailing)))
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 1))
+            }
+            .shadow(color: Theme.accent.opacity(0.4), radius: 8, y: 2)
         }
         .accessibilityLabel("Настройки видео: озвучка, качество и скорость")
     }
@@ -198,7 +185,11 @@ struct SourcesSheet: View {
                         .disabled(!candidate.availability.isAvailable)
                     }
                 } footer: {
-                    Text("Подключённые источники. Доступность окончательно проверяется при загрузке видеопотока.")
+                    if model.pendingSourceCount > 0 {
+                        Text("Проверяем ещё источников: \(model.pendingSourceCount). Уже найденные доступны для выбора.")
+                    } else {
+                        Text("Подключённые источники. Доступность окончательно проверяется при загрузке видеопотока.")
+                    }
                 }
             }
             .navigationTitle("Источники · серия \(model.episodeNumber)")
@@ -288,19 +279,23 @@ private struct VideoTimelineSlider: View {
 
                 // Буферизация (прогруженная часть потока)
                 Capsule()
-                    .fill(Color.white.opacity(0.45))
+                    .fill(Color.white.opacity(0.6))
                     .frame(width: max(0, min(width, width * bufferedFraction)), height: height)
                     .animation(AppMotion.fade(reduceMotion: reduceMotion), value: bufferedFraction)
 
                 // Воспроизведённая часть
                 Capsule()
-                    .fill(Color.white)
+                    .fill(
+                        LinearGradient(colors: [Theme.accent, Theme.secondaryAccent],
+                                       startPoint: .leading, endPoint: .trailing)
+                    )
                     .frame(width: max(0, min(width, width * playedFraction)), height: height)
 
                 // Ползунок текущей позиции
                 Circle()
                     .fill(.white)
                     .frame(width: thumbRadius * 2, height: thumbRadius * 2)
+                    .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
                     .offset(x: max(0, min(width - thumbRadius * 2, (width * playedFraction) - thumbRadius)))
             }
             .frame(height: max(geo.size.height, 32))

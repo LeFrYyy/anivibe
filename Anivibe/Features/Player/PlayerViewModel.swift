@@ -26,6 +26,9 @@ final class PlayerViewModel {
     private(set) var episodeNumber: Int
     private(set) var phase: Phase = .searchingSources
     private(set) var candidates: [SourceCandidate] = []
+    private(set) var pendingSourceCount = 0
+    private(set) var speedBoost = PlaybackSpeedBoost()
+    var isSpeedBoosted: Bool { speedBoost.isActive }
     private(set) var activeCandidate: SourceCandidate?
     private(set) var source: PlaybackSource?
     private(set) var isPlaying = false
@@ -115,7 +118,6 @@ final class PlayerViewModel {
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
-        stopFastForward()
         sharedWatch?.stop()
         saveProgress(force: true)
         loadTask?.cancel()
@@ -150,32 +152,56 @@ final class PlayerViewModel {
     func findSources() {
         guard !isTornDown else { return }
         loadTask?.cancel()
+        if source != nil {
+            saveProgress(force: true)
+            resumeAfterLoad = isPlaying || isBuffering
+            if currentTime.isFinite { startPosition = max(startPosition, currentTime) }
+        }
+        endSpeedBoost()
+        player.pause()
+        clearItemObservers()
+        player.replaceCurrentItem(with: nil)
+        source = nil
+        activeCandidate = nil
+        hasActuallyPlayed = false
         cancelCountdown()
         phase = .searchingSources
         candidates = []
+        pendingSourceCount = 0
         let episode = episodeNumber
         loadTask = Task { [weak self] in
             guard let self else { return }
-            let found: [SourceCandidate]
             if let exact = self.currentEpisode?.sourceEpisode, let provider = await registry.provider(exact.providerID) {
+                self.pendingSourceCount = 1
                 let availability = await provider.checkAvailability(exact)
-                found = [SourceCandidate(providerID: provider.id, providerName: provider.displayName,
-                    isTestContent: provider.providesTestContent, episode: exact, availability: availability)]
-            } else {
-                found = await registry.candidates(for: anime, season: self.currentEpisode?.season ?? 1, episode: episode)
+                guard !Task.isCancelled, !self.isTornDown, episode == self.episodeNumber else { return }
+                let candidate = SourceCandidate(providerID: provider.id, providerName: provider.displayName,
+                    isTestContent: provider.providesTestContent, episode: exact, availability: availability)
+                self.candidates = [candidate]
+                self.pendingSourceCount = 0
+                if availability.isAvailable { await self.play(candidate: candidate) }
+                else { self.phase = .noSources }
+                return
             }
-            guard !Task.isCancelled, !self.isTornDown, episode == self.episodeNumber else { return }
-            self.candidates = found
-            if let first = found.first(where: { $0.availability.isAvailable }) {
-                await self.play(candidate: first)
-            } else {
-                self.phase = .noSources
+            let updates = await registry.candidateUpdates(for: anime, season: self.currentEpisode?.season ?? 1, episode: episode)
+            var startedPlayback = false
+            for await update in updates {
+                guard !Task.isCancelled, !self.isTornDown, episode == self.episodeNumber else { return }
+                self.candidates = update.candidates
+                self.pendingSourceCount = update.pendingProviderIDs.count
+                // A pending higher-priority provider must not be displaced by a fast test stream.
+                if !startedPlayback, let first = update.decisive {
+                    startedPlayback = true
+                    await self.play(candidate: first)
+                }
+                if update.isComplete, !startedPlayback { self.phase = .noSources }
             }
         }
     }
 
     func select(candidate: SourceCandidate) {
         guard !isTornDown, candidate.availability.isAvailable else { return }
+        pendingSourceCount = 0
         saveProgress(force: true)
         resumeAfterLoad = isPlaying || isBuffering
         startPosition = currentTime > 1 ? currentTime : startPosition
@@ -187,6 +213,7 @@ final class PlayerViewModel {
     func retry() {
         guard !isTornDown else { return }
         if let activeCandidate {
+            pendingSourceCount = 0
             startPosition = max(startPosition, currentTime)
             loadTask?.cancel()
             loadTask = Task { [weak self] in await self?.play(candidate: activeCandidate) }
@@ -197,6 +224,7 @@ final class PlayerViewModel {
 
     private func play(candidate: SourceCandidate) async {
         guard !Task.isCancelled, !isTornDown else { return }
+        endSpeedBoost()
         if phase == .searchingSources, sharedWatch == nil,
            candidate.providerID == KodikProvider.providerID, let episode = candidate.episode {
             // Registry/catalogue playback must read the same source-scoped key as
@@ -278,9 +306,10 @@ final class PlayerViewModel {
                     self.hasActuallyPlayed = true
                     self.isBuffering = false
                 case .waitingToPlayAtSpecifiedRate:
+                    self.endSpeedBoost()
                     self.isBuffering = true
                 case .paused:
-                    if self.isFastForwarding { self.stopFastForward() }
+                    if self.speedBoost.isActive { self.speedBoost.reset() }
                     if let item = self.player.currentItem {
                         self.isBuffering = item.isPlaybackBufferEmpty && !item.isPlaybackLikelyToKeepUp && !item.isPlaybackBufferFull
                     } else {
@@ -315,6 +344,7 @@ final class PlayerViewModel {
             Task { @MainActor [weak self] in
                 guard let self, !self.isTornDown, self.player.currentItem === item else { return }
                 if empty {
+                    self.endSpeedBoost()
                     self.isBuffering = true
                 } else if item.isPlaybackLikelyToKeepUp || item.isPlaybackBufferFull {
                     self.isBuffering = false
@@ -377,6 +407,7 @@ final class PlayerViewModel {
     }
 
     private func clearItemObservers() {
+        endSpeedBoost()
         preparationTask?.cancel()
         preparationTask = nil
         seekGeneration = UUID()
@@ -479,14 +510,9 @@ final class PlayerViewModel {
 
     // MARK: - Качество, скорость, озвучка (Kodik)
 
-    static let speeds: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+    nonisolated static let speeds: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
 
     private(set) var playbackSpeed: Float = PlayerViewModel.storedSpeed()
-    private(set) var isFastForwarding = false
-
-    var fastForwardSpeed: Float {
-        playbackSpeed >= 2.0 ? 2.5 : 2.0
-    }
 
     var qualities: [PlaybackQuality] { source?.qualities ?? [] }
     var currentQualityHeight: Int? {
@@ -501,7 +527,8 @@ final class PlayerViewModel {
 
     nonisolated private static func storedSpeed() -> Float {
         let value = UserDefaults.standard.double(forKey: KodikPreferences.speedKey)
-        return value > 0 ? Float(value) : 1.0
+        let speed = Float(value)
+        return speeds.contains(speed) ? speed : 1.0
     }
 
     func selectQuality(_ quality: PlaybackQuality) {
@@ -516,25 +543,11 @@ final class PlayerViewModel {
     }
 
     func setSpeed(_ speed: Float) {
-        guard sharedWatch == nil else { return }
+        guard sharedWatch == nil, Self.speeds.contains(speed) else { return }
         playbackSpeed = speed
         UserDefaults.standard.set(Double(speed), forKey: KodikPreferences.speedKey)
         player.defaultRate = speed
-        if player.rate > 0 && !isFastForwarding { player.rate = speed }
-    }
-
-    func startFastForward() {
-        guard sharedWatch == nil, phase == .ready, isPlaying, !isFastForwarding else { return }
-        isFastForwarding = true
-        player.rate = fastForwardSpeed
-    }
-
-    func stopFastForward() {
-        guard isFastForwarding else { return }
-        isFastForwarding = false
-        if isPlaying {
-            player.rate = playbackSpeed
-        }
+        if player.rate > 0, !isSpeedBoosted { player.rate = speed }
     }
 
     func selectVoice(_ voice: String) {
@@ -558,12 +571,40 @@ final class PlayerViewModel {
         return name
     }
 
+    // MARK: - Temporary speed boost
+
+    @discardableResult
+    func beginSpeedBoost(blockedByUI: Bool) -> Bool {
+        guard !isTornDown, player.rate > 0, player.timeControlStatus == .playing,
+              let item = player.currentItem, item.status == .readyToPlay,
+              !item.isPlaybackBufferEmpty else { return false }
+        let conditions = PlaybackSpeedBoost.Conditions(
+            isReady: phase == .ready, isPlaying: isPlaying, isBuffering: isBuffering,
+            isScrubbing: isScrubbing, isSharedWatch: sharedWatch != nil,
+            isBlockedByUI: blockedByUI || nextEpisodeCountdown != nil)
+        guard let rate = speedBoost.begin(conditions) else { return false }
+        // Do not change defaultRate or the persisted user preference.
+        player.rate = rate
+        return true
+    }
+
+    func endSpeedBoost() {
+        guard let rate = speedBoost.end(restoring: playbackSpeed) else { return }
+        // Ending a hold must never resume paused playback.
+        if player.rate > 0 { player.rate = rate }
+    }
+
     // MARK: - Transport
 
     func togglePlay() {
         if let sharedWatch { sharedWatch.togglePlay(); return }
-        if isFastForwarding { stopFastForward() }
-        if isPlaying { player.pause(); saveProgress(force: true) } else { cancelCountdown(); player.play() }
+        endSpeedBoost()
+        if isPlaying { player.pause(); saveProgress(force: true) }
+        else {
+            cancelCountdown()
+            if duration > 0, currentTime >= duration - 0.5 { performSeek(to: 0) }
+            player.play()
+        }
     }
 
     func skip(by seconds: Double) {
@@ -577,6 +618,7 @@ final class PlayerViewModel {
 
     private func performSeek(to seconds: Double) {
         guard !isTornDown, phase == .ready, seconds.isFinite, let item = player.currentItem else { return }
+        endSpeedBoost()
         let upper = duration > 0 ? duration : seconds
         let target = min(max(0, seconds), upper)
         let requestID = UUID()
@@ -652,6 +694,7 @@ final class PlayerViewModel {
     }
 
     private func playbackEnded() {
+        if speedBoost.isActive { speedBoost.reset() }
         if duration > 0 { currentTime = duration }
         saveProgress(force: true)
         isPlaying = false

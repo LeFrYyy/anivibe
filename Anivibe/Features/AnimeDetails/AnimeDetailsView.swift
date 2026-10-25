@@ -100,19 +100,18 @@ struct AnimeDetailsView: View {
     // MARK: Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-            if let bannerURL = anime.bannerURL {
-                PosterImage(url: bannerURL, placeholderColorHex: anime.coverColorHex, cornerRadius: 0)
-                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 148, maxHeight: 148)
-                    .clipped()
-                    .accessibilityHidden(true)
-            }
-            HStack(alignment: .top, spacing: Theme.Spacing.l) {
+        ZStack(alignment: .bottomLeading) {
+            PosterImage(url: anime.bannerURL ?? anime.coverURL, placeholderColorHex: anime.coverColorHex, cornerRadius: 0)
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 200, maxHeight: 200)
+                .clipped()
+                .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .center, endPoint: .bottom))
+            HStack(alignment: .bottom, spacing: Theme.Spacing.l) {
                 PosterImage(url: anime.coverURL, placeholderColorHex: anime.coverColorHex)
-                    .frame(width: 96, height: 96 / Theme.posterAspect)
+                    .frame(width: 110, height: 110 / Theme.posterAspect)
+                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text(anime.title.preferred)
-                        .font(.title2.weight(.semibold))
+                        .font(.title2.weight(.bold))
                         .foregroundStyle(Theme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                     let alts = anime.allTitles.filter { $0 != anime.title.preferred }
@@ -123,11 +122,12 @@ struct AnimeDetailsView: View {
                             .lineLimit(2)
                     }
                 }
+                .padding(.bottom, Theme.Spacing.s)
             }
             .padding(.horizontal, Theme.Spacing.l)
+            .offset(y: 70)
         }
-        .padding(.vertical, Theme.Spacing.s)
-        .background(Theme.surface)
+        .padding(.bottom, 70)
     }
 
     // MARK: Actions
