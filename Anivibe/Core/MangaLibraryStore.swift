@@ -29,7 +29,7 @@ final class MangaLibraryStore {
     }
 
     private(set) var records: [Int: Record] = [:]
-    private let storageKey = "mangaLibrary.v1"
+    private let storageKey: String
 
     init(defaults: UserDefaults = .standard, storageKey: String = "mangaLibrary.v1") {
         self.storageKey = storageKey
