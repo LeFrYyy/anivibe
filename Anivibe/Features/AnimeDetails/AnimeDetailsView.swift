@@ -353,6 +353,40 @@ struct AnimeDetailsView: View {
         .padding(.horizontal, Theme.Spacing.l)
     }
 
+    @ViewBuilder private var sourceSection: some View {
+        if env.settings.mangaExperimentalEnabled,
+           let source = model.details?.sourceRelation {
+            let link = MangaLink(id: source.anime.malID ?? source.anime.id,
+                                 title: source.anime.title.preferred,
+                                 coverURL: source.anime.coverURL)
+            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                SectionHeader(title: "Первоисточник")
+                NavigationLink(value: link) {
+                    HStack(spacing: Theme.Spacing.m) {
+                        PosterImage(url: link.coverURL, placeholderColorHex: source.anime.coverColorHex)
+                            .frame(width: 52, height: 78)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Манга")
+                                .font(.caption.weight(.semibold)).foregroundStyle(Theme.secondaryAccent)
+                            Text(link.title ?? "Манга")
+                                .font(.subheadline.weight(.medium)).foregroundStyle(Theme.textPrimary).lineLimit(2)
+                            Text("Аниме снято по этой манге")
+                                .font(.footnote).foregroundStyle(Theme.textSecondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                    }
+                    .padding(Theme.Spacing.m)
+                    .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                    .padding(.horizontal, Theme.Spacing.l)
+                }
+                .buttonStyle(PosterPressStyle())
+            }
+        }
+    }
+
     @ViewBuilder private var seasons: some View {
         if let d = model.details, !(d.otherSeasons.isEmpty && d.otherRelations.isEmpty) {
             VStack(alignment: .leading, spacing: Theme.Spacing.m) {

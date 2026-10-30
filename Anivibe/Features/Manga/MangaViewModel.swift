@@ -83,7 +83,7 @@ final class MangaDetailsViewModel {
             await loadChapters(service: service)
         } catch {
             if Task.isCancelled { return }
-            error = (error as? APIError)?.userMessage ?? "Не удалось загрузить мангу."
+            self.error = (error as? APIError)?.userMessage ?? "Не удалось загрузить мангу."
             loading = false
         }
     }
@@ -117,7 +117,7 @@ final class MangaReaderViewModel {
             pages = try await service.pageURLs(chapterID: chapterID)
             if pages.isEmpty { error = "Страницы главы недоступны." }
         } catch {
-            if !Task.isCancelled { error = "Не удалось загрузить главу." }
+            if !Task.isCancelled { self.error = "Не удалось загрузить главу." }
         }
         loading = false
     }
