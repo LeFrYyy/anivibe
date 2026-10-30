@@ -24,6 +24,8 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
         scrollView.backgroundColor = .clear
 
         let hosted = context.coordinator.hostingController
+        // Иначе контент внутри UIScrollView сообщает нулевую высоту и не рендерится.
+        hosted.sizingOptions = .intrinsicContentSize
         hosted.view.translatesAutoresizingMaskIntoConstraints = false
         hosted.view.backgroundColor = .clear
         scrollView.addSubview(hosted.view)
@@ -42,7 +44,10 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
     }
 
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
-        context.coordinator.hostingController.rootView = content
+        let hosted = context.coordinator.hostingController
+        hosted.rootView = content
+        // Контент меняет высоту при догрузке страниц — сообщаем UIScrollView.
+        hosted.view.invalidateIntrinsicContentSize()
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
