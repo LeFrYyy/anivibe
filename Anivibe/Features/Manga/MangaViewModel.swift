@@ -79,8 +79,12 @@ final class MangaDetailsViewModel {
             guard !Task.isCancelled else { return }
             manga = details
             loading = false
-            adaptations = (try? await catalog.anime(malIDs: details.animeMALIDs)) ?? []
-            await loadChapters(service: service)
+            async let adaptationsTask = catalog.anime(malIDs: details.animeMALIDs)
+            async let chaptersTask = service.chapters(of: details)
+            adaptations = (try? await adaptationsTask) ?? []
+            chapters = await chaptersTask
+            guard !Task.isCancelled else { return }
+            chaptersState = chapters.isEmpty ? .empty : .loaded
         } catch {
             if Task.isCancelled { return }
             self.error = (error as? APIError)?.userMessage ?? "Не удалось загрузить мангу."
@@ -90,6 +94,7 @@ final class MangaDetailsViewModel {
 
     func loadChapters(service: MangaService) async {
         guard let manga, chaptersState != .loading else { return }
+        chapters = []
         chaptersState = .loading
         do {
             let list = try await service.chapters(of: manga)

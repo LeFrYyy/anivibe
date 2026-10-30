@@ -32,7 +32,10 @@ public actor ShikimoriMangaService {
         let chapters: Int?
         let score: String?
         let aired_on: String?
+        struct RateStat: Decodable, Sendable { let value: Int? }
         let genres: [Genre]?
+        /// Детальный ответ `/mangas/{id}`: распределение оценок (сумма value = число голосов).
+        let rates_scores_stats: [RateStat]?
         let synonyms: [String]?
         let english: [String]?
         let japanese: [String]?
@@ -53,7 +56,8 @@ public actor ShikimoriMangaService {
                 format: kind.map { MangaFormat(apiValue: $0) },
                 volumes: volumes,
                 chapters: chapters,
-                score: score.flatMap(Double.init)
+                score: score.flatMap(Double.init),
+                scoreVotes: rates_scores_stats?.compactMap(\.value).reduce(0, +)
             )
         }
     }

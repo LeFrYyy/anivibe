@@ -61,16 +61,20 @@ public struct Manga: Identifiable, Hashable, Codable, Sendable {
     public var chapters: Int?
     /// Оценка Shikimori 0–10.
     public var score: Double?
+    /// Число поставленных оценок на Shikimori (только из детального ответа).
+    public var scoreVotes: Int?
     /// ID аниме-адаптаций этой манги (Shikimori/MAL anime ID) — где манга первоисточник.
     public var animeMALIDs: [Int]
     /// ID записи на MangaDex (источник глав на русском).
     public var mangadexID: String?
+    /// slug записи на lib.social/MangaLib (основной источник русских глав).
+    public var libSlug: String?
 
     public init(id: Int, title: AnimeTitle, synonyms: [String] = [], synopsis: String? = nil,
                 coverURL: URL? = nil, year: Int? = nil, genres: [String] = [],
                 status: MangaStatus? = nil, format: MangaFormat? = nil,
-                volumes: Int? = nil, chapters: Int? = nil, score: Double? = nil,
-                animeMALIDs: [Int] = [], mangadexID: String? = nil) {
+                volumes: Int? = nil, chapters: Int? = nil, score: Double? = nil, scoreVotes: Int? = nil,
+                animeMALIDs: [Int] = [], mangadexID: String? = nil, libSlug: String? = nil) {
         self.id = id
         self.title = title
         self.synonyms = synonyms
@@ -83,8 +87,10 @@ public struct Manga: Identifiable, Hashable, Codable, Sendable {
         self.volumes = volumes
         self.chapters = chapters
         self.score = score
+        self.scoreVotes = scoreVotes
         self.animeMALIDs = animeMALIDs
         self.mangadexID = mangadexID
+        self.libSlug = libSlug
     }
 
     /// Все названия: официальные, синонимы, разговорные варианты и автоперевод.

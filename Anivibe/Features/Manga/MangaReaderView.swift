@@ -7,13 +7,16 @@ import AnivibeCore
 struct MangaReaderView: View {
     let chapter: MangaChapter
     let allChapters: [MangaChapter]
+    /// ID манги (Shikimori) — прочитанные главы пишутся в `mangaLibrary`.
+    let mangaID: Int
     @Environment(AppEnvironment.self) private var env
     @State private var model = MangaReaderViewModel()
     @State private var currentChapter: MangaChapter
 
-    init(chapter: MangaChapter, allChapters: [MangaChapter]) {
+    init(chapter: MangaChapter, allChapters: [MangaChapter], mangaID: Int) {
         self.chapter = chapter
         self.allChapters = allChapters
+        self.mangaID = mangaID
         _currentChapter = State(initialValue: chapter)
     }
 
@@ -47,6 +50,9 @@ struct MangaReaderView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task(id: currentChapter.id) {
             await model.load(chapterID: currentChapter.id, service: env.manga)
+            if !model.pages.isEmpty {
+                env.mangaLibrary.markChapterRead(mangaID, chapter: currentChapter)
+            }
         }
     }
 

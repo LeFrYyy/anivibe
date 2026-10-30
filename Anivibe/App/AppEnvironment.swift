@@ -21,6 +21,8 @@ final class AppEnvironment {
     let collections: CollectionsStore
     /// Каталог и читалка манги (экспериментальная функция, гейтится настройкой).
     let manga: MangaService
+    /// Статусы и прогресс чтения манги (локальное хранилище).
+    let mangaLibrary = MangaLibraryStore()
     @ObservationIgnored private var started = false
 
     init(configuration: AppConfiguration, catalog: CatalogService, registry: ProviderRegistry, library: LibraryStore,
@@ -99,6 +101,7 @@ final class AppEnvironment {
 
         let manga: MangaService = MangaHub(
             catalog: ShikimoriMangaService(transport: transport, cache: cache),
+            lib: LibSocialService(transport: transport, cache: cache),
             reader: MangaDexService(transport: transport, cache: cache),
             cache: cache)
 

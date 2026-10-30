@@ -181,6 +181,7 @@ final class MangaTests: XCTestCase {
             return (200, Data("[]".utf8), [:])
         }
         let hub = MangaHub(catalog: ShikimoriMangaService(transport: transport, cache: MetadataCache(directory: nil)),
+                           lib: LibSocialService(transport: StubTransport { _ in (404, Data(), [:]) }, cache: MetadataCache(directory: nil)),
                            reader: MangaDexService(transport: StubTransport { _ in (404, Data(), [:]) }, cache: MetadataCache(directory: nil)),
                            cache: MetadataCache(directory: nil))
         let page = try await hub.search("ванпанчмен", page: 1, limit: 30)
@@ -195,6 +196,7 @@ final class MangaTests: XCTestCase {
             return (200, Data(self.mangadexSearch.utf8), [:])
         }
         let hub = MangaHub(catalog: ShikimoriMangaService(transport: StubTransport { _ in (404, Data(), [:]) }, cache: MetadataCache(directory: nil)),
+                           lib: LibSocialService(transport: StubTransport { _ in (404, Data("{}".utf8), [:]) }, cache: MetadataCache(directory: nil)),
                            reader: MangaDexService(transport: transport, cache: MetadataCache(directory: nil)),
                            cache: MetadataCache(directory: nil))
         var manga = Manga(id: 23390, title: AnimeTitle(romaji: "Shingeki no Kyojin", russian: "Атака титанов"))
