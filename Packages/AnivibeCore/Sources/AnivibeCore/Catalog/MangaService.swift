@@ -11,10 +11,16 @@ public protocol MangaService: Sendable {
     func details(id: Int) async throws -> Manga
     /// Главы с русским переводом, отсортированные по номеру.
     func chapters(of manga: Manga) async throws -> [MangaChapter]
+    /// Главы по каждому источнику (для переключателя в карточке); по умолчанию
+    /// единственный источник реализации оборачивается в `chapters(of:)`.
+    func chaptersBySource(of manga: Manga) async -> [MangaChapterSource: [MangaChapter]]
     /// URL страниц главы для встроенной читалки (`nil`/пусто — читать нельзя, только внешняя ссылка).
     func pageURLs(chapterID: String) async throws -> [URL]
 }
 
 public extension MangaService {
+    func chaptersBySource(of manga: Manga) async -> [MangaChapterSource: [MangaChapter]] {
+        [.mangadex: (try? await chapters(of: manga)) ?? []]
+    }
     func pageURLs(chapterID: String) async throws -> [URL] { [] }
 }

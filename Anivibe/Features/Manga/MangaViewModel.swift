@@ -64,8 +64,25 @@ final class MangaDetailsViewModel {
     private(set) var manga: Manga?
     private(set) var loading = false
     private(set) var error: String?
-    private(set) var chapters: [MangaChapter] = []
+    private(set) var chaptersBySource: [MangaChapterSource: [MangaChapter]] = [:]
     private(set) var chaptersState: ChaptersState = .idle
+    /// Выбранный источник глав; сохраняется между сессиями.
+    private(set) var source: MangaChapterSource
+
+    var chapters: [MangaChapter] { chaptersBySource[source] ?? [] }
+    /// Источники с найденными главами в порядке MangaLib → Senkuro → MangaDex.
+    var availableSources: [MangaChapterSource] { MangaChapterSource.allCases.filter { !(chaptersBySource[$0] ?? []).isEmpty } }
+
+    init() {
+        let saved = UserDefaults.standard.string(forKey: "manga.chapterSource")
+        source = MangaChapterSource(rawValue: saved ?? "") ?? .mangalib
+    }
+
+    /// Переключение источника; если на выбранном нет глав — падаем на первый непустой.
+    func selectSource(_ source: MangaChapterSource) {
+        self.source = source
+        UserDefaults.standard.set(source.rawValue, forKey: "manga.chapterSource")
+    }
     private(set) var adaptations: [Anime] = []
 
     enum ChaptersState { case idle, loading, loaded, empty, failed }
@@ -80,11 +97,13 @@ final class MangaDetailsViewModel {
             manga = details
             loading = false
             async let adaptationsTask = catalog.anime(malIDs: details.animeMALIDs)
-            async let chaptersTask = service.chapters(of: details)
+            async let chaptersTask = service.chaptersBySource(of: details)
             adaptations = (try? await adaptationsTask) ?? []
-            chapters = (try? await chaptersTask) ?? []
+            chaptersBySource = await chaptersTask
             guard !Task.isCancelled else { return }
-            chaptersState = chapters.isEmpty ? .empty : .loaded
+            // Если на сохранённом источнике глав нет — переключаемся на первый непустой.
+            if chapters.isEmpty, let first = availableSources.first { source = first }
+            chaptersState = availableSources.isEmpty ? .empty : .loaded
         } catch {
             if Task.isCancelled { return }
             self.error = (error as? APIError)?.userMessage ?? "Не удалось загрузить мангу."
@@ -94,13 +113,14 @@ final class MangaDetailsViewModel {
 
     func loadChapters(service: MangaService) async {
         guard let manga, chaptersState != .loading else { return }
-        chapters = []
+        chaptersBySource = [:]
         chaptersState = .loading
         do {
-            let list = try await service.chapters(of: manga)
+            let map = await service.chaptersBySource(of: manga)
             guard !Task.isCancelled else { return }
-            chapters = list
-            chaptersState = list.isEmpty ? .empty : .loaded
+            chaptersBySource = map
+            if chapters.isEmpty, let first = availableSources.first { source = first }
+            chaptersState = availableSources.isEmpty ? .empty : .loaded
         } catch {
             chaptersState = Task.isCancelled ? .idle : .failed
         }

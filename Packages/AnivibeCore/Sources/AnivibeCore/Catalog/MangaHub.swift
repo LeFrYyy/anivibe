@@ -1,18 +1,35 @@
 import Foundation
 
-/// Фасад манги: каталог и метаданные — Shikimori, главы на русском — lib.social (MangaLib)
-/// с фолбэком на MangaDex. Обложки — Shikimori, затем MangaDex.
-/// Привязка slug'ов выполняется параллельно, чтобы страница открывалась быстрее.
+/// Источник глав манги, переключаемый в карточке.
+public enum MangaChapterSource: String, Sendable, CaseIterable {
+    case mangalib, senkuro, mangadex
+
+    public var displayName: String {
+        switch self {
+        case .mangalib: return "MangaLib"
+        case .senkuro: return "Senkuro"
+        case .mangadex: return "MangaDex"
+        }
+    }
+}
+
+/// Фасад манги: каталог и метаданные — Shikimori; главы на русском — MangaLib (lib.social),
+/// Senkuro и MangaDex (переключаемые источники, по умолчанию первый непустой в этом порядке).
+/// Обложки — Shikimori, затем MangaDex. Привязки slug'ов выполняются параллельно.
 public actor MangaHub: MangaService {
     public let name = "Shikimori + MangaLib"
     private let catalog: ShikimoriMangaService
     private let lib: LibSocialService
+    private let senkuro: SenkuroService
     private let reader: MangaDexService
     private let cache: MetadataCache
+    /// Разрешённые привязки источников: libSlug / senkuro (slug|branch) / mangadexID.
+    private var resolved: [Int: (lib: String?, senkuro: (slug: String, branchID: String)?, dex: String?)] = [:]
 
-    public init(catalog: ShikimoriMangaService, lib: LibSocialService, reader: MangaDexService, cache: MetadataCache) {
+    public init(catalog: ShikimoriMangaService, lib: LibSocialService, senkuro: SenkuroService, reader: MangaDexService, cache: MetadataCache) {
         self.catalog = catalog
         self.lib = lib
+        self.senkuro = senkuro
         self.reader = reader
         self.cache = cache
     }
@@ -33,49 +50,67 @@ public actor MangaHub: MangaService {
 
     public func details(id: Int) async throws -> Manga {
         var manga = try await catalog.details(id: id)
-        let titles = manga.searchableTitles
-        async let dexID = reader.mangadexID(forMALID: id, titles: titles)
-        async let slug = lib.slug(forMangaID: id, titles: titles)
-        manga.mangadexID = await dexID
-        manga.libSlug = await slug
+        await resolveSources(for: manga)
+        manga.mangadexID = resolved[id]?.dex
+        manga.libSlug = resolved[id]?.lib
         if manga.coverURL == nil, let mangadexID = manga.mangadexID {
             manga.coverURL = await reader.coverURL(mangadexID: mangadexID)
         }
         return manga
     }
 
-    /// Главы: lib.social и MangaDex опрашиваются параллельно; предпочитаем lib.social —
-    /// там русских переводов заметно больше. MangaDex остаётся фолбэком.
-    public func chapters(of manga: Manga) async throws -> [MangaChapter] {
-        async let libChapters = libChapters(of: manga)
-        async let dexChapters = dexChapters(of: manga)
-        let lib = await libChapters
-        if !lib.isEmpty { return lib }
-        return await dexChapters
+    /// Привязки всех источников параллельно; результат кэшируется в актере.
+    private func resolveSources(for manga: Manga) async {
+        if resolved[manga.id] != nil { return }
+        let titles = manga.searchableTitles
+        async let libSlug = lib.slug(forMangaID: manga.id, titles: titles)
+        async let sen = senkuro.resolve(forMangaID: manga.id, titles: titles)
+        async let dexID = reader.mangadexID(forMALID: manga.id, titles: titles)
+        resolved[manga.id] = (await libSlug, await sen, await dexID)
     }
 
-    /// Глава с `lib|`-идентификатором читается через lib.social, остальные — через MangaDex.
+    /// Главы по умолчанию: первый непустой источник (MangaLib → Senkuro → MangaDex).
+    public func chapters(of manga: Manga) async throws -> [MangaChapter] {
+        let map = await chaptersBySource(of: manga)
+        for source in MangaChapterSource.allCases {
+            if let list = map[source], !list.isEmpty { return list }
+        }
+        return []
+    }
+
+    /// Главы всех источников параллельно: источник → список глав (может быть пустым).
+    public func chaptersBySource(of manga: Manga) async -> [MangaChapterSource: [MangaChapter]] {
+        await resolveSources(for: manga)
+        let bindings = resolved[manga.id] ?? (manga.libSlug, nil, manga.mangadexID)
+        async let libList = libChapters(slug: bindings.lib ?? manga.libSlug)
+        async let senList = senChapters(binding: bindings.senkuro)
+        async let dexList = dexChapters(mangadexID: bindings.dex ?? manga.mangadexID)
+        return [.mangalib: await libList, .senkuro: await senList, .mangadex: await dexList]
+    }
+
+    /// Глава с префиксом `lib|` читается через MangaLib, `sen|` — через Senkuro,
+    /// без префикса — через MangaDex (обратная совместимость существующих id).
     public func pageURLs(chapterID: String) async throws -> [URL] {
         if chapterID.hasPrefix("lib|") {
             return try await lib.pageURLs(chapterID: chapterID)
         }
+        if chapterID.hasPrefix("sen|") {
+            return try await senkuro.pageURLs(chapterID: chapterID)
+        }
         return try await reader.pageURLs(chapterID: chapterID)
     }
 
-    private func libChapters(of manga: Manga) async -> [MangaChapter] {
-        var slug = manga.libSlug
-        if slug == nil {
-            slug = await lib.slug(forMangaID: manga.id, titles: manga.searchableTitles)
-        }
+    private func libChapters(slug: String?) async -> [MangaChapter] {
         guard let slug else { return [] }
         return (try? await lib.chapters(slug: slug)) ?? []
     }
 
-    private func dexChapters(of manga: Manga) async -> [MangaChapter] {
-        var mangadexID = manga.mangadexID
-        if mangadexID == nil {
-            mangadexID = await reader.mangadexID(forMALID: manga.id, titles: manga.searchableTitles)
-        }
+    private func senChapters(binding: (slug: String, branchID: String)?) async -> [MangaChapter] {
+        guard let binding else { return [] }
+        return (try? await senkuro.chapters(branchID: binding.branchID, slug: binding.slug)) ?? []
+    }
+
+    private func dexChapters(mangadexID: String?) async -> [MangaChapter] {
         guard let mangadexID else { return [] }
         return (try? await reader.chapters(mangadexID: mangadexID, language: "ru")) ?? []
     }

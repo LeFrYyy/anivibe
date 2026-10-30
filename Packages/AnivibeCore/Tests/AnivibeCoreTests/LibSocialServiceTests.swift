@@ -39,12 +39,32 @@ final class LibSocialServiceTests: XCTestCase {
     }
 
     func testSlugMatchByRussianTitle() async {
-        let service = service { request in
-            XCTAssertTrue(request.url!.absoluteString.contains("site_id%5B%5D=1"))
-            return (200, Data(self.searchJSON.utf8), [:])
-        }
+        let service = service { _ in (200, Data(self.searchJSON.utf8), [:]) }
         let slug = await service.slug(forMangaID: 116778, titles: ["Человек-бензопила", "Chainsaw Man"])
         XCTAssertEqual(slug, "chainsaw-man")
+    }
+
+    /// Основные записи скрыты из поиска MangaLib (лицензии), но slug существует —
+    /// угадывание slug по латинскому названию находит их («death-note», «vinland-saga»).
+    func testSlugGuessFindsHiddenMainEntry() async {
+        let service = service { request in
+            let path = request.url!.path
+            if path == "/api/manga/death-note/chapters" { return (200, Data(self.chaptersJSON.utf8), [:]) }
+            if path.hasSuffix("/chapters") { return (404, Data(), [:]) }
+            // В поиске главной записи нет — только спешлы.
+            return (200, Data(self.searchJSON.utf8), [:])
+        }
+        let slug = await service.slug(forMangaID: 22743, titles: ["Тетрадь смерти", "Death Note", "Death Note Tokubetsu Yomikiri"])
+        XCTAssertEqual(slug, "death-note")
+    }
+
+    /// Скоринг: «Ван Пис» (основная запись) бьёт спешл «Ван Пис Эпизод А».
+    func testMatchScorePrefersMainOverSpinOff() {
+        let main = LibSocialService.matchScore(candidateTitles: ["Ван Пис", "One Piece"], wanted: ["One Piece", "Ван Пис"])
+        let special = LibSocialService.matchScore(candidateTitles: ["Ван Пис Эпизод А", "One Piece A"], wanted: ["One Piece", "Ван Пис"])
+        XCTAssertGreaterThan(main, special)
+        let artbook = LibSocialService.matchScore(candidateTitles: ["Тетрадь смерти Артбук", "Death note Artbook"], wanted: ["Death Note", "Тетрадь смерти"])
+        XCTAssertLessThan(artbook, 0.55)
     }
 
     func testSlugMissWhenNoTitleMatches() async {
@@ -105,6 +125,7 @@ final class LibSocialServiceTests: XCTestCase {
         let hub = MangaHub(
             catalog: ShikimoriMangaService(transport: StubTransport { _ in (404, Data(), [:]) }, cache: MetadataCache(directory: nil)),
             lib: LibSocialService(transport: libTransport, cache: MetadataCache(directory: nil)),
+            senkuro: SenkuroService(transport: StubTransport { _ in (404, Data(), [:]) }, cache: MetadataCache(directory: nil)),
             reader: MangaDexService(transport: StubTransport { _ in (200, Data("{\"data\":[]}".utf8), [:]) }, cache: MetadataCache(directory: nil)),
             cache: MetadataCache(directory: nil))
         var manga = Manga(id: 116778, title: AnimeTitle(romaji: "Chainsaw Man", russian: "Человек-бензопила"))

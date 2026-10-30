@@ -102,6 +102,7 @@ final class AppEnvironment {
         let manga: MangaService = MangaHub(
             catalog: ShikimoriMangaService(transport: transport, cache: cache),
             lib: LibSocialService(transport: transport, cache: cache),
+            senkuro: SenkuroService(transport: transport, cache: cache),
             reader: MangaDexService(transport: transport, cache: cache),
             cache: cache)
 

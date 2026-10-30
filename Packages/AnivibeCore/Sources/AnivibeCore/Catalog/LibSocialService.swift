@@ -70,27 +70,99 @@ public actor LibSocialService {
 
     // MARK: - Привязка к записи Shikimori
 
-    /// slug записи lib.social, соответствующей манге Shikimori: поиск по названиям
-    /// (русское, английское, ромадзи, синонимы) с точным fold-совпадением. Кэшируется.
+    /// Маркеры спешлов/артбуков в названиях — такие записи не должны побеждать основную мангу.
+    private static let spinOffMarkers = ["спец", "special", "артбук", "artbook", "пилот", "pilot",
+        "prototype", "colored", "цветн", "oneshot", "спецвыпуск", "memorial", "doujinshi",
+        "додзинси", "кроссовер", "crossover", "веб", "web", "издание", "альтернативн"]
+
+    /// slug записи lib.social, соответствующей манге Shikimori. Кэшируется.
+    /// 1) Угадывание slug по латинским названиям: основные записи часто скрыты из поиска
+    ///    (лицензия), но главы отдаются по slug напрямую — «death-note», «vinland-saga».
+    /// 2) Поиск `q=` со скорингом совпадения и штрафом спешлам.
     public func slug(forMangaID mangaID: Int, titles: [String]) async -> String? {
         let cacheKey = "lib-map:\(mangaID)"
         if let data = await cache.data(for: cacheKey), let cached = String(data: data, encoding: .utf8), !cached.isEmpty {
             return cached == "-" ? nil : cached
         }
-        let wanted = Set(titles.map(RussianTitleDictionary.fold))
-        var found: String?
-        for title in titles.filter({ !$0.isEmpty }).prefix(4) {
-            let query = [URLQueryItem(name: "q", value: String(title.prefix(100))),
-                         URLQueryItem(name: "site_id[]", value: "1")]
-            guard let page: Response<[MangaDTO]> = try? await load(path: "manga", query: query),
-                  let data = page.data, !data.isEmpty else { continue }
-            if let match = data.first(where: { dto in dto.titles.contains { wanted.contains(RussianTitleDictionary.fold($0)) } }) {
-                found = match.slug
-                break
-            }
-        }
+        var found = await slugByGuess(titles)
+        if found == nil { found = await slugBySearch(titles) }
         await cache.store(Data((found ?? "-").utf8), for: cacheKey)
         return found
+    }
+
+    /// slug-формат MangaLib: латиница в нижнем регистре через дефисы («Shingeki no Kyojin» → «shingeki-no-kyojin»).
+    static func slugify(_ title: String) -> String? {
+        var folded = title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).lowercased()
+        folded = folded.replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return folded.count >= 2 ? folded : nil
+    }
+
+    /// Проба slug напрямую: `manga/<slug>/chapters` 200 с непустым data → запись существует.
+    private func slugByGuess(_ titles: [String]) async -> String? {
+        var seen = Set<String>()
+        for title in titles {
+            guard let slug = Self.slugify(title), seen.insert(slug).inserted else { continue }
+            if seen.count > 6 { break }
+            let query = [URLQueryItem(name: "per_page", value: "1")]
+            guard let page: Response<[ChapterDTO]> = try? await load(path: "manga/\(slug)/chapters", query: query) else { continue }
+            if !(page.data ?? []).isEmpty { return slug }
+        }
+        return nil
+    }
+
+    /// Скоринг кандидата поиска: точное fold-равенство — 1.0; покрытие токенов — доля
+    /// совпавших слов; спешл-маркеры, которых нет в искомом названии, сильно штрафуют.
+    static func matchScore(candidateTitles: [String], wanted: [String]) -> Double {
+        var best = 0.0
+        for want in wanted {
+            let w = RussianTitleDictionary.fold(want)
+            let wTokens = Set(w.split(separator: " ").map(String.init))
+            guard !wTokens.isEmpty else { continue }
+            for candTitle in candidateTitles {
+                let c = RussianTitleDictionary.fold(candTitle)
+                let cTokens = Set(c.split(separator: " ").map(String.init))
+                guard !cTokens.isEmpty else { continue }
+                var score: Double
+                if c == w {
+                    score = 1.0
+                } else {
+                    let shared = wTokens.intersection(cTokens).count
+                    guard shared > 0 else { continue }
+                    // требуем покрытия всех слов меньшего названия («ван пис» ⊂ «ван пис эпизод а»)
+                    let small = min(wTokens.count, cTokens.count)
+                    let big = max(wTokens.count, cTokens.count)
+                    guard shared >= small, Double(shared) / Double(big) >= 0.5 else { continue }
+                    score = Double(shared) / Double(big) * 0.8
+                }
+                let extras = cTokens.subtracting(wTokens)
+                let hasSpinOff = extras.contains { tok in
+                    Self.spinOffMarkers.contains { tok.hasPrefix($0) }
+                }
+                if hasSpinOff { score *= 0.2 }
+                best = max(best, score)
+            }
+        }
+        return best
+    }
+
+    private func slugBySearch(_ titles: [String]) async -> String? {
+        var best: (slug: String, score: Double)?
+        for title in titles.filter({ !$0.isEmpty }).prefix(4) {
+            let query = [URLQueryItem(name: "q", value: String(title.prefix(100))),
+                         URLQueryItem(name: "site_id[]", value: "1"),
+                         URLQueryItem(name: "limit", value: "20")]
+            guard let page: Response<[MangaDTO]> = try? await load(path: "manga", query: query),
+                  let data = page.data, !data.isEmpty else { continue }
+            for dto in data {
+                guard let slug = dto.slug else { continue }
+                let score = Self.matchScore(candidateTitles: dto.titles, wanted: titles)
+                if score > (best?.score ?? 0) { best = (slug, score) }
+            }
+            if (best?.score ?? 0) >= 1.0 { break }
+        }
+        guard let best, best.score >= 0.55 else { return nil }
+        return best.slug
     }
 
     // MARK: - Главы

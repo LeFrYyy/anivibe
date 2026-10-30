@@ -317,11 +317,21 @@ struct MangaDetailsView: View {
     @ViewBuilder private var chaptersSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
             sectionTitle("Главы на русском")
+            if model.availableSources.count > 1 {
+                Picker("Источник", selection: Binding(
+                    get: { model.source }, set: { model.selectSource($0) })) {
+                    ForEach(model.availableSources, id: \.self) { src in
+                        Text("\(src.displayName) · \(model.chaptersBySource[src]?.count ?? 0)").tag(src)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, Theme.Spacing.l)
+            }
             switch model.chaptersState {
             case .idle, .loading:
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, Theme.Spacing.l)
             case .empty:
-                Text("Главы с русским переводом не найдены (MangaLib и MangaDex).")
+                Text("Главы с русским переводом не найдены (MangaLib, Senkuro, MangaDex).")
                     .font(.footnote)
                     .foregroundStyle(Theme.textSecondary)
                     .padding(.horizontal, Theme.Spacing.l)
