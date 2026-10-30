@@ -12,6 +12,10 @@ struct MangaReaderView: View {
     @Environment(AppEnvironment.self) private var env
     @State private var model = MangaReaderViewModel()
     @State private var currentChapter: MangaChapter
+    @State private var zoom: CGFloat = 1
+    @State private var focus: UnitPoint = .center
+    @State private var pinching = false
+    @GestureState private var pinchScale: CGFloat = 1
 
     init(chapter: MangaChapter, allChapters: [MangaChapter], mangaID: Int) {
         self.chapter = chapter
@@ -25,7 +29,7 @@ struct MangaReaderView: View {
     private var nextChapter: MangaChapter? { currentIndex.flatMap { $0 < allChapters.count - 1 ? allChapters[$0 + 1] : nil } }
 
     var body: some View {
-        ZoomableScrollView {
+        ScrollView {
             LazyVStack(spacing: 0) {
                 if model.loading && model.pages.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
@@ -43,6 +47,30 @@ struct MangaReaderView: View {
                 if !model.pages.isEmpty {
                     navigationBar
                 }
+            }
+            .scaleEffect(zoom * pinchScale, anchor: focus)
+        }
+        // pinch-зум до 4x, двойной тап — сброс; скролл остаётся системным.
+        .simultaneousGesture(
+            MagnifyGesture(minimumScaleDelta: 0)
+                .updating($pinchScale) { value, state, _ in
+                    state = max(value.magnification, 0.01)
+                }
+                .onChanged { value in
+                    if !pinching {
+                        pinching = true
+                        focus = UnitPoint(x: value.startAnchor.x, y: value.startAnchor.y)
+                    }
+                }
+                .onEnded { value in
+                    zoom = min(max(zoom * value.magnification, 1), 4)
+                    pinching = false
+                }
+        )
+        .onTapGesture(count: 2) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                zoom = 1
+                focus = .center
             }
         }
         .background(Theme.background.ignoresSafeArea())
