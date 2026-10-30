@@ -31,6 +31,7 @@ struct HomeView: View {
                     foldersSection
                     continueSection
                     recentEpisodesSection
+                    mangaSection
                     feedSections
                     favoritesSection
                     catalogShortcut
@@ -71,6 +72,7 @@ struct HomeView: View {
             }
             .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
             .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
+            .navigationDestination(for: MangaLink.self) { MangaDetailsView(link: $0) }
             .refreshable {
                 async let feed: Void = model.load(catalog: env.catalog, force: true)
                 async let recent: Void = model.loadRecentEpisodes(catalog: env.catalog, force: true)
@@ -82,6 +84,9 @@ struct HomeView: View {
             }
             .task { await model.load(catalog: env.catalog) }
             .task { await model.loadRecentEpisodes(catalog: env.catalog) }
+            .task(id: env.settings.mangaExperimentalEnabled) {
+                await model.loadManga(service: env.manga, enabled: env.settings.mangaExperimentalEnabled)
+            }
             .task(id: library.continueWatching.first?.anime.id) {
                 await model.loadRecommendations(catalog: env.catalog, basedOn: library.continueWatching.first)
             }
@@ -215,6 +220,28 @@ struct HomeView: View {
                             }
                             .buttonStyle(PosterPressStyle())
                             .folderMenu(item.anime.snapshot)
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.l)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var mangaSection: some View {
+        let manga = model.mangaRow
+        if env.settings.mangaExperimentalEnabled, !manga.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+                SectionHeader(title: "Популярная манга")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: Theme.Spacing.m) {
+                        ForEach(manga) { entry in
+                            NavigationLink(value: MangaLink(entry)) {
+                                PosterCard(title: entry.title.preferred, coverURL: entry.coverURL,
+                                           subtitle: entry.metaLine, badge: "Манга")
+                                .frame(width: 120)
+                            }
+                            .buttonStyle(PosterPressStyle())
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.l)

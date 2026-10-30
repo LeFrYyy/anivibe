@@ -77,7 +77,8 @@ struct AnimeDetailsView: View {
             NavigationStack {
                 if let kodik = env.kodik {
                     ScrollView { OnlineSourcesSection(anime: anime, client: kodik, model: kodikModel, playEpisode: playSourceEpisode) }
-                        .navigationTitle("Озвучки и серии")
+                        .navigationDestination(for: MangaLink.self) { MangaDetailsView(link: $0) }
+        .navigationTitle("Озвучки и серии")
                         .toolbar { Button("Готово") { showSources = false } }
                 }
             }
@@ -311,6 +312,7 @@ struct AnimeDetailsView: View {
                 .padding(.horizontal, Theme.Spacing.l)
             }
         }
+        sourceSection
         seasons
         Button("Выбрать серию") { showEpisodes = true }
             .buttonStyle(.bordered).padding(.horizontal, Theme.Spacing.l)

@@ -296,6 +296,11 @@ public struct AnimeDetails: Hashable, Codable, Sendable {
         relations.filter { ($0.relation == .prequel || $0.relation == .sequel) && ($0.anime.format?.isSeries ?? false) }
     }
 
+    /// Первоисточник аниме (манга, ранобэ, визуальная новелла...) — relation `SOURCE` в AniList.
+    public var sourceRelation: RelatedAnime? {
+        relations.first { $0.relation == .source }
+    }
+
     /// Прочие связанные тайтлы (фильмы, OVA, спин-оффы...). Исключает адаптации-первоисточники.
     public var otherRelations: [RelatedAnime] {
         let seasonIDs = Set(otherSeasons.map(\.id))

@@ -73,6 +73,10 @@ public actor RussianCatalogService: CatalogService {
         await remember(sorted)
         return CatalogPage(items: sorted, page: base.page, hasNextPage: base.hasNextPage || russianHasMore)
     }
+    public func anime(malIDs: [Int]) async throws -> [Anime] {
+        RussianTitleTranslator.localize(try await catalog.anime(malIDs: malIDs))
+    }
+
     public func details(id: Int) async throws -> AnimeDetails {
         var details = try await catalog.details(id: id)
         if let malID = details.anime.malID, let russian = try? await metadata.details(malID: malID) {

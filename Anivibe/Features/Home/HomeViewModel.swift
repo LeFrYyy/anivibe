@@ -10,6 +10,8 @@ final class HomeViewModel {
     private(set) var recommendations: [Anime] = []
     private(set) var recommendationsBasis: String?
     private(set) var recentEpisodes: [AiredEpisode] = []
+    /// Популярная манга для блока на главной (экспериментальная функция).
+    private(set) var mangaRow: [Manga] = []
     @ObservationIgnored private var feedRequestID: UUID?
     @ObservationIgnored private var recentRequestID: UUID?
     @ObservationIgnored private var lastRecommendationSource: Int?
@@ -51,6 +53,15 @@ final class HomeViewModel {
         if let list = try? await catalog.recentEpisodes(),
            !Task.isCancelled, recentRequestID == requestID {
             recentEpisodes = list
+        }
+    }
+
+    /// Популярная манга грузится отдельно: её ошибка не ломает главную.
+    func loadManga(service: MangaService, enabled: Bool, force: Bool = false) async {
+        guard enabled else { mangaRow = []; return }
+        guard force || mangaRow.isEmpty else { return }
+        if let page = try? await service.popular(page: 1, limit: 15), !Task.isCancelled {
+            mangaRow = page.items
         }
     }
 

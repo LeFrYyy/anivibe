@@ -138,7 +138,10 @@ final class ImagePipeline: @unchecked Sendable {
                 return existing
             }
             let task = Task.detached(priority: .userInitiated) { [session] () async throws -> Data in
-                let (data, response) = try await session.data(from: url)
+                var request = URLRequest(url: url)
+                // MangaDex CDN требует Referer, остальные хосты его игнорируют.
+                if url.host == "uploads.mangadex.org" { request.setValue("https://mangadex.org", forHTTPHeaderField: "Referer") }
+                let (data, response) = try await session.data(for: request)
                 try Task.checkCancellation()
                 guard let response = response as? HTTPURLResponse,
                       (200..<300).contains(response.statusCode) else { throw URLError(.badServerResponse) }
