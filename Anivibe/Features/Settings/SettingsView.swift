@@ -57,6 +57,7 @@ struct SettingsView: View {
             } footer: {
                 Text("Anilibria — публичный API одноимённой студии озвучки: реальные серии с русской озвучкой в родном плеере. Выбор тайтлов и доступность — на стороне сервиса; правовой статус контента студии оценивайте сами. Тестовые потоки — демонстрационные видео Apple и Blender Foundation для проверки плеера, это не серии аниме.")
             }
+            experimentalSection
             Section("Каталог") {
                 LabeledContent("Источник метаданных", value: env.catalog.name)
                 Button(cacheCleared ? "Кэш очищен" : "Очистить кэш метаданных") {
@@ -74,6 +75,17 @@ struct SettingsView: View {
         .screenBackground()
         .navigationTitle("Настройки")
         .task { await reloadProviders() }
+    }
+
+    private var experimentalSection: some View {
+        Section {
+            @Bindable var settings = settings
+            Toggle("Манга", isOn: $settings.mangaExperimentalEnabled)
+        } header: {
+            Text("Экспериментальные функции")
+        } footer: {
+            Text("Добавляет вкладку «Манга» и блок на главной. Метаданные — Shikimori, главы на русском и обложки — MangaDex. Функция в разработке: переводы могут быть неполными.")
+        }
     }
 
     private func reloadProviders() async {

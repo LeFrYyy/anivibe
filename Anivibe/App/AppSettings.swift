@@ -33,12 +33,15 @@ final class AppSettings {
     var autoplayNextEpisode: Bool { didSet { defaults.set(autoplayNextEpisode, forKey: Keys.autoplay) } }
     var testStreamsEnabled: Bool { didSet { defaults.set(testStreamsEnabled, forKey: Keys.testStreams) } }
     var anilibriaEnabled: Bool { didSet { defaults.set(anilibriaEnabled, forKey: Keys.anilibria) } }
+    /// Экспериментальная вкладка и блоки манги (Shikimori + MangaDex).
+    var mangaExperimentalEnabled: Bool { didSet { defaults.set(mangaExperimentalEnabled, forKey: Keys.manga) } }
 
     private enum Keys {
         static let appearance = "settings.appearance"
         static let autoplay = "settings.autoplayNext"
         static let testStreams = "settings.testStreams"
         static let anilibria = "settings.anilibria"
+        static let manga = "settings.mangaExperimental"
     }
 
     init(defaults: UserDefaults = .standard, testStreamsDefault: Bool) {
@@ -49,6 +52,7 @@ final class AppSettings {
         autoplayNextEpisode = defaults.object(forKey: Keys.autoplay) as? Bool ?? true
         testStreamsEnabled = defaults.object(forKey: Keys.testStreams) as? Bool ?? testStreamsDefault
         anilibriaEnabled = defaults.object(forKey: Keys.anilibria) as? Bool ?? true
+        mangaExperimentalEnabled = defaults.object(forKey: Keys.manga) as? Bool ?? false
         // Read observable properties only after all stored properties are initialized.
         Theme.palette.hex = accentHex
     }

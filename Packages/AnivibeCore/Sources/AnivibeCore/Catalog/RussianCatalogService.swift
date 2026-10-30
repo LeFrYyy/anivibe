@@ -25,14 +25,24 @@ public actor RussianCatalogService: CatalogService {
         var russianHasMore = false
         if !q.trimmedSearch.isEmpty {
             let hasCyrillic = q.trimmedSearch.range(of: #"[А-Яа-яЁё]"#, options: .regularExpression) != nil
+            let dictionaryHits = q.page == 1 ? RussianTitleDictionary.matches(query: q.trimmedSearch, limit: q.perPage) : []
             var matches = (try? await metadata.search(q.trimmedSearch, page: q.page, limit: q.perPage)) ?? []
             if matches.isEmpty, hasCyrillic {
-                matches = (try? await metadata.search(CatalogSearchRanking.transliterate(q.trimmedSearch), page: q.page, limit: q.perPage)) ?? []
+                // Запрос на русском, Shikimori не нашёл: пробуем ромадзи из словаря, затем транслит («Ванпанчмен» → «vanpanchmen»).
+                for variant in Self.queryVariants(q.trimmedSearch, hits: dictionaryHits) where matches.isEmpty {
+                    matches = (try? await metadata.search(variant, page: q.page, limit: q.perPage)) ?? []
+                }
             }
             russianHasMore = matches.count == q.perPage
-            if !matches.isEmpty, let mapped = try? await catalog.anime(malIDs: matches.map(\.id)) {
-                let byID = Dictionary(matches.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-                items += mapped.map { anime in anime.malID.flatMap { byID[$0] }?.apply(to: anime) ?? anime }
+            let byMetadataID = Dictionary(matches.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            var wanted = matches.map(\.id)
+            let strongHits = dictionaryHits.filter { $0.score >= 500 }.map(\.entry.malID)
+            wanted += strongHits.filter { !byMetadataID.keys.contains($0) }
+            let known = Set(items.compactMap(\.malID))
+            var seenIDs = Set<Int>()
+            wanted = wanted.filter { !known.contains($0) && seenIDs.insert($0).inserted }
+            if !wanted.isEmpty, let mapped = try? await catalog.anime(malIDs: Array(wanted.prefix(50))) {
+                items += mapped.map { anime in anime.malID.flatMap { byMetadataID[$0] }?.apply(to: anime) ?? anime }
             }
             if q.page == 1, let data = await cache.data(for: "russian-name-index"), let known = try? JSONDecoder().decode([Anime].self, from: data) {
                 items += known.filter { CatalogSearchRanking.score(query: q.trimmedSearch, anime: $0) > 0 }
@@ -40,9 +50,10 @@ public actor RussianCatalogService: CatalogService {
         }
         try Task.checkCancellation()
         if items.isEmpty, let primaryError { throw primaryError }
+        items = RussianTitleTranslator.localize(items)
         var byID: [Int: Anime] = [:]
         for anime in items where Self.accepts(anime, query: q) {
-            if byID[anime.id] == nil || anime.title.russian != nil { byID[anime.id] = anime }
+            if byID[anime.id] == nil || (anime.title.russian != nil && byID[anime.id]?.title.russian == nil) { byID[anime.id] = anime }
         }
         let sorted = byID.values.sorted { a, b in
             switch q.effectiveSort {
@@ -62,11 +73,17 @@ public actor RussianCatalogService: CatalogService {
         await remember(sorted)
         return CatalogPage(items: sorted, page: base.page, hasNextPage: base.hasNextPage || russianHasMore)
     }
+    public func anime(malIDs: [Int]) async throws -> [Anime] {
+        RussianTitleTranslator.localize(try await catalog.anime(malIDs: malIDs))
+    }
+
     public func details(id: Int) async throws -> AnimeDetails {
         var details = try await catalog.details(id: id)
         if let malID = details.anime.malID, let russian = try? await metadata.details(malID: malID) {
             details.anime = russian.apply(to: details.anime)
         }
+        details.anime = RussianTitleTranslator.localize(details.anime)
+        details.relations = details.relations.map { RelatedAnime(relation: $0.relation, anime: RussianTitleTranslator.localize($0.anime)) }
         try Task.checkCancellation()
         await remember([details.anime])
         return details
@@ -89,9 +106,18 @@ public actor RussianCatalogService: CatalogService {
             let group = Array(ids[offset..<min(ids.count, offset + 50)])
             for metadata in (try? await metadata.titles(malIDs: group)) ?? [] { byID[metadata.id] = metadata }
         }
-        let localized = items.map { anime in anime.malID.flatMap { byID[$0] }?.apply(to: anime) ?? anime }
+        let localized = RussianTitleTranslator.localize(items.map { anime in anime.malID.flatMap { byID[$0] }?.apply(to: anime) ?? anime })
         await remember(localized)
         return localized
+    }
+
+    /// Варианты запроса для Shikimori, когда поиск по русскому тексту ничего не дал.
+    static func queryVariants(_ text: String, hits: [(entry: RussianTitleDictionary.Entry, score: Int)]) -> [String] {
+        var variants: [String] = []
+        for hit in hits.prefix(2) where hit.score >= 500 { variants.append(hit.entry.romaji) }
+        let latin = CatalogSearchRanking.transliterate(text)
+        if latin != text { variants.append(latin) }
+        return variants
     }
     private func remember(_ items: [Anime]) async {
         let known: [Anime]

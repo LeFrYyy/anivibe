@@ -19,12 +19,17 @@ final class AppEnvironment {
     let kodik: KodikClient?
     /// Пользовательские папки с аниме на главной.
     let collections: CollectionsStore
+    /// Каталог и читалка манги (экспериментальная функция, гейтится настройкой).
+    let manga: MangaService
+    /// Статусы и прогресс чтения манги (локальное хранилище).
+    let mangaLibrary = MangaLibraryStore()
     @ObservationIgnored private var started = false
 
     init(configuration: AppConfiguration, catalog: CatalogService, registry: ProviderRegistry, library: LibraryStore,
-         session: SessionStore, settings: AppSettings, cache: MetadataCache, kodik: KodikClient? = nil, socialService: SupabaseSocialService? = nil, communityService: SupabaseCommunityService? = nil) {
+         session: SessionStore, settings: AppSettings, cache: MetadataCache, kodik: KodikClient? = nil, socialService: SupabaseSocialService? = nil, communityService: SupabaseCommunityService? = nil, manga: MangaService) {
         self.configuration = configuration
         self.catalog = catalog
+        self.manga = manga
         self.registry = registry
         self.library = library
         self.session = session
@@ -94,8 +99,15 @@ final class AppEnvironment {
         let settings = AppSettings(testStreamsDefault: config.testStreamsEnabledByDefault)
 
 
+        let manga: MangaService = MangaHub(
+            catalog: ShikimoriMangaService(transport: transport, cache: cache),
+            lib: LibSocialService(transport: transport, cache: cache),
+            senkuro: SenkuroService(transport: transport, cache: cache),
+            reader: MangaDexService(transport: transport, cache: cache),
+            cache: cache)
+
         return AppEnvironment(configuration: config, catalog: catalog, registry: registry, library: library,
-                              session: session, settings: settings, cache: cache, kodik: kodik, socialService: socialService, communityService: communityService)
+                              session: session, settings: settings, cache: cache, kodik: kodik, socialService: socialService, communityService: communityService, manga: manga)
     }
 
     func start() async {

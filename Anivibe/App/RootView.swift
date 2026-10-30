@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppTab: Hashable { case home, catalog, library, profile }
+enum AppTab: Hashable { case home, catalog, manga, library, profile }
 
 struct RootView: View {
     @Environment(AppEnvironment.self) private var env
@@ -19,6 +19,11 @@ struct RootView: View {
                 CatalogView()
                     .tabItem { Label("Каталог", systemImage: "square.grid.2x2") }
                     .tag(AppTab.catalog)
+                if env.settings.mangaExperimentalEnabled {
+                    MangaCatalogView()
+                        .tabItem { Label("Манга", systemImage: "book") }
+                        .tag(AppTab.manga)
+                }
                 LibraryView()
                     .tabItem { Label("Библиотека", systemImage: "books.vertical") }
                     .tag(AppTab.library)

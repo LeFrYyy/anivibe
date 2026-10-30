@@ -30,6 +30,8 @@ enum Theme {
     }
     static let secondaryAccent = Color(light: 0x0E8FC2, dark: 0x5CC8F2)
     static let danger = Color(light: 0xC62E3A, dark: 0xFF6B6B)
+    /// Акцент экранов манги — следует за пользовательским акцентом из настроек.
+    static var mangaAccent: Color { accent }
     static let success = Color(light: 0x1E8E5A, dark: 0x4CD18F)
 
     enum Spacing {
