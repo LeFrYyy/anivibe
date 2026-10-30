@@ -25,7 +25,7 @@ struct MangaReaderView: View {
     private var nextChapter: MangaChapter? { currentIndex.flatMap { $0 < allChapters.count - 1 ? allChapters[$0 + 1] : nil } }
 
     var body: some View {
-        ScrollView {
+        ZoomableScrollView {
             LazyVStack(spacing: 0) {
                 if model.loading && model.pages.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)

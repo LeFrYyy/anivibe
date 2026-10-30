@@ -135,9 +135,11 @@ public actor SenkuroService {
     public func chapters(branchID: String, slug: String) async throws -> [MangaChapter] {
         var result: [MangaChapter] = []
         var cursor: String? = nil
-        for _ in 0..<10 {
+        // Сервер отдаёт максимум 100 глав за запрос независимо от `first` —
+        // для больших тайтлов (Ван-Пис, 1204 главы) нужны все страницы.
+        for _ in 0..<40 {
             let after = cursor.map { ", after:\"\($0)\"" } ?? ""
-            let q = "{ mangaChapters(branchId:\"\(branchID)\", first:200\(after)){ edges { node { slug number name } } pageInfo { hasNextPage endCursor } } }"
+            let q = "{ mangaChapters(branchId:\"\(branchID)\", first:100\(after)){ edges { node { slug number name } } pageInfo { hasNextPage endCursor } } }"
             let dto: GQLResponse<ChaptersData> = try await gql(q)
             guard let conn = dto.data?.mangaChapters, let edges = conn.edges else { break }
             for edge in edges {
