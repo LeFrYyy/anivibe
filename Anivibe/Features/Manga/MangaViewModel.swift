@@ -82,7 +82,7 @@ final class MangaDetailsViewModel {
             async let adaptationsTask = catalog.anime(malIDs: details.animeMALIDs)
             async let chaptersTask = service.chapters(of: details)
             adaptations = (try? await adaptationsTask) ?? []
-            chapters = await chaptersTask
+            chapters = (try? await chaptersTask) ?? []
             guard !Task.isCancelled else { return }
             chaptersState = chapters.isEmpty ? .empty : .loaded
         } catch {
