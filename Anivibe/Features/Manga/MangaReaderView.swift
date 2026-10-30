@@ -10,6 +10,7 @@ struct MangaReaderView: View {
     /// ID манги (Shikimori) — прочитанные главы пишутся в `mangaLibrary`.
     let mangaID: Int
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model = MangaReaderViewModel()
     @State private var currentChapter: MangaChapter
     @State private var zoom: CGFloat = 1
@@ -68,7 +69,7 @@ struct MangaReaderView: View {
                 }
         )
         .onTapGesture(count: 2) {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(AppMotion.selection(reduceMotion: reduceMotion)) {
                 zoom = 1
                 focus = .center
             }
