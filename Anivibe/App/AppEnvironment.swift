@@ -93,7 +93,7 @@ final class AppEnvironment {
             communityService = SupabaseCommunityService(config: supa, auth: client, transport: transport)
             sync = SupabaseSyncService(config: supa, transport: transport, auth: client, library: repository)
         }
-        let session = SessionStore(auth: auth, sync: sync, library: library, collections: CollectionsStore())
+        let session = SessionStore(auth: auth, sync: sync, library: library, collections: CollectionsStore(), tierList: TierListStore())
         let settings = AppSettings(testStreamsDefault: config.testStreamsEnabledByDefault)
 
 

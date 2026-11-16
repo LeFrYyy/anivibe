@@ -28,7 +28,7 @@ final class SessionStore {
     var isBackendConfigured: Bool { auth != nil }
     var isSignedIn: Bool { user != nil }
 
-    init(auth: SupabaseAuthClient?, sync: SupabaseSyncService?, library: LibraryStore, collections: CollectionsStore, tierList: TierListStore = TierListStore()) {
+    init(auth: SupabaseAuthClient?, sync: SupabaseSyncService?, library: LibraryStore, collections: CollectionsStore, tierList: TierListStore) {
         self.auth = auth
         self.sync = sync
         self.library = library
