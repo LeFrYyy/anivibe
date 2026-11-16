@@ -14,7 +14,7 @@ final class FeatureUpdate202611Tests: XCTestCase {
             LibraryEntry(anime: AnimeSnapshot(id: 4, title: "OnHold"), status: .onHold, updatedAt: baseDate.addingTimeInterval(30)),
             LibraryEntry(anime: AnimeSnapshot(id: 5, title: "Dropped"), status: .dropped, updatedAt: baseDate.addingTimeInterval(40)),
             LibraryEntry(anime: AnimeSnapshot(id: 6, title: "FavOnly"), status: nil, isFavorite: true, updatedAt: baseDate.addingTimeInterval(50)),
-            LibraryEntry(anime: AnimeSnapshot(id: 7, title: "Deleted"), status: .watching, isDeleted: true, updatedAt: baseDate.addingTimeInterval(60)),
+            LibraryEntry(anime: AnimeSnapshot(id: 7, title: "Deleted"), status: .watching, updatedAt: baseDate.addingTimeInterval(60), isDeleted: true),
             LibraryEntry(anime: AnimeSnapshot(id: 8, title: "Empty"), status: nil, isFavorite: false, updatedAt: baseDate.addingTimeInterval(70))
         ]
         let snapshot = LibrarySnapshot(entries: entries)
