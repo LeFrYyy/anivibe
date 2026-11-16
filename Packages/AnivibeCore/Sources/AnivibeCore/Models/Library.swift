@@ -9,7 +9,7 @@ public enum LibraryStatus: String, Codable, CaseIterable, Sendable {
         switch self {
         case .watching: return "Смотрю"
         case .completed: return "Просмотрено"
-        case .planned: return "Запланировано"
+        case .planned: return "В планах"
         case .onHold: return "Отложено"
         case .dropped: return "Брошено"
         }
@@ -195,6 +195,19 @@ public struct LibrarySnapshot: Codable, Hashable, Sendable {
 
     public func entries(in status: LibraryStatus) -> [LibraryEntry] {
         visibleEntries.filter { $0.status == status }.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// Все видимые записи библиотеки с любым установленным статусом или в избранном, от новых к старым.
+    public var allListEntries: [LibraryEntry] {
+        visibleEntries.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// Подсчёт записей строго по статусу (один проход).
+    public var statusCounts: [LibraryStatus: Int] {
+        entries.reduce(into: [:]) { result, entry in
+            guard !entry.isDeleted, !entry.isEmpty, let status = entry.status else { return }
+            result[status, default: 0] += 1
+        }
     }
 
     public var favorites: [LibraryEntry] {

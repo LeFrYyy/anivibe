@@ -59,8 +59,9 @@ enum AniListQueries {
     static let genres = "query { GenreCollection }"
 
     static let recentEpisodes = """
-    query ($from: Int, $to: Int, $perPage: Int) {
-      Page(page: 1, perPage: $perPage) {
+    query ($page: Int, $from: Int, $to: Int, $perPage: Int) {
+      Page(page: $page, perPage: $perPage) {
+        pageInfo { currentPage hasNextPage }
         airingSchedules(airingAt_greater: $from, airingAt_lesser: $to, sort: [TIME_DESC]) {
           episode
           airingAt

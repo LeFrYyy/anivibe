@@ -12,6 +12,7 @@ struct ProfileView: View {
     @State private var editProfile = false
     @State private var confirmSignOut = false
     @State private var confirmImportFolders = false
+    @State private var selectedListFilter: ProfileListFilter = .all
 
     private var currentProfile: UserProfile? {
         guard let profile = social.profile, profile.userID == session.user?.id else { return nil }
@@ -35,6 +36,8 @@ struct ProfileView: View {
                         }.buttonStyle(.plain)
                     }
                     quickStats
+                    TierListProfileCard()
+                    profileListsSection
                     libraryStats
                     if !session.isBackendConfigured { localMode }
                     else if session.user == nil {
@@ -157,11 +160,168 @@ struct ProfileView: View {
         }
     }
 
-    private var libraryStats: some View {
-        // Single unsorted pass, rather than filtering and sorting for each counter.
-        let counts = library.snapshot.entries.reduce(into: [LibraryStatus: Int]()) { counts, entry in
-            if !entry.isDeleted, !entry.isEmpty, let status = entry.status { counts[status, default: 0] += 1 }
+    private enum ProfileListFilter: Hashable, CaseIterable, Identifiable {
+        case all
+        case status(LibraryStatus)
+
+        static var allCases: [ProfileListFilter] {
+            [.all, .status(.watching), .status(.completed), .status(.planned), .status(.onHold), .status(.dropped)]
         }
+
+        var id: String {
+            switch self {
+            case .all: return "all"
+            case .status(let s): return s.rawValue
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .all: return "Все"
+            case .status(let s): return s.localizedName
+            }
+        }
+
+        var section: LibrarySection {
+            switch self {
+            case .all: return .all
+            case .status(let s): return .list(s)
+            }
+        }
+
+        var emptyIcon: String {
+            switch self {
+            case .all: return "books.vertical"
+            case .status(let s): return s.systemImage
+            }
+        }
+
+        var emptyText: String {
+            switch self {
+            case .all: return "Список пуст. Добавляйте тайтлы со страницы аниме."
+            case .status(.watching): return "В категории «Смотрю» пока нет тайтлов."
+            case .status(.completed): return "В категории «Просмотрено» пока нет тайтлов."
+            case .status(.planned): return "В категории «В планах» пока нет тайтлов."
+            case .status(.onHold): return "В категории «Отложено» пока нет тайтлов."
+            case .status(.dropped): return "В категории «Брошено» пока нет тайтлов."
+            }
+        }
+    }
+
+    private var profileListsSection: some View {
+        let counts = library.snapshot.statusCounts
+        let allEntries = library.snapshot.allListEntries
+        let filtered: [LibraryEntry] = switch selectedListFilter {
+        case .all: allEntries
+        case .status(let status): library.snapshot.entries(in: status)
+        }
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Мои списки").font(.title3.bold())
+                Spacer()
+                NavigationLink(value: selectedListFilter.section) {
+                    Text("Открыть").font(.subheadline.weight(.semibold)).frame(minHeight: 44)
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.s) {
+                    ForEach(ProfileListFilter.allCases) { filter in
+                        let count: Int = switch filter {
+                        case .all: allEntries.count
+                        case .status(let s): counts[s, default: 0]
+                        }
+                        let isSelected = selectedListFilter == filter
+                        Button {
+                            selectedListFilter = filter
+                        } label: {
+                            Text("\(filter.title) (\(count))")
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                                .padding(.horizontal, 12)
+                                .frame(minHeight: 36)
+                                .background(Capsule().fill(isSelected ? Theme.accent : Theme.surfaceElevated))
+                                .foregroundStyle(isSelected ? Theme.onAccent : Theme.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    }
+                }
+            }
+            if filtered.isEmpty {
+                HStack(spacing: 12) {
+                    Image(systemName: selectedListFilter.emptyIcon)
+                        .font(.title3)
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 28)
+                    Text(selectedListFilter.emptyText)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(filtered.prefix(6)) { entry in
+                        NavigationLink(value: entry.anime) {
+                            HStack(spacing: 12) {
+                                PosterImage(url: entry.anime.coverURL, cornerRadius: 8)
+                                    .frame(width: 42, height: 63)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(entry.anime.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(Theme.textPrimary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                        .truncationMode(.tail)
+                                    HStack(spacing: 6) {
+                                        if let status = entry.status {
+                                            Text(status.localizedName)
+                                        } else if entry.isFavorite {
+                                            Text("Избранное")
+                                        }
+                                        if let last = entry.lastEpisode {
+                                            Text("· Серия \(last)")
+                                        }
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .lineLimit(1)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if entry.id != filtered.prefix(6).last?.id {
+                            Divider()
+                        }
+                    }
+                    if filtered.count > 6 {
+                        NavigationLink(value: selectedListFilter.section) {
+                            HStack {
+                                Text("Показать все (\(filtered.count))")
+                                    .font(.subheadline.weight(.semibold))
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(Theme.accent)
+                            .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .profilePanel()
+    }
+
+    private var libraryStats: some View {
+        let counts = library.snapshot.statusCounts
         return VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Статистика").font(.title3.bold())

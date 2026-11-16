@@ -206,7 +206,7 @@ struct HomeView: View {
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: Theme.Spacing.m) {
-                        ForEach(model.recentEpisodes.prefix(20)) { item in
+                        ForEach(model.recentEpisodes.prefix(50)) { item in
                             NavigationLink(value: item.anime) {
                                 PosterCard(title: item.anime.title.preferred, coverURL: item.anime.coverURL,
                                            colorHex: item.anime.coverColorHex,
@@ -342,29 +342,36 @@ struct RecentEpisodesView: View {
     }
 
     var body: some View {
-        List(items) { item in
-            NavigationLink(value: item.anime) {
-                HStack(spacing: Theme.Spacing.m) {
-                    PosterImage(url: item.anime.coverURL, placeholderColorHex: item.anime.coverColorHex)
-                        .frame(width: 50, height: 50 / Theme.posterAspect)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.anime.title.preferred)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(2)
-                        Text("Серия \(item.episode)")
-                            .font(.footnote)
-                            .foregroundStyle(Theme.accent)
-                        Text(Self.relative(item.airedAt))
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary)
+        Group {
+            if items.isEmpty {
+                EmptyStateView(systemImage: "sparkles.tv", title: "Пока пусто",
+                               message: "За последние 7 дней новых серий не найдено.")
+            } else {
+                List(items) { item in
+                    NavigationLink(value: item.anime) {
+                        HStack(spacing: Theme.Spacing.m) {
+                            PosterImage(url: item.anime.coverURL, placeholderColorHex: item.anime.coverColorHex)
+                                .frame(width: 50, height: 50 / Theme.posterAspect)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.anime.title.preferred)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .lineLimit(2)
+                                Text("Серия \(item.episode)")
+                                    .font(.footnote)
+                                    .foregroundStyle(Theme.accent)
+                                Text(Self.relative(item.airedAt))
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
                     }
                 }
-                .padding(.vertical, 4)
+                .listStyle(.plain)
             }
         }
-        .listStyle(.plain)
-        .navigationTitle("Недавно вышедшие")
+        .navigationTitle("Недавно вышедшие · 7 дней")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

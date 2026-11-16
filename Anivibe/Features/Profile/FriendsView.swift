@@ -167,6 +167,9 @@ struct PublicProfileView: View {
                         NavigationLink("Уровень дружбы и ежедневное задание") { FriendshipProgressView(peerId: profile.userID) }
                     }
                     counters(details)
+                    if let tierList = details.tierList, !tierList.isEmpty {
+                        PublicTierListSection(tierList: tierList)
+                    }
                     friendPreview(details)
                     historyPreview(details)
                     libraryPreview(details)
@@ -318,12 +321,51 @@ private struct SocialFriendsList: View {
 
 private struct SocialActivityList: View {
     enum Kind: Equatable { case history, library }
+    enum LibraryFilter: Hashable, CaseIterable, Identifiable {
+        case all
+        case status(LibraryStatus)
+        static var allCases: [LibraryFilter] {
+            [.all, .status(.watching), .status(.completed), .status(.planned), .status(.onHold), .status(.dropped)]
+        }
+        var id: String {
+            switch self {
+            case .all: return "all"
+            case .status(let s): return s.rawValue
+            }
+        }
+        var title: String {
+            switch self {
+            case .all: return "Все"
+            case .status(let s): return s.localizedName
+            }
+        }
+    }
+
     @Bindable var data: SocialProfileStore
     let kind: Kind
     @Environment(AppEnvironment.self) private var env
     @Environment(SessionStore.self) private var session
     @Environment(\.dismiss) private var dismiss
     @State private var viewerID: String?
+    @State private var libraryFilter: LibraryFilter = .all
+
+    private var filteredEntries: [LibraryEntry] {
+        let valid = data.entries.filter { !$0.isDeleted && !$0.isEmpty }
+        switch libraryFilter {
+        case .all: return valid
+        case .status(let status): return valid.filter { $0.status == status }
+        }
+    }
+
+    private func filterCount(_ filter: LibraryFilter) -> Int {
+        switch filter {
+        case .all:
+            return data.details?.stats?["titles"] ?? data.entries.filter { !$0.isDeleted && !$0.isEmpty }.count
+        case .status(let status):
+            return data.details?.stats?[status.rawValue] ?? data.entries.filter { !$0.isDeleted && $0.status == status }.count
+        }
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
@@ -338,10 +380,35 @@ private struct SocialActivityList: View {
                     if data.historyHasMore { Button("Загрузить ещё") { Task { await data.moreHistory(service: env.socialService) } }.frame(minHeight: 44).disabled(data.isPaging || data.isLoading) }
                 } else {
                     if data.details?.libraryAllowed != true { SocialPrivacyNote(text: "Библиотека закрыта владельцем.").profilePanel() }
-                    else if data.entries.isEmpty { SocialEmptyPanel(icon: "books.vertical", title: "Библиотека пока пуста", message: "Здесь будут списки и избранное пользователя.") }
                     else {
-                        ForEach(data.entries) { entry in
-                            NavigationLink { AnimeDetailsView(snapshot: entry.anime) } label: { SocialAnimeRow(anime: entry.anime, subtitle: (entry.status?.localizedName ?? "Без списка") + (entry.isFavorite ? " · Избранное" : "")).profilePanel() }.buttonStyle(.plain)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: Theme.Spacing.s) {
+                                ForEach(LibraryFilter.allCases) { filter in
+                                    let isSelected = libraryFilter == filter
+                                    Button {
+                                        libraryFilter = filter
+                                    } label: {
+                                        Text("\(filter.title) (\(filterCount(filter)))")
+                                            .font(.caption.weight(.semibold))
+                                            .lineLimit(1)
+                                            .padding(.horizontal, 12)
+                                            .frame(minHeight: 36)
+                                            .background(Capsule().fill(isSelected ? Theme.accent : Theme.surfaceElevated))
+                                            .foregroundStyle(isSelected ? Theme.onAccent : Theme.textPrimary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                                }
+                            }
+                        }
+                        if filteredEntries.isEmpty {
+                            SocialEmptyPanel(icon: "books.vertical",
+                                             title: libraryFilter == .all ? "Библиотека пока пуста" : "В «\(libraryFilter.title)» пока пусто",
+                                             message: data.libraryHasMore ? "Загрузите остальные записи ниже, чтобы проверить эту категорию." : "В этой категории нет добавленных тайтлов.")
+                        } else {
+                            ForEach(filteredEntries) { entry in
+                                NavigationLink { AnimeDetailsView(snapshot: entry.anime) } label: { SocialAnimeRow(anime: entry.anime, subtitle: (entry.status?.localizedName ?? "Без списка") + (entry.isFavorite ? " · Избранное" : "")).profilePanel() }.buttonStyle(.plain)
+                            }
                         }
                     }
                     if data.libraryHasMore { Button("Загрузить ещё") { Task { await data.moreLibrary(service: env.socialService) } }.frame(minHeight: 44).disabled(data.isPaging || data.isLoading) }

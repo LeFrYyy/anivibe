@@ -19,6 +19,8 @@ final class AppEnvironment {
     let kodik: KodikClient?
     /// Пользовательские папки с аниме на главной.
     let collections: CollectionsStore
+    /// Персональный тир-лист (Beta).
+    let tierList: TierListStore
     @ObservationIgnored private var started = false
 
     init(configuration: AppConfiguration, catalog: CatalogService, registry: ProviderRegistry, library: LibraryStore,
@@ -29,6 +31,7 @@ final class AppEnvironment {
         self.library = library
         self.session = session
         self.collections = session.collections
+        self.tierList = session.tierList
         self.settings = settings
         self.cache = cache
         self.kodik = kodik

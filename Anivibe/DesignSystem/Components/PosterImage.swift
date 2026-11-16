@@ -31,9 +31,16 @@ struct PosterImage: View {
                         .scaledToFill()
                         .transition(.opacity)
                 } else if failed || url == nil {
-                    Image(systemName: "photo")
-                        .font(.title2)
-                        .foregroundStyle(Theme.textSecondary.opacity(0.6))
+                    VStack(spacing: 4) {
+                        Image(systemName: failed ? "exclamationmark.triangle" : "photo")
+                            .font(failed ? .callout : .title2)
+                            .foregroundStyle(Theme.textSecondary.opacity(0.65))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .strokeBorder(Theme.separator.opacity(0.55), lineWidth: 0.75)
+                    }
                 }
             }
             .clipped()

@@ -2,14 +2,15 @@ import SwiftUI
 import AnivibeCore
 
 enum LibrarySection: Hashable, CaseIterable, Identifiable {
-    case list(LibraryStatus), favorites, history
+    case all, list(LibraryStatus), favorites, history
 
     static var allCases: [LibrarySection] {
-        [.list(.watching), .list(.planned), .list(.onHold), .list(.completed), .list(.dropped), .favorites, .history]
+        [.all, .list(.watching), .list(.completed), .list(.planned), .list(.onHold), .list(.dropped), .favorites, .history]
     }
 
     var id: String {
         switch self {
+        case .all: return "all"
         case .list(let s): return s.rawValue
         case .favorites: return "favorites"
         case .history: return "history"
@@ -18,6 +19,7 @@ enum LibrarySection: Hashable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .all: return "Все"
         case .list(let s): return s.localizedName
         case .favorites: return "Избранное"
         case .history: return "История"
@@ -60,8 +62,9 @@ struct LibraryView: View {
                             Button {
                                 section = s
                             } label: {
-                                Text("\(s.title) \(countLabel(counts[s, default: 0]))")
+                                Text("\(s.title) (\(counts[s, default: 0]))")
                                     .font(.subheadline.weight(.medium))
+                                    .lineLimit(1)
                                     .padding(.horizontal, 14).frame(minHeight: 44)
                                     .background {
                                         Capsule().fill(Theme.surfaceElevated)
@@ -98,38 +101,60 @@ struct LibraryView: View {
 
     /// One pass per body evaluation, not one full scan for every status chip.
     private var sectionCounts: [LibrarySection: Int] {
-        var result: [LibrarySection: Int] = [.history: library.snapshot.history.count]
-        for entry in library.snapshot.entries where !entry.isDeleted {
+        var result: [LibrarySection: Int] = [.history: library.snapshot.history.count, .all: 0]
+        for entry in library.snapshot.entries where !entry.isDeleted && !entry.isEmpty {
+            result[.all, default: 0] += 1
             if let status = entry.status { result[.list(status), default: 0] += 1 }
             if entry.isFavorite { result[.favorites, default: 0] += 1 }
         }
         return result
     }
 
-    private func countLabel(_ value: Int) -> String {
-        value > 0 ? "· \(value)" : ""
-    }
-
     @ViewBuilder private var content: some View {
         switch section {
+        case .all: entriesList(library.snapshot.allListEntries, for: .all)
         case .history: historyList
-        case .favorites: entriesList(library.snapshot.favorites)
-        case .list(let status): entriesList(library.snapshot.entries(in: status))
+        case .favorites: entriesList(library.snapshot.favorites, for: .favorites)
+        case .list(let status): entriesList(library.snapshot.entries(in: status), for: .list(status))
         }
     }
 
-    @ViewBuilder private func entriesList(_ entries: [LibraryEntry]) -> some View {
+    private func emptyMeta(for section: LibrarySection) -> (icon: String, title: String, message: String) {
+        switch section {
+        case .all:
+            return ("books.vertical", "Библиотека пуста", "Добавляйте тайтлы со страницы аниме — кнопки «В список» и «В избранное».")
+        case .favorites:
+            return ("heart", "В избранном пока пусто", "Нажмите на сердце на странице тайтла, чтобы сохранить его сюда.")
+        case .history:
+            return ("clock", "История пуста", "Здесь появятся просмотренные серии.")
+        case .list(let status):
+            switch status {
+            case .watching:
+                return (status.systemImage, "В «Смотрю» пока пусто", "Отмечайте тайтлы, которые смотрите сейчас.")
+            case .completed:
+                return (status.systemImage, "В «Просмотрено» пока пусто", "Завершённые аниме попадут в этот раздел.")
+            case .planned:
+                return (status.systemImage, "В «В планах» пока пусто", "Отложите сюда тайтлы, которые хотите посмотреть позже.")
+            case .onHold:
+                return (status.systemImage, "В «Отложено» пока пусто", "Пауза в просмотре — добавьте сюда поставленные на паузу тайтлы.")
+            case .dropped:
+                return (status.systemImage, "В «Брошено» пока пусто", "Сюда можно перенести тайтлы, которые вы решили не досматривать.")
+            }
+        }
+    }
+
+    @ViewBuilder private func entriesList(_ entries: [LibraryEntry], for currentSection: LibrarySection) -> some View {
         if entries.isEmpty {
-            EmptyStateView(systemImage: "tray", title: "Список пуст",
-                           message: "Добавляйте тайтлы со страницы аниме — кнопки «В список» и «В избранное».")
+            let empty = emptyMeta(for: currentSection)
+            EmptyStateView(systemImage: empty.icon, title: empty.title, message: empty.message)
                 .frame(maxHeight: .infinity)
         } else {
             List {
                 ForEach(entries) { entry in
                     NavigationLink(value: entry.anime) { LibraryRow(entry: entry) }
                         .swipeActions {
-                            Button(section == .favorites ? "Убрать из избранного" : "Убрать из списка", role: .destructive) {
-                                let removingFavorite = section == .favorites
+                            let removingFavorite = currentSection == .favorites || entry.status == nil
+                            Button(removingFavorite ? "Убрать из избранного" : "Убрать из списка", role: .destructive) {
                                 Task {
                                     if removingFavorite { await library.setFavorite(false, for: entry.anime) }
                                     else { await library.setStatus(nil, for: entry.anime) }

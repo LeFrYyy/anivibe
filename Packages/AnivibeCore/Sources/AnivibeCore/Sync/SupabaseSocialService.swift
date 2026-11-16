@@ -273,10 +273,12 @@ public struct SocialProfileDetails: Decodable, Sendable {
     public let historyHasMore: Bool
     public let libraryHasMore: Bool
     public let stats: [String: Int]?
+    public let tierList: TierList?
     enum CodingKeys: String, CodingKey {
         case profile, friends, history, library, stats
         case friendsCount = "friends_count", friendsAllowed = "friends_allowed", historyAllowed = "history_allowed", libraryAllowed = "library_allowed"
         case historyHasMore = "history_has_more", libraryHasMore = "library_has_more"
+        case tierList = "tier_list"
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -291,5 +293,6 @@ public struct SocialProfileDetails: Decodable, Sendable {
         historyHasMore = try c.decode(Bool.self, forKey: .historyHasMore)
         libraryHasMore = try c.decode(Bool.self, forKey: .libraryHasMore)
         stats = try c.decodeIfPresent([String: Int].self, forKey: .stats)
+        tierList = try? c.decodeIfPresent(TierList.self, forKey: .tierList)
     }
 }

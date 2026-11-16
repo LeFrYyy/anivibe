@@ -81,7 +81,15 @@ public actor RussianCatalogService: CatalogService {
                         recentlyAdded: list(home.recentlyAdded), seasonLabel: home.seasonLabel)
     }
     public func genres() async throws -> [String] { try await catalog.genres() }
-    public func recentEpisodes() async throws -> [AiredEpisode] { try await catalog.recentEpisodes() }
+    public func recentEpisodes() async throws -> [AiredEpisode] {
+        let episodes = try await catalog.recentEpisodes()
+        guard !episodes.isEmpty else { return [] }
+        let localized = await localize(episodes.map(\.anime))
+        let byID = Dictionary(localized.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return episodes.map { item in
+            AiredEpisode(anime: byID[item.anime.id] ?? item.anime, episode: item.episode, airedAt: item.airedAt)
+        }
+    }
     private func localize(_ items: [Anime]) async -> [Anime] {
         var byID: [Int: RussianMetadataService.Metadata] = [:]
         let ids = Array(Set(items.compactMap(\.malID))).sorted()

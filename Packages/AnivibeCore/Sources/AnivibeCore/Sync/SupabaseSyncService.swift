@@ -81,10 +81,22 @@ public actor SupabaseSyncService {
         return rows.filter { $0.user_id == expectedUserID }.map(\.model)
     }
 
+    public func syncTierList(_ local: TierList?, expectedUserID: String) async throws -> TierList? {
+        let session = try await auth.validSession()
+        guard session.user.id == expectedUserID else { throw AuthError.notSignedIn }
+        if let local {
+            try await upsert(table: "tier_lists", conflict: "user_id",
+                             rows: [TierListRow(tierList: local, userID: expectedUserID)], token: session.accessToken)
+        }
+        let rows: [TierListRow] = try await fetch(table: "tier_lists", timeColumn: "updated_at", since: nil, token: session.accessToken)
+        guard (try await auth.validSession()).user.id == expectedUserID else { throw AuthError.notSignedIn }
+        return rows.first(where: { $0.user_id == expectedUserID })?.data
+    }
+
     // MARK: - REST
 
     private func upsert<Row: Encodable>(table: String, conflict: String, rows: [Row], token: String) async throws {
-        let chunkSize = table == "account_collections" ? 1 : 200
+        let chunkSize = (table == "account_collections" || table == "tier_lists") ? 1 : 200
         for chunk in stride(from: 0, to: rows.count, by: chunkSize).map({ Array(rows[$0..<min($0 + chunkSize, rows.count)]) }) {
             var comps = URLComponents(url: config.url.appendingPathComponent("rest/v1/\(table)"), resolvingAgainstBaseURL: false)!
             comps.queryItems = [URLQueryItem(name: "on_conflict", value: conflict)]
@@ -101,7 +113,13 @@ public actor SupabaseSyncService {
     private func fetch<Row: Decodable>(table: String, timeColumn: String, since: Date?, token: String) async throws -> [Row] {
         var output: [Row] = []
         var offset = 0
-        let tieBreaker = (table == "watch_history" || table == "account_collections") ? "id.asc" : (table == "watch_progress" ? "anime_id.asc,episode.asc,source_key.asc" : "anime_id.asc")
+        let tieBreaker: String
+        switch table {
+        case "watch_history", "account_collections": tieBreaker = "id.asc"
+        case "tier_lists": tieBreaker = "user_id.asc"
+        case "watch_progress": tieBreaker = "anime_id.asc,episode.asc,source_key.asc"
+        default: tieBreaker = "anime_id.asc"
+        }
         while true {
             try Task.checkCancellation()
             var comps = URLComponents(url: config.url.appendingPathComponent("rest/v1/\(table)"), resolvingAgainstBaseURL: false)!
@@ -262,5 +280,21 @@ struct CollectionRow: Codable {
     }
     var model: CollectionSyncRecord {
         CollectionSyncRecord(folder: folder, rank: sort_order, updatedAt: updated_at, mutationID: mutation_id, isDeleted: is_deleted)
+    }
+}
+
+struct TierListRow: Codable {
+    let user_id: String
+    let visibility: String
+    let data: TierList
+    let updated_at: Date
+    let mutation_id: UUID
+
+    init(tierList: TierList, userID: String) {
+        user_id = userID
+        visibility = tierList.visibility.rawValue
+        data = tierList
+        updated_at = tierList.updatedAt
+        mutation_id = tierList.mutationID
     }
 }

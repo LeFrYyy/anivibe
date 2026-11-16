@@ -21,19 +21,22 @@ final class SessionStore {
     private let sync: SupabaseSyncService?
     private let library: LibraryStore
     let collections: CollectionsStore
+    let tierList: TierListStore
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
     @ObservationIgnored private var needsAnotherSync = false
 
     var isBackendConfigured: Bool { auth != nil }
     var isSignedIn: Bool { user != nil }
 
-    init(auth: SupabaseAuthClient?, sync: SupabaseSyncService?, library: LibraryStore, collections: CollectionsStore) {
+    init(auth: SupabaseAuthClient?, sync: SupabaseSyncService?, library: LibraryStore, collections: CollectionsStore, tierList: TierListStore = TierListStore()) {
         self.auth = auth
         self.sync = sync
         self.library = library
         self.collections = collections
+        self.tierList = tierList
         library.onLocalChange = { [weak self] in self?.scheduleSync() }
         collections.onLocalChange = { [weak self] in self?.scheduleSync() }
+        tierList.onLocalChange = { [weak self] in self?.scheduleSync() }
     }
 
     func restore() async {
@@ -41,7 +44,7 @@ final class SessionStore {
         user = await auth.currentSession?.user
         do { try await activateStorage(userID: user?.id) }
         catch {
-            library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure()
+            library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure(); tierList.clearVisibleOnAccountFailure()
             errorMessage = "Не удалось открыть данные аккаунта. Исходные файлы сохранены."; user = nil; return
         }
         lastSync = library.snapshot.lastSyncAt
@@ -114,7 +117,7 @@ final class SessionStore {
         user = nil
         AvatarImageLoader.shared.reset()
         do { try await activateStorage(userID: nil) }
-        catch { library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure(); errorMessage = "Не удалось восстановить локальные данные. Файлы не изменены." }
+        catch { library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure(); tierList.clearVisibleOnAccountFailure(); errorMessage = "Не удалось восстановить локальные данные. Файлы не изменены." }
         lastSync = nil
         lastSyncMessage = nil
     }
@@ -134,6 +137,15 @@ final class SessionStore {
             let remoteFolders = try await sync.syncCollections(localFolders, expectedUserID: account)
             guard user?.id == account else { return }
             try collections.mergeRemote(remoteFolders, accountID: account)
+            // Tier list sync stays isolated so an unmigrated backend does not block library/folder sync.
+            if let localTier = try? tierList.payloadForSync(accountID: account),
+               let remoteTier = try? await sync.syncTierList(localTier, expectedUserID: account),
+               user?.id == account {
+                try? tierList.mergeRemote(remoteTier, accountID: account)
+            } else if let remoteTier = try? await sync.syncTierList(nil, expectedUserID: account),
+                      user?.id == account {
+                try? tierList.mergeRemote(remoteTier, accountID: account)
+            }
             lastSync = report.finishedAt
             lastSyncMessage = "Библиотека и папки обновлены. Отправлено: \(report.pushed + localFolders.count), получено: \(report.pulled + remoteFolders.count)"
             await library.refresh()
@@ -141,7 +153,7 @@ final class SessionStore {
             guard user?.id == account else { return }
             if e == .sessionExpired || e == .notSignedIn {
                 user = nil; AvatarImageLoader.shared.reset()
-                do { try await activateStorage(userID: nil) } catch { library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure() }
+                do { try await activateStorage(userID: nil) } catch { library.hideVisibleOnAccountFailure(); collections.clearVisibleOnAccountFailure(); tierList.clearVisibleOnAccountFailure() }
             }
             lastSyncMessage = e.userMessage
         } catch let e as APIError {
@@ -158,8 +170,10 @@ final class SessionStore {
     private func activateStorage(userID: String?) async throws {
         // Prepare destination folders before changing either visible account store.
         let prepared = try collections.prepareAccount(userID)
+        let preparedTier = try tierList.prepareAccount(userID)
         try await library.repository.switchAccount(userID: userID)
         collections.activate(prepared, userID: userID)
+        tierList.activate(preparedTier, userID: userID)
         library.allowAccountStorage()
         AvatarImageLoader.shared.reset()
         await library.refresh()

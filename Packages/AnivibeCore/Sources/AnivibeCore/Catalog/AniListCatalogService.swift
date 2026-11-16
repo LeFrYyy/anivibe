@@ -73,21 +73,65 @@ public final class AniListCatalogService: CatalogService, @unchecked Sendable {
                         recentlyAdded: list(dto.recent), seasonLabel: "\(current.season.localizedName) \(current.year)")
     }
 
-    /// Серии, вышедшие за последние 3 дня (расписание AniList), без малоизвестных тайтлов и 18+.
+    /// Серии, вышедшие за последние 7 дней (168 часов) по расписанию AniList, без 18+ и малоизвестных тайтлов.
+    /// Сортировка строго от самых свежих к более старым; догружает страницы, чтобы свежие тайтлы не вытеснялись лимитом.
     public func recentEpisodes() async throws -> [AiredEpisode] {
         // Округляем «сейчас» до 10 минут, чтобы кэш ответа работал.
-        let nowStamp = Int(now().timeIntervalSince1970) / 600 * 600
-        let vars: [String: JSONValue] = ["from": .int(nowStamp - 3 * 24 * 3600), "to": .int(nowStamp + 1), "perPage": .int(50)]
-        let dto: RecentEpisodesResponseDTO = try await perform(query: AniListQueries.recentEpisodes, variables: vars,
-                                                               cacheTTLKey: "recent-episodes")
-        var seen = Set<Int>()
-        return (dto.Page?.airingSchedules ?? []).compactMap { $0 }.compactMap { item -> AiredEpisode? in
-            guard let media = item.media, media.isAdult != true, let episode = item.episode, let at = item.airingAt,
-                  (item.popularity ?? 0) >= 500 else { return nil }
-            let anime = media.model
-            // Один тайтл — одна карточка (самая свежая серия).
-            guard seen.insert(anime.id).inserted else { return nil }
-            return AiredEpisode(anime: anime, episode: episode, airedAt: Date(timeIntervalSince1970: TimeInterval(at)))
+        let nowDate = now()
+        let nowStamp = Int(nowDate.timeIntervalSince1970) / 600 * 600
+        let windowSeconds = 7 * 24 * 3600
+        let fromStamp = nowStamp - windowSeconds
+        let minDate = Date(timeIntervalSince1970: TimeInterval(fromStamp))
+        let maxDate = Date(timeIntervalSince1970: TimeInterval(nowStamp + 1))
+
+        var byAnimeID: [Int: AiredEpisode] = [:]
+        let maxPages = 5
+
+        for page in 1...maxPages {
+            try Task.checkCancellation()
+            let vars: [String: JSONValue] = [
+                "page": .int(page),
+                "from": .int(fromStamp),
+                "to": .int(nowStamp + 1),
+                "perPage": .int(50)
+            ]
+            let dto: RecentEpisodesResponseDTO
+            do {
+                dto = try await perform(query: AniListQueries.recentEpisodes, variables: vars, cacheTTLKey: "recent-episodes")
+            } catch {
+                // Если первая страница уже получена, не теряем её при rate-limit или сбое следующей страницы.
+                if page > 1, !byAnimeID.isEmpty, !(error is CancellationError), (error as? APIError) != .cancelled {
+                    break
+                }
+                throw error
+            }
+
+            let schedules = (dto.Page?.airingSchedules ?? []).compactMap { $0 }
+            if schedules.isEmpty { break }
+
+            for item in schedules {
+                guard let media = item.media, media.isAdult != true, let episode = item.episode, let at = item.airingAt,
+                      (item.popularity ?? 0) >= 500 else { continue }
+                let airedAt = Date(timeIntervalSince1970: TimeInterval(at))
+                guard airedAt >= minDate && airedAt <= maxDate else { continue }
+                let anime = media.model
+                if let existing = byAnimeID[anime.id] {
+                    if airedAt > existing.airedAt || (airedAt == existing.airedAt && episode > existing.episode) {
+                        byAnimeID[anime.id] = AiredEpisode(anime: anime, episode: episode, airedAt: airedAt)
+                    }
+                } else {
+                    byAnimeID[anime.id] = AiredEpisode(anime: anime, episode: episode, airedAt: airedAt)
+                }
+            }
+
+            let hasNext = dto.Page?.pageInfo?.hasNextPage ?? false
+            if !hasNext { break }
+        }
+
+        return byAnimeID.values.sorted { lhs, rhs in
+            if lhs.airedAt != rhs.airedAt { return lhs.airedAt > rhs.airedAt }
+            if lhs.episode != rhs.episode { return lhs.episode > rhs.episode }
+            return lhs.anime.id < rhs.anime.id
         }
     }
 

@@ -147,7 +147,10 @@ struct GraphQLRequestBody: Encodable {
 }
 
 struct RecentEpisodesResponseDTO: Decodable {
-    struct PageDTO: Decodable { let airingSchedules: [AiringDTO?]? }
+    struct PageDTO: Decodable {
+        let pageInfo: PageInfoDTO?
+        let airingSchedules: [AiringDTO?]?
+    }
     let Page: PageDTO?
 }
 
