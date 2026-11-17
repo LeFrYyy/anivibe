@@ -109,7 +109,6 @@ struct TierListEditorView: View {
     @State private var isPoolTargeted = false
     @State private var showingManager = false
     @State private var scroller = TierListAutoScroller()
-    @State private var scrollPosition = ScrollPosition(edge: .top)
 
     private var set: TierListSet { env.tierList.set }
     private var tierList: TierList { env.tierList.tierList }
@@ -215,43 +214,26 @@ struct TierListEditorView: View {
     }
 
     private var editorScroll: some View {
-        GeometryReader { geo in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    listSelector
-                    visibilityPanel
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                listSelector
+                visibilityPanel
 
-                    if let error = env.tierList.errorMessage {
-                        Label(error, systemImage: "exclamationmark.triangle")
-                            .font(.footnote)
-                            .foregroundStyle(Theme.danger)
-                            .profilePanel()
-                    }
-
-                    tiersSection
-                    unassignedPoolSection
+                if let error = env.tierList.errorMessage {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.danger)
+                        .profilePanel()
                 }
-                .padding(.horizontal, Theme.Spacing.l)
-                .padding(.vertical, Theme.Spacing.l)
-                .background(
-                    GeometryReader { inner in
-                        Color.clear.preference(
-                            key: TierScrollOffsetKey.self,
-                            value: -inner.frame(in: .named("tierEditorScroll")).minY
-                        )
-                    }
-                )
+
+                tiersSection
+                unassignedPoolSection
             }
-            .coordinateSpace(name: "tierEditorScroll")
-            .scrollPosition($scrollPosition)
-            .onPreferenceChange(TierScrollOffsetKey.self) { scroller.updateOffset($0) }
-            .onAppear {
-                scroller.updateContainer(height: geo.size.height)
-                scroller.applyScroll = { y in scrollPosition.scrollTo(y: y) }
-            }
-            .onChange(of: geo.size.height) { _, h in scroller.updateContainer(height: h) }
-            .onDrop(of: [.text], delegate: TierListAutoScrollDelegate(scroller: scroller))
+            .padding(.horizontal, Theme.Spacing.l)
+            .padding(.vertical, Theme.Spacing.l)
+            .background(TierScrollViewProbe { scrollView in scroller.attach(scrollView) })
         }
+        .onDrop(of: [.text], delegate: TierListAutoScrollDelegate(scroller: scroller))
     }
 
     /// Переключатель между именованными списками + счётчик X/5.

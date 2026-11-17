@@ -71,9 +71,9 @@ final class TierListStore {
     // MARK: - Списки
 
     /// Активный именованный список (может отсутствовать, если списков нет).
-    var activeList: NamedTierList? { set.activeList }
+    var activeList: NamedTierList? { get { set.activeList } }
     /// Содержимое активного списка — совместимость с текущим UI.
-    var tierList: TierList { set.tierList }
+    var tierList: TierList { get { set.tierList } }
 
     /// Создаёт список. `false`, если достигнут лимит `TierListSet.maxLists`.
     @discardableResult

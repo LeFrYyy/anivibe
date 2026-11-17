@@ -1,8 +1,9 @@
 import SwiftUI
+import UIKit
 
 /// Плавный автоскролл конструктора тир-листов при перетаскивании карточки.
-/// Зоны срабатывания ~110pt сверху и снизу контейнера; скорость растёт к краю;
-/// цикл — таймер ~30 Гц, применяет смещение через `applyScroll` (ScrollPosition.scrollTo(y:)).
+/// Зоны срабатывания ~110pt сверху и снизу видимой области; скорость растёт к краю;
+/// цикл — таймер ~30 Гц, скроллит через UIScrollView.setContentOffset (пиксельная точность).
 @Observable
 final class TierListAutoScroller {
     private(set) var isDragging = false
@@ -13,21 +14,13 @@ final class TierListAutoScroller {
     static let maxDeltaPerTick: CGFloat = 16
     static let tickInterval: TimeInterval = 1.0 / 30.0
 
-    private var dragLocation: CGPoint = .zero
-    private var containerHeight: CGFloat = 0
-    private var currentOffset: CGFloat = 0
-    private var timer: Timer?
+    @ObservationIgnored private var dragLocation: CGPoint = .zero
+    @ObservationIgnored private weak var scrollView: UIScrollView?
+    @ObservationIgnored private var timer: Timer?
 
-    /// Замыкание прокрутки: получает новое вертикальное смещение в pt.
-    var applyScroll: (CGFloat) -> Void = { _ in }
-
-    func updateContainer(height: CGFloat) {
-        containerHeight = height
-    }
-
-    /// Текущий вертикальный offset контента — обновляется из GeometryReader.
-    func updateOffset(_ y: CGFloat) {
-        currentOffset = max(0, y)
+    /// Пробник внутри ScrollView нашёл родительский UIScrollView.
+    func attach(_ scrollView: UIScrollView) {
+        self.scrollView = scrollView
     }
 
     func dragStarted(at location: CGPoint) {
@@ -71,7 +64,9 @@ final class TierListAutoScroller {
     }
 
     private func tick() {
-        guard isDragging, containerHeight > 0 else { return }
+        guard isDragging, let sv = scrollView else { return }
+        let height = sv.bounds.height
+        guard height > 0 else { return }
         let zone = Self.edgeZone
         let y = dragLocation.y
         var delta: CGFloat = 0
@@ -79,14 +74,16 @@ final class TierListAutoScroller {
         if y < zone {
             // progress 0→1: на границе зоны — 0, у самого края — 1.
             delta = -Self.maxDeltaPerTick * ease(progress(distanceFromEdge: max(0, y), zone: zone))
-        } else if y > containerHeight - zone {
-            delta = Self.maxDeltaPerTick * ease(progress(distanceFromEdge: max(0, containerHeight - y), zone: zone))
+        } else if y > height - zone {
+            delta = Self.maxDeltaPerTick * ease(progress(distanceFromEdge: max(0, height - y), zone: zone))
         }
 
         guard delta != 0 else { return }
-        let newY = max(0, currentOffset + delta)
-        currentOffset = newY
-        applyScroll(newY)
+        let maxY = max(0, sv.contentSize.height - height + sv.adjustedContentInset.bottom + sv.adjustedContentInset.top)
+        let minY = -sv.adjustedContentInset.top
+        let newY = min(maxY, max(minY, sv.contentOffset.y + delta))
+        guard newY != sv.contentOffset.y else { return }
+        sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: newY), animated: false)
     }
 
     /// 0 у внешней границы зоны → 1 у самого края экрана.
@@ -125,10 +122,48 @@ struct TierListAutoScrollDelegate: DropDelegate {
     }
 }
 
-/// Отслеживание вертикального смещения контента внутри именованного coordinateSpace.
-struct TierScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+/// Невидимый UIView-пробник: находится внутри контента ScrollView и при появлении
+/// в окне поднимается по superview-цепочке до родительского UIScrollView.
+struct TierScrollViewProbe: UIViewRepresentable {
+    let onResolve: (UIScrollView) -> Void
+
+    func makeUIView(context: Context) -> TierScrollProbeView {
+        TierScrollProbeView(onResolve: onResolve)
+    }
+
+    func updateUIView(_ uiView: TierScrollProbeView, context: Context) {
+        uiView.onResolve = onResolve
+    }
+}
+
+final class TierScrollProbeView: UIView {
+    var onResolve: (UIScrollView) -> Void
+    private var resolved = false
+
+    init(onResolve: @escaping (UIScrollView) -> Void) {
+        self.onResolve = onResolve
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil, !resolved else { return }
+        resolved = true
+        var view = superview
+        while let current = view {
+            if let scrollView = current as? UIScrollView {
+                onResolve(scrollView)
+                return
+            }
+            view = current.superview
+        }
+        // ScrollView мог ещё не смонтироваться — пробуем на следующем цикле.
+        resolved = false
+        DispatchQueue.main.async { [weak self] in self?.didMoveToWindow() }
     }
 }

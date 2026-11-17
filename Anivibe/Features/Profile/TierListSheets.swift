@@ -178,8 +178,8 @@ struct TierListManagerSheet: View {
     @State private var newListName = ""
     @State private var deleteTarget: NamedTierList?
 
-    private var set: TierListSet { env.tierList.set }
-    private var atLimit: Bool { set.lists.count >= TierListSet.maxLists }
+    private var set: TierListSet { get { env.tierList.set } }
+    private var atLimit: Bool { get { set.lists.count >= TierListSet.maxLists } }
 
     var body: some View {
         NavigationStack {
