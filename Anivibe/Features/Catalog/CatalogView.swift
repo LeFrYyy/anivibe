@@ -172,10 +172,10 @@ private struct SuggestionRow: View {
     var body: some View {
         HStack(spacing: Theme.Spacing.m) {
             PosterImage(url: anime.coverURL, placeholderColorHex: anime.coverColorHex, cornerRadius: 6)
-                .frame(width: 40, height: 40 / Theme.posterAspect)
+                .frame(width: 44, height: 44 / Theme.posterAspect)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                        .strokeBorder(Theme.separator, lineWidth: 1)
                 )
 
             VStack(alignment: .leading, spacing: 3) {
