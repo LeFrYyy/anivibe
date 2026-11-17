@@ -2,6 +2,39 @@
 
 ---
 
+## 2026-11-18 · Редизайн визуального слоя: плоская система, восстановление папок, контракты в CI
+
+**Направление:** спокойный нативный стиль на непрозрачных поверхностях — один цвет действия
+(пользовательский акцент), нейтральные фоны, тонкие границы вместо стекла и теней.
+Градиентов, материалов и декоративных теней в приложении не осталось.
+
+**Файлы:**
+- `DesignSystem/Theme.swift` — нейтральная палитра (bg/surface/surfaceElevated/separator/textPrimary/textSecondary), `Theme.scrim`, радиусы 12/16/8, `secondaryAccent` → тот же акцент; `profilePanel` без `regularMaterial`; `Theme.Folder` сокращён до геометрии (цвета — из общей палитры).
+- `Resources/Assets.xcassets/AccentColor.colorset` — выровнен с `Theme.accent` (0x275D8C / 0x9CBADD); контраст AA проверен тестом.
+- `DesignSystem/Components/`: `PosterCard` (бейдж и прогресс на плоских заливках, `standardWidth`), `StateViews` (чипы-капсулы, `SectionHeaderLink`), **`ContinueWatchingCard.swift` (нов.)** — крупная карточка продолжения просмотра.
+- `Features/Home/FolderViews.swift` (**восстановлен**) — плитки папок, панель, `AddToFolderSheet`, `FolderMenuModifier`; плоские поверхности, `FolderPressStyle` без масштаба, empty-state и кнопка закрытия с зонами 44 pt.
+- `Features/Home/HomeView.swift` — папки вынесены в `FolderViews.swift` (удалены до-v4 дубли, которые ломали сборку), главная перестроена: одна крупная карточка «Продолжить просмотр», секции с `SectionHeaderLink`, единая ширина карточек.
+- `Features/Catalog/`: `CatalogView` — активные фильтры-пилюли + «Сбросить», центрированный прогресс догрузки; `FilterSheet`, строки подсказок на токенах темы.
+- `Features/Library/LibraryView.swift` — невыбранные табы получили ту же границу, что и чипы.
+- `Features/Player/`: `PlayerControlsView` — плоские подложки `Color.black.opacity(0.76)`, белая кнопка play, `ViewThatFits` + `.labelStyle(.iconOnly)` для узкого экрана, зоны 44 pt; `PlayerScreen`, `SpeedBoostIndicator` — без материалов.
+- `Features/AnimeDetails/AnimeDetailsView.swift` — баннер отдельным блоком над текстом вместо подложки под ним (без градиентной шторки).
+- `Features/Settings/SettingsView.swift` — «Вернуть стандартный цвет».
+- `App/SplashView.swift` — без тени и rounded-шрифта.
+- `scripts/test_flat_design.py` — **подключён в `.github/workflows/ios.yml`** (раньше не запускался: поэтому папки и разошлись с контрактами).
+- `scripts/test_motion_performance.py`, `scripts/test_update_20261025.py` — указатели на `FolderViews.swift` после переноса.
+
+**БД/API/стейт:** без изменений. Тир-листы (`TierListView/Sheets/Store`) и плеер (Kodik/AVPlayer) не тронуты функционально — только визуальные правки.
+
+**Фиксы по пути:**
+- Восстановлен удалённый `FolderViews.swift` (коммит `acc3675` удалил его, посчитав дубликатом `HomeView.swift`; на деле в `HomeView` оставались до-v4 копии).
+- `Int(resume.fraction * 100)` в подписи продолжения падал на NaN — теперь клампится, как в `ProgressBar`.
+- `ProgressBar`/`ContinueWatchingCard` защищены от NaN и нефинитной ширины.
+- В `CatalogView` убран хардкод `Color.white` (пропадал в светлой теме).
+
+**Нюансы:** `test_flat_design.py` теперь в CI — палитра, градиенты и материалы проверяются на каждом пуше. Проверки локально: `python3 scripts/check_project.py` + все `scripts/test_*.py` — 0 ошибок. Swift локально не компилируется (Windows), сборка — через `ios.yml`.
+
+---
+
 ## 2026-11-17 · Обновление: тогл папок, плеер без градиентов, мульти-листы (≤5), автоскролл
 
 **Файлы:**
