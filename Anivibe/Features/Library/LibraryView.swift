@@ -73,6 +73,11 @@ struct LibraryView: View {
                                                 .matchedGeometryEffect(id: "library.selection", in: selectionNamespace)
                                         }
                                     }
+                                    .overlay {
+                                        if section != s {
+                                            Capsule().strokeBorder(Theme.separator, lineWidth: 1)
+                                        }
+                                    }
                                     .foregroundStyle(section == s ? Theme.onAccent : Theme.textPrimary)
                             }
                             .buttonStyle(PosterPressStyle())

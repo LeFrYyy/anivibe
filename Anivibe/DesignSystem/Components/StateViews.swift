@@ -21,6 +21,29 @@ struct SectionHeader: View {
     }
 }
 
+/// Заголовок секции с действием-стрелкой: используется там, где есть полный список.
+struct SectionHeaderLink<Destination: View>: View {
+    let title: String
+    @ViewBuilder var destination: () -> Destination
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Theme.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            NavigationLink(destination: destination) {
+                Text("Все")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Theme.accent)
+                    .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.l)
+    }
+}
+
 struct LoadingStateView: View {
     var message = "Загрузка…"
     var body: some View {
@@ -95,14 +118,15 @@ struct Chip: View {
     var tint: Color = Theme.textSecondary
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             if let systemImage { Image(systemName: systemImage) }
             Text(text)
         }
         .font(.caption.weight(.medium))
         .foregroundStyle(tint)
-        .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Theme.surfaceElevated, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.separator, lineWidth: 1))
     }
 }
 

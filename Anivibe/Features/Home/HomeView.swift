@@ -175,41 +175,50 @@ struct HomeView: View {
     }
 
     @ViewBuilder private var continueSection: some View {
-        if !library.continueWatching.isEmpty {
+        if let item = library.continueWatching.first {
             VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-                SectionHeader(title: "Продолжить просмотр")
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: Theme.Spacing.m) {
-                        ForEach(library.continueWatching) { item in
-                            NavigationLink(value: item.anime) {
-                                PosterCard(title: item.anime.title, coverURL: item.anime.coverURL,
-                                           subtitle: item.resume.isFinishedSourceEpisode ? "Серия \(item.resume.episode) просмотрена" :
-                                               (item.resume.isNextEpisode ? "Далее: серия \(item.resume.episode)" : "Серия \(item.resume.episode) · \(Int(item.resume.fraction * 100))%"),
-                                           progress: item.resume.isNextEpisode ? nil : item.resume.fraction)
-                                .frame(width: 130)
+                SectionHeader(title: library.continueWatching.count > 1 ? "Продолжить просмотр" : "Смотреть дальше")
+                ContinueWatchingCard(
+                    title: item.anime.title,
+                    subtitle: continueSubtitle(item.resume),
+                    artworkURL: item.anime.coverURL,
+                    progress: item.resume.isNextEpisode ? nil : item.resume.fraction
+                ) { path.append(item.anime) }
+                .folderMenu(item.anime)
+                .padding(.horizontal, Theme.Spacing.l)
+
+                if library.continueWatching.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(alignment: .top, spacing: Theme.Spacing.m) {
+                            ForEach(library.continueWatching.dropFirst()) { item in
+                                NavigationLink(value: item.anime) {
+                                    PosterCard(title: item.anime.title, coverURL: item.anime.coverURL,
+                                               subtitle: continueSubtitle(item.resume),
+                                               progress: item.resume.isNextEpisode ? nil : item.resume.fraction)
+                                    .frame(width: 124)
+                                }
+                                .buttonStyle(PosterPressStyle())
+                                .folderMenu(item.anime)
                             }
-                            .buttonStyle(PosterPressStyle())
-                            .folderMenu(item.anime)
                         }
+                        .padding(.horizontal, Theme.Spacing.l)
                     }
-                    .padding(.horizontal, Theme.Spacing.l)
                 }
             }
         }
     }
 
+    private func continueSubtitle(_ resume: ResumePoint) -> String {
+        if resume.isFinishedSourceEpisode { return "Серия \(resume.episode) просмотрена" }
+        if resume.isNextEpisode { return "Далее: серия \(resume.episode)" }
+        return "Серия \(resume.episode) · \(Int(resume.fraction * 100))%"
+    }
+
     @ViewBuilder private var recentEpisodesSection: some View {
         if !model.recentEpisodes.isEmpty {
             VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-                HStack {
-                    SectionHeader(title: "Недавно вышедшие")
-                    Spacer()
-                    NavigationLink {
-                        RecentEpisodesView(items: model.recentEpisodes)
-                    } label: {
-                        Text("Все").font(.subheadline.weight(.medium))
-                    }
-                    .padding(.trailing, Theme.Spacing.l)
+                SectionHeaderLink(title: "Недавно вышедшие") {
+                    RecentEpisodesView(items: model.recentEpisodes)
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: Theme.Spacing.m) {
@@ -218,7 +227,7 @@ struct HomeView: View {
                                 PosterCard(title: item.anime.title.preferred, coverURL: item.anime.coverURL,
                                            colorHex: item.anime.coverColorHex,
                                            subtitle: "Серия \(item.episode) · \(RecentEpisodesView.relative(item.airedAt))")
-                                    .frame(width: 120)
+                                    .frame(width: 124)
                             }
                             .buttonStyle(PosterPressStyle())
                             .folderMenu(item.anime.snapshot)
@@ -262,7 +271,8 @@ struct HomeView: View {
                     LazyHStack(alignment: .top, spacing: Theme.Spacing.m) {
                         ForEach(favorites) { entry in
                             NavigationLink(value: entry.anime) {
-                                PosterCard(title: entry.anime.title, coverURL: entry.anime.coverURL).frame(width: 120)
+                                PosterCard(title: entry.anime.title, coverURL: entry.anime.coverURL)
+                                    .frame(width: PosterCard.standardWidth)
                             }
                             .buttonStyle(PosterPressStyle())
                             .folderMenu(entry.anime)
@@ -276,14 +286,21 @@ struct HomeView: View {
 
     private var catalogShortcut: some View {
         Button(action: openCatalog) {
-            HStack {
+            HStack(spacing: Theme.Spacing.m) {
                 Image(systemName: "square.grid.2x2")
-                Text("Открыть каталог").fontWeight(.semibold)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
+                Text("Открыть каталог").fontWeight(.semibold).foregroundStyle(Theme.textPrimary)
                 Spacer()
-                Image(systemName: "chevron.right").foregroundStyle(Theme.textSecondary)
+                Image(systemName: "chevron.right").font(.footnote).foregroundStyle(Theme.textSecondary)
             }
             .padding(Theme.Spacing.l)
+            .frame(minHeight: 44)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                    .strokeBorder(Theme.separator, lineWidth: 1)
+            }
         }
         .buttonStyle(PosterPressStyle())
         .padding(.horizontal, Theme.Spacing.l)
@@ -294,6 +311,8 @@ struct PosterRow: View {
     let title: String
     var subtitle: String?
     let items: [Anime]
+    /// Один шаг размера карточки на все ряды — сетка экрана читается ровно.
+    var cardWidth: CGFloat = PosterCard.standardWidth
 
     var body: some View {
         if !items.isEmpty {
@@ -308,7 +327,7 @@ struct PosterRow: View {
                     LazyHStack(alignment: .top, spacing: Theme.Spacing.m) {
                         ForEach(items) { anime in
                             NavigationLink(value: anime) {
-                                PosterCard(anime: anime).frame(width: 120)
+                                PosterCard(anime: anime).frame(width: cardWidth)
                             }
                             .buttonStyle(PosterPressStyle())
                             .folderMenu(anime.snapshot)
@@ -328,7 +347,11 @@ struct DemoBanner: View {
             .foregroundStyle(Theme.secondaryAccent)
             .padding(Theme.Spacing.m)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.panel))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                    .strokeBorder(Theme.separator, lineWidth: 1)
+            }
             .padding(.horizontal, Theme.Spacing.l)
     }
 }

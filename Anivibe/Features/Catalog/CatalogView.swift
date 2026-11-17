@@ -139,7 +139,12 @@ struct CatalogView: View {
     private var grid: some View {
         ScrollView {
             if model.query.hasActiveFilters {
-                ActiveFiltersSummary(query: model.query).padding(.horizontal, Theme.Spacing.l)
+                ActiveFiltersSummary(query: model.query, clear: {
+                    model.resetFilters()
+                    model.reload(catalog: env.catalog)
+                })
+                .padding(.horizontal, Theme.Spacing.l)
+                .padding(.bottom, Theme.Spacing.s)
             }
             LazyVGrid(columns: columns, spacing: Theme.Spacing.l) {
                 ForEach(model.items) { anime in
@@ -153,6 +158,8 @@ struct CatalogView: View {
             .padding(.top, Theme.Spacing.s)
             if model.isLoadingMore {
                 ProgressView().padding()
+                    .frame(maxWidth: .infinity)
+                    .accessibilityLabel("Загружаем ещё тайтлы")
             }
         }
         .scrollDismissesKeyboard(.immediately)
@@ -216,15 +223,25 @@ private struct SuggestionRow: View {
     }
 }
 
+/// Активные фильтры над сеткой: что включено и один тап, чтобы всё снять.
 private struct ActiveFiltersSummary: View {
     let query: CatalogQuery
+    let clear: () -> Void
+
     var body: some View {
-        FlowLayout {
-            ForEach(query.genres.sorted(), id: \.self) { Chip(text: CatalogLocalization.genre($0), tint: Theme.accent) }
-            if let y = query.year { Chip(text: String(y), tint: Theme.accent) }
-            if let s = query.status { Chip(text: s.localizedName, tint: Theme.accent) }
-            ForEach(query.formats.sorted { $0.rawValue < $1.rawValue }, id: \.self) { Chip(text: $0.localizedName, tint: Theme.accent) }
+        HStack(alignment: .top, spacing: Theme.Spacing.s) {
+            FlowLayout {
+                ForEach(query.genres.sorted(), id: \.self) { Chip(text: CatalogLocalization.genre($0), tint: Theme.accent) }
+                if let y = query.year { Chip(text: String(y), tint: Theme.accent) }
+                if let s = query.status { Chip(text: s.localizedName, tint: Theme.accent) }
+                ForEach(query.formats.sorted { $0.rawValue < $1.rawValue }, id: \.self) { Chip(text: $0.localizedName, tint: Theme.accent) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button("Сбросить", action: clear)
+                .font(.subheadline.weight(.medium))
+                .frame(minWidth: 44, minHeight: 44)
+                .accessibilityLabel("Сбросить все фильтры")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

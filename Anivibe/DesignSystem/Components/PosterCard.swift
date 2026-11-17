@@ -3,6 +3,9 @@ import AnivibeCore
 
 /// Карточка тайтла: постер 2:3, название, краткая мета-строка, опциональный прогресс.
 struct PosterCard: View {
+    /// Единая ширина карточки в горизонтальных рядах.
+    static let standardWidth: CGFloat = 124
+
     let title: String
     let coverURL: URL?
     var colorHex: String?
