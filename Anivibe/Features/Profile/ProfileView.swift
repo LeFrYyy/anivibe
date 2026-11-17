@@ -141,9 +141,11 @@ struct ProfileView: View {
             NavigationLink(value: LibrarySection.history) {
                 ProfileMetric(value: library.snapshot.history.count, title: "Серий в истории", icon: "play.rectangle", tint: Theme.secondaryAccent)
             }.buttonStyle(.plain)
-            Button(action: openCollections) {
-                ProfileMetric(value: env.collections.collections.count, title: "Коллекции", icon: "square.stack", tint: Theme.accent)
-            }.buttonStyle(.plain)
+            if env.settings.foldersEnabled {
+                Button(action: openCollections) {
+                    ProfileMetric(value: env.collections.collections.count, title: "Коллекции", icon: "square.stack", tint: Theme.accent)
+                }.buttonStyle(.plain)
+            }
             if let user = session.user {
                 NavigationLink { FriendsView(store: social, userID: user.id) } label: {
                     ProfileMetric(value: social.friendships.filter { $0.status == "accepted" }.count,
@@ -386,15 +388,17 @@ struct ProfileView: View {
             if let message = session.lastSyncMessage {
                 Text(message).font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
-            if let error = env.collections.errorMessage {
+            if env.settings.foldersEnabled, let error = env.collections.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle").font(.subheadline).foregroundStyle(Theme.danger)
             }
-            if let message = env.collections.importMessage {
+            if env.settings.foldersEnabled, let message = env.collections.importMessage {
                 Text(message).font(.subheadline).foregroundStyle(Theme.success)
             }
-            Button("Скопировать локальные папки в аккаунт") { confirmImportFolders = true }.frame(minHeight: 44)
-            Text("Папки аккаунта синхронизируются вместе с библиотекой. Локальные папки можно перенести отдельно — оригинал останется на устройстве.")
-                .font(.footnote).foregroundStyle(Theme.textSecondary)
+            if env.settings.foldersEnabled {
+                Button("Скопировать локальные папки в аккаунт") { confirmImportFolders = true }.frame(minHeight: 44)
+                Text("Папки аккаунта синхронизируются вместе с библиотекой. Локальные папки можно перенести отдельно — оригинал останется на устройстве.")
+                    .font(.footnote).foregroundStyle(Theme.textSecondary)
+            }
             Button("Синхронизировать сейчас") { Task { await session.syncIfNeeded(reason: .manual) } }
                 .frame(minHeight: 44).disabled(session.isSyncing)
             Divider()

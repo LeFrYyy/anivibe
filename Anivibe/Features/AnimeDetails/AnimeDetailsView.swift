@@ -189,7 +189,9 @@ struct AnimeDetailsView: View {
                 .buttonStyle(.bordered)
             }
 
-            Button { showFolders = true } label: { Label("Добавить в папку", systemImage: "folder.badge.plus") }.buttonStyle(.bordered)
+            if env.settings.foldersEnabled {
+                Button { showFolders = true } label: { Label("Добавить в папку", systemImage: "folder.badge.plus") }.buttonStyle(.bordered)
+            }
 
             if library.status(of: anime.id) != .completed {
                 Button {

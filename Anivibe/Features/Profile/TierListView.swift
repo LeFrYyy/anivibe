@@ -1,6 +1,10 @@
 import SwiftUI
 import AnivibeCore
 
+func tierColor(_ hex: String) -> Color {
+    UIColor(hexString: hex).map(Color.init(uiColor:)) ?? .gray
+}
+
 struct TierBetaBadge: View {
     var body: some View {
         Text("BETA")
@@ -18,7 +22,9 @@ struct TierListProfileCard: View {
     @Environment(AppEnvironment.self) private var env
 
     var body: some View {
-        let tierList = env.tierList.tierList
+        let set = env.tierList.set
+        let active = set.activeList
+        let tierList = active?.list ?? .empty
         NavigationLink {
             TierListEditorView()
         } label: {
@@ -27,9 +33,10 @@ struct TierListProfileCard: View {
                     Image(systemName: "square.grid.3x1.below.line.grid.1x2")
                         .font(.title3)
                         .foregroundStyle(Theme.accent)
-                    Text("Тир-лист")
+                    Text(active?.name ?? "Тир-лист")
                         .font(.title3.bold())
                         .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
                     TierBetaBadge()
                     Spacer()
                     Label(tierList.visibility.shortTitle,
@@ -41,8 +48,15 @@ struct TierListProfileCard: View {
                         .foregroundStyle(Theme.textSecondary)
                 }
 
-                if tierList.isEmpty {
-                    Text("Распределите любимые аниме по рангам S–D из ваших списков.")
+                if set.lists.isEmpty {
+                    Text("Создайте до \(TierListSet.maxLists) тир-листов и распределите любимые аниме по рангам S–D.")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if tierList.isEmpty {
+                    Text(set.lists.count > 1
+                         ? "Списков: \(set.lists.count)/\(TierListSet.maxLists). Активный пока пуст — распределите аниме по рангам."
+                         : "Распределите любимые аниме по рангам S–D из ваших списков.")
                         .font(.subheadline)
                         .foregroundStyle(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -67,7 +81,7 @@ struct TierListProfileCard: View {
                             .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
                     }
-                    Text("Всего распределено: \(tierList.totalAssignedCount)")
+                    Text("Всего распределено: \(tierList.totalAssignedCount)\(set.lists.count > 1 ? " · Списков: \(set.lists.count)/\(TierListSet.maxLists)" : "")")
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
                 }
@@ -84,7 +98,7 @@ private struct SelectedTierAnime: Identifiable {
     var id: Int { snapshot.id }
 }
 
-/// Конструктор персонального тир-листа (Beta).
+/// Конструктор персональных тир-листов (Beta): до `TierListSet.maxLists` именованных списков.
 struct TierListEditorView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(LibraryStore.self) private var library
@@ -93,7 +107,11 @@ struct TierListEditorView: View {
     @State private var editingTier: TierRowData?
     @State private var targetedTier: TierKey?
     @State private var isPoolTargeted = false
+    @State private var showingManager = false
+    @State private var scroller = TierListAutoScroller()
+    @State private var scrollPosition = ScrollPosition(edge: .top)
 
+    private var set: TierListSet { env.tierList.set }
     private var tierList: TierList { env.tierList.tierList }
 
     private var poolEntries: [LibraryEntry] {
@@ -113,34 +131,35 @@ struct TierListEditorView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                visibilityPanel
-
-                if let error = env.tierList.errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.danger)
-                        .profilePanel()
-                }
-
-                tiersSection
-
-                unassignedPoolSection
+        Group {
+            if set.lists.isEmpty {
+                emptyState
+            } else {
+                editorScroll
             }
-            .padding(.horizontal, Theme.Spacing.l)
-            .padding(.vertical, Theme.Spacing.l)
         }
         .screenBackground()
-        .navigationTitle("Тир-лист")
+        .navigationTitle(set.activeList?.name ?? "Тир-лист")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 6) {
-                    Text("Тир-лист").font(.headline)
+                    Text(set.activeList?.name ?? "Тир-лист").font(.headline).lineLimit(1)
                     TierBetaBadge()
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingManager = true
+                } label: {
+                    Image(systemName: "list.bullet.rectangle")
+                }
+                .accessibilityLabel("Управление тир-листами")
+            }
+        }
+        .sheet(isPresented: $showingManager) {
+            TierListManagerSheet()
+                .presentationDetents([.medium, .large])
         }
         .sheet(item: $selectedAnime) { selection in
             TierAssignSheet(
@@ -164,6 +183,122 @@ struct TierListEditorView: View {
             }
             .presentationDetents([.medium])
         }
+        .onChange(of: set.activeListID) { _, _ in scroller.cancel() }
+        .onDisappear { scroller.cancel() }
+    }
+
+    /// Пустое состояние: ни одного списка ещё не создано.
+    private var emptyState: some View {
+        VStack(spacing: Theme.Spacing.l) {
+            Spacer()
+            Image(systemName: "square.grid.3x1.below.line.grid.1x2")
+                .font(.system(size: 44))
+                .foregroundStyle(Theme.accent)
+            Text("Тир-листов пока нет")
+                .font(.title3.bold())
+            Text("Создайте до \(TierListSet.maxLists) именованных списков и разложите любимые аниме по рангам S–D.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+            Button {
+                _ = env.tierList.createList()
+            } label: {
+                Label("Создать тир-лист", systemImage: "plus")
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.accent)
+            Spacer()
+        }
+        .padding(Theme.Spacing.l)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var editorScroll: some View {
+        GeometryReader { geo in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                    listSelector
+                    visibilityPanel
+
+                    if let error = env.tierList.errorMessage {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.danger)
+                            .profilePanel()
+                    }
+
+                    tiersSection
+                    unassignedPoolSection
+                }
+                .padding(.horizontal, Theme.Spacing.l)
+                .padding(.vertical, Theme.Spacing.l)
+                .background(
+                    GeometryReader { inner in
+                        Color.clear.preference(
+                            key: TierScrollOffsetKey.self,
+                            value: -inner.frame(in: .named("tierEditorScroll")).minY
+                        )
+                    }
+                )
+            }
+            .coordinateSpace(name: "tierEditorScroll")
+            .scrollPosition($scrollPosition)
+            .onPreferenceChange(TierScrollOffsetKey.self) { scroller.updateOffset($0) }
+            .onAppear {
+                scroller.updateContainer(height: geo.size.height)
+                scroller.applyScroll = { y in scrollPosition.scrollTo(y: y) }
+            }
+            .onChange(of: geo.size.height) { _, h in scroller.updateContainer(height: h) }
+            .onDrop(of: [.text], delegate: TierListAutoScrollDelegate(scroller: scroller))
+        }
+    }
+
+    /// Переключатель между именованными списками + счётчик X/5.
+    private var listSelector: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Мои тир-листы")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Text("\(set.lists.count)/\(TierListSet.maxLists)")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(set.lists) { named in
+                        let isActive = named.id == set.activeList?.id
+                        Button {
+                            env.tierList.selectList(named.id)
+                        } label: {
+                            Text(named.name)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 36)
+                                .foregroundStyle(isActive ? Theme.onAccent : Theme.textPrimary)
+                                .background(isActive ? Theme.accent : Theme.surfaceElevated, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Тир-лист \(named.name)")
+                    }
+                    Button {
+                        showingManager = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.subheadline.weight(.bold))
+                            .frame(minWidth: 36, minHeight: 36)
+                            .foregroundStyle(Theme.accent)
+                            .background(Theme.accent.opacity(0.14), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Управление списками")
+                }
+                .padding(.vertical, 2)
+            }
+        }
     }
 
     private var visibilityPanel: some View {
@@ -184,8 +319,8 @@ struct TierListEditorView: View {
             }
             .pickerStyle(.segmented)
             Text(tierList.visibility == .publicList
-                 ? "Публичный: ваш тир-лист видят все, кто может открыть ваш профиль."
-                 : "Приватный: тир-лист виден только вам.")
+                 ? "Публичный: этот список видят все, кто может открыть ваш профиль."
+                 : "Приватный: этот список виден только вам.")
                 .font(.caption)
                 .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -265,6 +400,7 @@ struct TierListEditorView: View {
                 .strokeBorder(isTargeted ? Theme.accent : Theme.separator.opacity(0.7), lineWidth: isTargeted ? 2 : 0.5)
         }
         .dropDestination(for: String.self) { items, _ in
+            scroller.dragEnded()
             guard let raw = items.first, let id = Int(raw), let item = snapshot(forAnimeID: id) else { return false }
             env.tierList.assign(item, to: row.key)
             return true
@@ -360,6 +496,7 @@ struct TierListEditorView: View {
             }
         }
         .dropDestination(for: String.self) { items, _ in
+            scroller.dragEnded()
             guard let raw = items.first, let id = Int(raw) else { return false }
             env.tierList.remove(id)
             return true
@@ -367,229 +504,4 @@ struct TierListEditorView: View {
             isPoolTargeted = targeted
         }
     }
-}
-
-/// Просмотр чужого публичного тир-листа в `PublicProfileView` (только чтение).
-struct PublicTierListSection: View {
-    let tierList: TierList
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Text("Тир-лист").font(.title3.bold())
-                TierBetaBadge()
-                Spacer()
-                Text("\(tierList.totalAssignedCount)")
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            ForEach(tierList.tiers.filter { !$0.items.isEmpty }) { row in
-                HStack(alignment: .top, spacing: 10) {
-                    VStack(spacing: 2) {
-                        Text(row.key.rawValue).font(.headline.weight(.heavy)).foregroundStyle(.white)
-                        Text(row.title).font(.caption2.weight(.medium)).foregroundStyle(.white.opacity(0.92))
-                            .lineLimit(2).multilineTextAlignment(.center)
-                    }
-                    .frame(width: 62)
-                    .frame(minHeight: 72)
-                    .padding(.horizontal, 4)
-                    .background(tierColor(row.colorHex), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 8) {
-                            ForEach(row.items, id: \.id) { anime in
-                                NavigationLink(value: anime) {
-                                    VStack(spacing: 4) {
-                                        PosterImage(url: anime.coverURL, cornerRadius: 8)
-                                            .frame(width: 48, height: 72)
-                                        Text(anime.title)
-                                            .font(.caption2)
-                                            .foregroundStyle(Theme.textPrimary)
-                                            .lineLimit(2)
-                                            .frame(width: 52)
-                                    }
-                                }
-                                .buttonStyle(PosterPressStyle())
-                            }
-                        }
-                    }
-                }
-                .padding(8)
-                .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-        }
-        .profilePanel()
-    }
-}
-
-private struct TierAssignSheet: View {
-    let anime: AnimeSnapshot
-    let tiers: [TierRowData]
-    let currentTier: TierKey?
-    let onSelectTier: (TierKey) -> Void
-    let onRemove: () -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    HStack(spacing: Theme.Spacing.m) {
-                        PosterImage(url: anime.coverURL, cornerRadius: 10)
-                            .frame(width: 56, height: 84)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(anime.title)
-                                .font(.headline)
-                                .lineLimit(3)
-                            Text(currentTier.map { "Сейчас в тире: \($0.rawValue)" } ?? "Не распределён")
-                                .font(.subheadline)
-                                .foregroundStyle(Theme.textSecondary)
-                        }
-                        Spacer()
-                    }
-
-                    Text("Выберите тир")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.textSecondary)
-
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(tiers) { row in
-                            let selected = currentTier == row.key
-                            Button {
-                                onSelectTier(row.key)
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Text(row.key.rawValue)
-                                        .font(.headline.weight(.heavy))
-                                        .foregroundStyle(.white)
-                                        .frame(width: 34, height: 34)
-                                        .background(tierColor(row.colorHex), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                    Text(row.title)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(Theme.textPrimary)
-                                        .lineLimit(2)
-                                        .minimumScaleFactor(0.85)
-                                        .multilineTextAlignment(.leading)
-                                    Spacer()
-                                    if selected {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(Theme.accent)
-                                    }
-                                }
-                                .padding(10)
-                                .frame(minHeight: 52)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(Theme.surfaceElevated)
-                                )
-                                .overlay {
-                                    if selected {
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .strokeBorder(Theme.accent, lineWidth: 1.5)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    if currentTier != nil {
-                        Button(role: .destructive, action: onRemove) {
-                            Label("Убрать в пул нераспределённых", systemImage: "arrow.uturn.backward")
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-
-                    NavigationLink(value: anime) {
-                        Label("Открыть страницу аниме", systemImage: "info.circle")
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                }
-                .padding(Theme.Spacing.l)
-            }
-            .screenBackground()
-            .navigationTitle("Распределение")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: AnimeSnapshot.self) { AnimeDetailsView(snapshot: $0) }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Закрыть") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
-private struct TierCustomizeSheet: View {
-    let row: TierRowData
-    let onSave: (String, String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var title: String
-    @State private var colorHex: String
-
-    private let palette = ["E5534B", "E0823D", "C9A227", "2E9B63", "2B86C5", "7B5CE6", "6E7687"]
-
-    init(row: TierRowData, onSave: @escaping (String, String) -> Void) {
-        self.row = row
-        self.onSave = onSave
-        _title = State(initialValue: row.title)
-        _colorHex = State(initialValue: row.colorHex)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Название тира \(row.key.rawValue)") {
-                    TextField("Название", text: $title)
-                    Button("Сбросить по умолчанию («\(row.key.defaultTitle)»)") {
-                        title = row.key.defaultTitle
-                        colorHex = row.key.defaultColorHex
-                    }
-                }
-                Section("Цвет плашки") {
-                    HStack(spacing: 12) {
-                        ForEach(palette, id: \.self) { hex in
-                            Button {
-                                colorHex = hex
-                            } label: {
-                                Circle()
-                                    .fill(tierColor(hex))
-                                    .frame(width: 34, height: 34)
-                                    .overlay {
-                                        if colorHex == hex {
-                                            Image(systemName: "checkmark")
-                                                .font(.caption.weight(.bold))
-                                                .foregroundStyle(.white)
-                                        }
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .screenBackground()
-            .navigationTitle("Тир \(row.key.rawValue)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Сохранить") {
-                        onSave(title, colorHex)
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
-private func tierColor(_ hex: String) -> Color {
-    Color(uiColor: UIColor(hexString: hex) ?? UIColor(hex: 0x6E7687))
 }

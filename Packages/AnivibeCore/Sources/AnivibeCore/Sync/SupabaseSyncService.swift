@@ -81,7 +81,7 @@ public actor SupabaseSyncService {
         return rows.filter { $0.user_id == expectedUserID }.map(\.model)
     }
 
-    public func syncTierList(_ local: TierList?, expectedUserID: String) async throws -> TierList? {
+    public func syncTierList(_ local: TierListSet?, expectedUserID: String) async throws -> TierListSet? {
         let session = try await auth.validSession()
         guard session.user.id == expectedUserID else { throw AuthError.notSignedIn }
         if let local {
@@ -286,13 +286,14 @@ struct CollectionRow: Codable {
 struct TierListRow: Codable {
     let user_id: String
     let visibility: String
-    let data: TierList
+    let data: TierListSet
     let updated_at: Date
     let mutation_id: UUID
 
-    init(tierList: TierList, userID: String) {
+    init(tierList: TierListSet, userID: String) {
         user_id = userID
-        visibility = tierList.visibility.rawValue
+        // Столбец отражает «есть ли публичные списки» — фактическая фильтрация идёт поэлементно в RPC.
+        visibility = tierList.lists.contains { $0.list.visibility == .publicList } ? "public" : "private"
         data = tierList
         updated_at = tierList.updatedAt
         mutation_id = tierList.mutationID

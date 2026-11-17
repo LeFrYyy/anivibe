@@ -129,9 +129,70 @@ final class FeatureUpdate202611Tests: XCTestCase {
         XCTAssertEqual(decoded.visibility, .publicList)
         XCTAssertEqual(decoded.row(for: .b).items.map(\.id), [101])
 
-        var syncDoc = TierListSyncDocument(tierList: TierList.empty)
-        syncDoc.merge(decoded)
-        XCTAssertEqual(syncDoc.tierList.row(for: .b).items.map(\.id), [101])
+        var syncDoc = TierListSyncDocument(set: .empty)
+        syncDoc.merge(TierListSet(lists: [NamedTierList(name: "A", list: decoded)],
+                                updatedAt: decoded.updatedAt, mutationID: decoded.mutationID))
+        XCTAssertEqual(syncDoc.set.tierList.row(for: .b).items.map(\.id), [101])
         XCTAssertFalse(syncDoc.needsUpload)
+    }
+
+    func testTierListSetCrudLimitAndLegacyDecode() throws {
+        // Legacy: одиночный TierList оборачивается в именованный список.
+        var legacy = TierList.empty
+        legacy.assign(AnimeSnapshot(id: 55, title: "Legacy"), to: .s, at: baseDate)
+        let legacyData = try SupabaseSyncService.encoder.encode(legacy)
+        let migrated = try SupabaseSyncService.decoder.decode(TierListSet.self, from: legacyData)
+        XCTAssertEqual(migrated.lists.count, 1)
+        XCTAssertEqual(migrated.lists[0].name, "Тир-лист 1")
+        XCTAssertEqual(migrated.lists[0].list.row(for: .s).items.map(\.id), [55])
+        XCTAssertEqual(migrated.activeList?.id, migrated.lists[0].id)
+
+        // CRUD + лимит 5.
+        var set = TierListSet.empty
+        XCTAssertNil(set.activeList)
+        for i in 1...TierListSet.maxLists {
+            XCTAssertNotNil(set.createList(name: "Список \(i)", at: baseDate.addingTimeInterval(TimeInterval(i))))
+        }
+        XCTAssertEqual(set.lists.count, TierListSet.maxLists)
+        XCTAssertNil(set.createList(name: "Лишний", at: baseDate.addingTimeInterval(9)), "Шестой список не создаётся")
+
+        let first = set.lists[0]
+        set.renameList(first.id, name: "  Сёнэны  ", at: baseDate.addingTimeInterval(10))
+        XCTAssertEqual(set.list(id: first.id)?.name, "Сёнэны")
+
+        // Пустое имя → дефолтное по индексу.
+        set.renameList(first.id, name: "   ", at: baseDate.addingTimeInterval(11))
+        XCTAssertEqual(set.list(id: first.id)?.name, "Тир-лист 1")
+
+        // Переключение активного — локально, без смены updatedAt.
+        let before = set.updatedAt
+        set.selectList(set.lists[2].id)
+        XCTAssertEqual(set.activeList?.id, set.lists[2].id)
+        XCTAssertEqual(set.updatedAt, before)
+
+        // Удаление активного → активным становится первый из оставшихся.
+        let activeID = set.activeList!.id
+        set.deleteList(activeID, at: baseDate.addingTimeInterval(12))
+        XCTAssertEqual(set.lists.count, TierListSet.maxLists - 1)
+        XCTAssertEqual(set.activeList?.id, set.lists[0].id)
+
+        // Мутации идут в активный список.
+        set.mutateActive(at: baseDate.addingTimeInterval(13)) { $0.assign(AnimeSnapshot(id: 77, title: "X"), to: .a) }
+        XCTAssertEqual(set.tierList.row(for: .a).items.map(\.id), [77])
+
+        // Roundtrip нового формата.
+        let data = try SupabaseSyncService.encoder.encode(set)
+        let decoded = try SupabaseSyncService.decoder.decode(TierListSet.self, from: data)
+        XCTAssertEqual(decoded.lists.count, set.lists.count)
+        XCTAssertEqual(decoded.activeList?.id, set.activeList?.id)
+        XCTAssertEqual(decoded.tierList.row(for: .a).items.map(\.id), [77])
+
+        // Legacy-формат sync-документа: { tierList: {...} } читается как список.
+        struct LegacyDoc: Encodable { let tierList: TierList; let acknowledgedMutationID: UUID? }
+        let docData = try SupabaseSyncService.encoder.encode(LegacyDoc(tierList: legacy, acknowledgedMutationID: nil))
+        let doc = try SupabaseSyncService.decoder.decode(TierListSyncDocument.self, from: docData)
+        XCTAssertEqual(doc.set.lists.count, 1)
+        XCTAssertEqual(doc.set.tierList.row(for: .s).items.map(\.id), [55])
+        XCTAssertTrue(doc.needsUpload)
     }
 }

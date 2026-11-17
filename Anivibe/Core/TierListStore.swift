@@ -5,7 +5,7 @@ import AnivibeCore
 @Observable
 @MainActor
 final class TierListStore {
-    private(set) var tierList: TierList = .empty
+    private(set) var set: TierListSet = .empty
     private(set) var activeAccountID: String?
     private(set) var errorMessage: String?
     @ObservationIgnored var onLocalChange: (@MainActor () -> Void)?
@@ -55,17 +55,51 @@ final class TierListStore {
         activeAccountID = userID
         fileURL = prepared.url
         document = prepared.document
-        tierList = prepared.document.tierList
+        set = prepared.document.set
         canSave = true
         errorMessage = nil
     }
 
     func clearVisibleOnAccountFailure() {
         activeAccountID = nil
-        tierList = .empty
+        set = .empty
         document = TierListSyncDocument()
         canSave = false
         errorMessage = "Тир-лист не удалось открыть. Исходные файлы сохранены."
+    }
+
+    // MARK: - Списки
+
+    /// Активный именованный список (может отсутствовать, если списков нет).
+    var activeList: NamedTierList? { set.activeList }
+    /// Содержимое активного списка — совместимость с текущим UI.
+    var tierList: TierList { set.tierList }
+
+    /// Создаёт список. `false`, если достигнут лимит `TierListSet.maxLists`.
+    @discardableResult
+    func createList(name: String = "") -> Bool {
+        guard canSave, set.lists.count < TierListSet.maxLists else { return false }
+        var created = false
+        mutateSet { created = $0.createList(name: name) != nil }
+        return created
+    }
+
+    func renameList(_ id: UUID, name: String) {
+        mutateSet { $0.renameList(id, name: name) }
+    }
+
+    func deleteList(_ id: UUID) {
+        mutateSet { $0.deleteList(id) }
+    }
+
+    /// Переключение активного списка — локально, без выгрузки на сервер.
+    func selectList(_ id: UUID) {
+        guard canSave, set.activeListID != id else { return }
+        var next = set
+        next.selectList(id)
+        set = next
+        document.set = next
+        do { try persist() } catch { errorMessage = "Не удалось сохранить тир-лист на устройство." }
     }
 
     // MARK: - Mutations
@@ -88,11 +122,21 @@ final class TierListStore {
 
     private func mutate(_ work: (inout TierList) -> Void) {
         guard canSave else { return }
-        var next = tierList
+        var next = set
+        next.mutateActive { list in work(&list) }
+        apply(next)
+    }
+
+    private func mutateSet(_ work: (inout TierListSet) -> Void) {
+        var next = set
         work(&next)
-        guard next != tierList || errorMessage != nil else { return }
-        tierList = next
-        document.tierList = next
+        apply(next)
+    }
+
+    private func apply(_ next: TierListSet) {
+        guard next != set || errorMessage != nil else { return }
+        set = next
+        document.set = next
         do {
             try persist()
             onLocalChange?()
@@ -110,19 +154,19 @@ final class TierListStore {
 
     // MARK: - Sync
 
-    func payloadForSync(accountID: String) throws -> TierList? {
+    func payloadForSync(accountID: String) throws -> TierListSet? {
         guard activeAccountID == accountID, canSave, errorMessage == nil else { return nil }
-        return document.needsUpload ? document.tierList : nil
+        return document.needsUpload ? document.set : nil
     }
 
-    func mergeRemote(_ remote: TierList?, accountID: String) throws {
+    func mergeRemote(_ remote: TierListSet?, accountID: String) throws {
         guard activeAccountID == accountID, canSave else { throw AuthError.notSignedIn }
         guard let remote else { return }
         let previous = document
         document.merge(remote)
         do {
             try persist()
-            tierList = document.tierList
+            set = document.set
         } catch {
             document = previous
             errorMessage = "Не удалось сохранить тир-лист после синхронизации."

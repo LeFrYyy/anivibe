@@ -167,7 +167,10 @@ struct PublicProfileView: View {
                         NavigationLink("Уровень дружбы и ежедневное задание") { FriendshipProgressView(peerId: profile.userID) }
                     }
                     counters(details)
-                    if let tierList = details.tierList, !tierList.isEmpty {
+                    ForEach(Array(details.tierLists.filter { !$0.list.isEmpty }.enumerated()), id: \.offset) { _, named in
+                        PublicTierListSection(name: named.name, tierList: named.list)
+                    }
+                    if details.tierLists.isEmpty, let tierList = details.tierList, !tierList.isEmpty {
                         PublicTierListSection(tierList: tierList)
                     }
                     friendPreview(details)

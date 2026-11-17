@@ -21,7 +21,7 @@ struct PlayerControlsView: View {
         .padding(.horizontal, Theme.Spacing.l)
         .padding(.vertical, Theme.Spacing.m)
         .background {
-            LinearGradient(colors: [.black.opacity(0.6), .clear, .clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
+            Color.black.opacity(0.38)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
         }
@@ -139,8 +139,7 @@ struct PlayerControlsView: View {
             .frame(height: 36)
             .background {
                 Capsule().fill(.ultraThinMaterial)
-                    .overlay(Capsule().fill(LinearGradient(colors: [Theme.accent.opacity(0.55), Theme.secondaryAccent.opacity(0.35)],
-                                                           startPoint: .leading, endPoint: .trailing)))
+                    .overlay(Capsule().fill(Theme.accent.opacity(0.5)))
                     .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 1))
             }
             .shadow(color: Theme.accent.opacity(0.4), radius: 8, y: 2)
@@ -283,17 +282,14 @@ private struct VideoTimelineSlider: View {
                     .frame(width: max(0, min(width, width * bufferedFraction)), height: height)
                     .animation(AppMotion.fade(reduceMotion: reduceMotion), value: bufferedFraction)
 
-                // Воспроизведённая часть
+                // Воспроизведённая часть — акцентный цвет темы из настроек.
                 Capsule()
-                    .fill(
-                        LinearGradient(colors: [Theme.accent, Theme.secondaryAccent],
-                                       startPoint: .leading, endPoint: .trailing)
-                    )
+                    .fill(Theme.accent)
                     .frame(width: max(0, min(width, width * playedFraction)), height: height)
 
                 // Ползунок текущей позиции
                 Circle()
-                    .fill(.white)
+                    .fill(Theme.accent)
                     .frame(width: thumbRadius * 2, height: thumbRadius * 2)
                     .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
                     .offset(x: max(0, min(width - thumbRadius * 2, (width * playedFraction) - thumbRadius)))

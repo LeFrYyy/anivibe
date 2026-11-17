@@ -24,11 +24,11 @@ struct HomeView: View {
                     if env.catalog.isDemo {
                         DemoBanner()
                     }
-                    if let error = env.collections.errorMessage {
+                    if env.settings.foldersEnabled, let error = env.collections.errorMessage {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.subheadline).foregroundStyle(Theme.danger).padding(.horizontal, 16)
                     }
-                    foldersSection
+                    if env.settings.foldersEnabled { foldersSection }
                     continueSection
                     recentEpisodesSection
                     feedSections
@@ -40,15 +40,17 @@ struct HomeView: View {
             .screenBackground()
             .navigationTitle("Anivibe")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        newFolderName = ""
-                        showNewFolder = true
-                    } label: {
-                        Image(systemName: "folder.badge.plus")
-                            .font(.body.weight(.semibold))
+                if env.settings.foldersEnabled {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            newFolderName = ""
+                            showNewFolder = true
+                        } label: {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.body.weight(.semibold))
+                        }
+                        .accessibilityLabel("Создать папку")
                     }
-                    .accessibilityLabel("Создать папку")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: openCatalog) {
@@ -78,6 +80,11 @@ struct HomeView: View {
             }
             .onChange(of: env.collections.activeAccountID) { _, _ in
                 openedFolder = nil; path = NavigationPath(); editingFolders = false; draggedFolder = nil
+                showNewFolder = false; deleteFolderID = nil
+            }
+            .onChange(of: env.settings.foldersEnabled) { _, enabled in
+                guard !enabled else { return }
+                openedFolder = nil; editingFolders = false; draggedFolder = nil
                 showNewFolder = false; deleteFolderID = nil
             }
             .task { await model.load(catalog: env.catalog) }

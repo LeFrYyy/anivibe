@@ -1,0 +1,38 @@
+# Защита контекста: тяжёлые и служебные файлы не индексируются и не читаются агентом.
+node_modules/
+.expo/
+.next/
+dist/
+build/
+DerivedData/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+Podfile.lock
+Pods/
+# Медиа и бинарные ассеты
+Anivibe/Resources/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.mp4
+*.mov
+*.mp3
+*.wav
+*.otf
+*.ttf
+*.woff
+*.woff2
+*.ipa
+*.zip
+*.app
+# Дампы, фикстуры и большие JSON
+docs/fixtures/
+docs/qa-results/
+docs/community-qa-results/
+*.patch
+# Системное
+.git/
+*.log

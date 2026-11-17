@@ -29,6 +29,7 @@ final class AppSettings {
         didSet { defaults.set(accentHex, forKey: "settings.accentHex"); Theme.palette.hex = accentHex }
     }
     var libraryPinned: Bool { didSet { defaults.set(libraryPinned, forKey: "settings.libraryPinned") } }
+    var foldersEnabled: Bool { didSet { defaults.set(foldersEnabled, forKey: "settings.foldersEnabled") } }
     var appearance: AppearanceMode { didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) } }
     var autoplayNextEpisode: Bool { didSet { defaults.set(autoplayNextEpisode, forKey: Keys.autoplay) } }
     var testStreamsEnabled: Bool { didSet { defaults.set(testStreamsEnabled, forKey: Keys.testStreams) } }
@@ -45,6 +46,7 @@ final class AppSettings {
         self.defaults = defaults
         accentHex = defaults.string(forKey: "settings.accentHex")
         libraryPinned = defaults.bool(forKey: "settings.libraryPinned")
+        foldersEnabled = defaults.object(forKey: "settings.foldersEnabled") as? Bool ?? true
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .dark
         autoplayNextEpisode = defaults.object(forKey: Keys.autoplay) as? Bool ?? true
         testStreamsEnabled = defaults.object(forKey: Keys.testStreams) as? Bool ?? testStreamsDefault

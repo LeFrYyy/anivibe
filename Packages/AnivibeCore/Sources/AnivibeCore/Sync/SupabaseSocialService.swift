@@ -261,6 +261,20 @@ public actor SupabaseSocialService {
 }
 
 /// Sanitized read-only view of another account. Never includes email or player position.
+/// Именованный тир-лист, доступный просматривающему профиль (владельцу — все, гостю — только публичные).
+public struct PublicTierList: Decodable, Identifiable, Sendable {
+    public let id: UUID?
+    public let name: String
+    public let list: TierList
+    private enum CodingKeys: String, CodingKey { case id, name, list }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try? c.decodeIfPresent(UUID.self, forKey: .id)
+        name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? "Тир-лист"
+        list = try c.decode(TierList.self, forKey: .list)
+    }
+}
+
 public struct SocialProfileDetails: Decodable, Sendable {
     public let profile: UserProfile
     public let friends: [UserProfile]
@@ -274,11 +288,12 @@ public struct SocialProfileDetails: Decodable, Sendable {
     public let libraryHasMore: Bool
     public let stats: [String: Int]?
     public let tierList: TierList?
+    public let tierLists: [PublicTierList]
     enum CodingKeys: String, CodingKey {
         case profile, friends, history, library, stats
         case friendsCount = "friends_count", friendsAllowed = "friends_allowed", historyAllowed = "history_allowed", libraryAllowed = "library_allowed"
         case historyHasMore = "history_has_more", libraryHasMore = "library_has_more"
-        case tierList = "tier_list"
+        case tierList = "tier_list", tierLists = "tier_lists"
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -294,5 +309,6 @@ public struct SocialProfileDetails: Decodable, Sendable {
         libraryHasMore = try c.decode(Bool.self, forKey: .libraryHasMore)
         stats = try c.decodeIfPresent([String: Int].self, forKey: .stats)
         tierList = try? c.decodeIfPresent(TierList.self, forKey: .tierList)
+        tierLists = (try? c.decodeIfPresent([PublicTierList].self, forKey: .tierLists)) ?? []
     }
 }

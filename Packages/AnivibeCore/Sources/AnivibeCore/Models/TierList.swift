@@ -183,24 +183,181 @@ public struct TierList: Hashable, Codable, Sendable {
     }
 }
 
+/// Именованный тир-лист: у пользователя может быть несколько (максимум `TierListSet.maxLists`).
+public struct NamedTierList: Identifiable, Hashable, Codable, Sendable {
+    public var id: UUID
+    public var name: String
+    public var list: TierList
+
+    public init(id: UUID = UUID(), name: String, list: TierList = .empty) {
+        self.id = id
+        self.name = name
+        self.list = list
+    }
+}
+
+/// Набор персональных тир-листов пользователя (Beta).
+/// Ограничение — не более `maxLists` списков; дублируется CHECK-ограничением на сервере.
+public struct TierListSet: Hashable, Codable, Sendable {
+    public static let maxLists = 5
+    public static let maxNameLength = 40
+
+    public var lists: [NamedTierList]
+    public var activeListID: UUID?
+    public var updatedAt: Date
+    public var mutationID: UUID
+
+    public init(
+        lists: [NamedTierList] = [],
+        activeListID: UUID? = nil,
+        updatedAt: Date = Date(),
+        mutationID: UUID = UUID()
+    ) {
+        self.lists = Array(lists.prefix(Self.maxLists))
+        self.activeListID = activeListID
+        self.updatedAt = Date(timeIntervalSince1970: floor(updatedAt.timeIntervalSince1970 * 1000) / 1000)
+        self.mutationID = mutationID
+        if self.lists.isEmpty {
+            self.activeListID = nil
+        } else if self.activeListID == nil || !self.lists.contains(where: { $0.id == self.activeListID }) {
+            self.activeListID = self.lists.first?.id
+        }
+    }
+
+    /// Обратная совместимость: старый формат — одиночный `TierList`, оборачивается в именованный список.
+    public init(from decoder: Decoder) throws {
+        if let container = try? decoder.container(keyedBy: CodingKeys.self),
+           let decoded = try container.decodeIfPresent([NamedTierList].self, forKey: .lists) {
+            self.init(lists: decoded,
+                      activeListID: try container.decodeIfPresent(UUID.self, forKey: .activeListID),
+                      updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date(),
+                      mutationID: try container.decodeIfPresent(UUID.self, forKey: .mutationID) ?? UUID())
+            return
+        }
+        let legacy = try TierList(from: decoder)
+        let named = NamedTierList(name: Self.defaultListName(for: 1), list: legacy)
+        self.init(lists: [named], activeListID: named.id, updatedAt: legacy.updatedAt, mutationID: legacy.mutationID)
+    }
+
+    public static func defaultListName(for index: Int) -> String {
+        "Тир-лист \(index)"
+    }
+
+    public static func normalizedName(_ raw: String, fallbackIndex: Int) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return defaultListName(for: fallbackIndex) }
+        return String(trimmed.prefix(maxNameLength))
+    }
+
+    public static let empty = TierListSet()
+
+    public var activeList: NamedTierList? {
+        if let id = activeListID, let found = lists.first(where: { $0.id == id }) { return found }
+        return lists.first
+    }
+
+    /// Содержимое активного списка — для обратной совместимости UI.
+    public var tierList: TierList { activeList?.list ?? .empty }
+
+    public func list(id: UUID) -> NamedTierList? {
+        lists.first { $0.id == id }
+    }
+
+    /// Создаёт новый именованный список и делает его активным. `nil`, если достигнут лимит.
+    @discardableResult
+    public mutating func createList(name: String = "", at date: Date = Date()) -> NamedTierList? {
+        guard lists.count < Self.maxLists else { return nil }
+        let named = NamedTierList(name: Self.normalizedName(name, fallbackIndex: lists.count + 1))
+        lists.append(named)
+        activeListID = named.id
+        touch(at: date)
+        return named
+    }
+
+    public mutating func renameList(_ id: UUID, name: String, at date: Date = Date()) {
+        guard let index = lists.firstIndex(where: { $0.id == id }) else { return }
+        let fallback = lists.indices.contains(index) ? index + 1 : 1
+        let normalized = Self.normalizedName(name, fallbackIndex: fallback)
+        guard lists[index].name != normalized else { return }
+        lists[index].name = normalized
+        touch(at: date)
+    }
+
+    public mutating func deleteList(_ id: UUID, at date: Date = Date()) {
+        guard let index = lists.firstIndex(where: { $0.id == id }) else { return }
+        lists.remove(at: index)
+        if activeListID == id { activeListID = lists.first?.id }
+        touch(at: date)
+    }
+
+    /// Переключение активного списка — локальное действие, не требует выгрузки.
+    public mutating func selectList(_ id: UUID) {
+        guard lists.contains(where: { $0.id == id }) else { return }
+        activeListID = id
+    }
+
+    /// Мутация содержимого активного списка (assign/remove/updateTier/setVisibility).
+    public mutating func mutateActive(at date: Date = Date(), _ work: (inout TierList) -> Void) {
+        guard let id = activeList?.id, let index = lists.firstIndex(where: { $0.id == id }) else { return }
+        work(&lists[index].list)
+        touch(at: date)
+    }
+
+    public func isNewer(than other: TierListSet) -> Bool {
+        if updatedAt != other.updatedAt { return updatedAt > other.updatedAt }
+        return mutationID.uuidString > other.mutationID.uuidString
+    }
+
+    private mutating func touch(at date: Date) {
+        let rounded = Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 * 1000) / 1000)
+        updatedAt = max(rounded, updatedAt.addingTimeInterval(0.002))
+        mutationID = UUID()
+    }
+}
+
 public struct TierListSyncDocument: Codable, Hashable, Sendable {
-    public var tierList: TierList
+    public var set: TierListSet
     public var acknowledgedMutationID: UUID?
 
-    public init(tierList: TierList = .empty, acknowledgedMutationID: UUID? = nil) {
-        self.tierList = tierList
+    public init(set: TierListSet = .empty, acknowledgedMutationID: UUID? = nil) {
+        self.set = set
         self.acknowledgedMutationID = acknowledgedMutationID
     }
 
-    public var needsUpload: Bool {
-        acknowledgedMutationID != tierList.mutationID
+    private enum CodingKeys: String, CodingKey {
+        case set
+        case tierList // legacy-ключ старого формата (одиночный TierList)
+        case acknowledgedMutationID
     }
 
-    public mutating func merge(_ remote: TierList?) {
+    /// Обратная совместимость файла: старый формат хранил `tierList` (одиночный TierList).
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let decoded = try container.decodeIfPresent(TierListSet.self, forKey: .set) {
+            set = decoded
+        } else if let legacy = try container.decodeIfPresent(TierListSet.self, forKey: .tierList) {
+            set = legacy
+        } else {
+            set = .empty
+        }
+        acknowledgedMutationID = try container.decodeIfPresent(UUID.self, forKey: .acknowledgedMutationID)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(set, forKey: .set)
+        try container.encodeIfPresent(acknowledgedMutationID, forKey: .acknowledgedMutationID)
+    }
+
+    public var needsUpload: Bool {
+        acknowledgedMutationID != set.mutationID
+    }
+
+    public mutating func merge(_ remote: TierListSet?) {
         guard let remote else { return }
         acknowledgedMutationID = remote.mutationID
-        if remote.mutationID == tierList.mutationID || remote.isNewer(than: tierList) {
-            tierList = remote
+        if remote.mutationID == set.mutationID || remote.isNewer(than: set) {
+            set = remote
         }
     }
 }
