@@ -100,15 +100,21 @@ struct AnimeDetailsView: View {
     // MARK: Header
 
     private var header: some View {
-        ZStack(alignment: .bottomLeading) {
-            PosterImage(url: anime.bannerURL ?? anime.coverURL, placeholderColorHex: anime.coverColorHex, cornerRadius: 0)
-                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 200, maxHeight: 200)
-                .clipped()
-                .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .center, endPoint: .bottom))
-            HStack(alignment: .bottom, spacing: Theme.Spacing.l) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+            // Баннер — отдельный блок над текстом, а не подложка под ним:
+            // название и альтернативные варианты всегда на плоском фоне и читаемы.
+            if let bannerURL = anime.bannerURL {
+                PosterImage(url: bannerURL, placeholderColorHex: anime.coverColorHex, cornerRadius: 0)
+                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 180, maxHeight: 180)
+                    .clipped()
+            }
+            HStack(alignment: .top, spacing: Theme.Spacing.l) {
                 PosterImage(url: anime.coverURL, placeholderColorHex: anime.coverColorHex)
                     .frame(width: 110, height: 110 / Theme.posterAspect)
-                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                            .strokeBorder(Theme.separator, lineWidth: 1)
+                    }
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text(anime.title.preferred)
                         .font(.title2.weight(.bold))
@@ -119,15 +125,14 @@ struct AnimeDetailsView: View {
                         Text(alts.prefix(3).joined(separator: " · "))
                             .font(.footnote)
                             .foregroundStyle(Theme.textSecondary)
-                            .lineLimit(2)
+                            .lineLimit(3)
                     }
                 }
-                .padding(.bottom, Theme.Spacing.s)
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, Theme.Spacing.l)
-            .offset(y: 70)
+            .background(Theme.surface)
         }
-        .padding(.bottom, 70)
     }
 
     // MARK: Actions

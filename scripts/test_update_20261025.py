@@ -44,13 +44,13 @@ class UpdateSourceTests(unittest.TestCase):
         self.assertNotIn('Timer', hud)
 
     def test_folder_surfaces_are_flat_in_both_themes(self):
-        home = source('Anivibe/Features/Home/HomeView.swift')
-        folders = home.split('struct FolderTile:', 1)[1].split('struct AddToFolderSheet:', 1)[0]
+        folders = source('Anivibe/Features/Home/FolderViews.swift')
+        tiles = folders.split('struct FolderTile:', 1)[1].split('struct AddToFolderSheet:', 1)[0]
         for banned in ('Gradient', 'Material', '.shadow(', '.fill(.white)', '.foregroundStyle(.white)', '.colorScheme, .dark'):
-            self.assertNotIn(banned, folders)
-        self.assertIn('Theme.Folder.placeholder', folders)
+            self.assertNotIn(banned, tiles)
+        self.assertIn('Theme.surface', tiles)
         self.assertIn('Theme.Folder.panelMaxHeight', folders)
-        self.assertIn('Theme.Folder.panelMaxWidth', folders)
+        self.assertIn('min(640, geometry.size.width - 32)', folders)
         self.assertIn('if trimmed.isEmpty { name = collection.name }', folders)
         self.assertIn('env.collections.activeAccountID == presentedAccountID', folders)
         selection = source('Anivibe/Features/Library/FolderSelectionSheet.swift')
