@@ -184,65 +184,9 @@ struct TierListManagerSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    HStack(spacing: 10) {
-                        TextField("Название нового списка", text: $newListName)
-                            .textInputAutocapitalization(.sentences)
-                            .submitLabel(.done)
-                            .onSubmit(createList)
-                        Button("Создать", action: createList)
-                            .disabled(atLimit)
-                    }
-                    .frame(minHeight: 44)
-                } header: {
-                    Text("Новый тир-лист · \(set.lists.count)/\(TierListSet.maxLists)")
-                } footer: {
-                    Text(atLimit
-                         ? "Достигнут лимит — максимум \(TierListSet.maxLists) тир-листов на аккаунт. Удалите ненужный, чтобы создать новый."
-                         : "Можно создать до \(TierListSet.maxLists) тир-листов, например «Сёнэны» или «Топ 2025».")
-                }
-
-                Section("Мои тир-листы") {
-                    ForEach(set.lists) { named in
-                        HStack(spacing: 10) {
-                            Button {
-                                env.tierList.selectList(named.id)
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: named.id == set.activeList?.id ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(named.id == set.activeList?.id ? Theme.accent : Theme.textSecondary)
-                                    Text(named.name)
-                                        .foregroundStyle(Theme.textPrimary)
-                                        .lineLimit(1)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Выбрать список \(named.name)")
-                            Button {
-                                deleteTarget = named
-                            } label: {
-                                Image(systemName: "trash")
-                                    .foregroundStyle(Theme.danger)
-                                    .frame(minWidth: 44, minHeight: 44)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Удалить список \(named.name)")
-                        }
-                        .frame(minHeight: 44)
-                    }
-                } footer: {
-                    Text("Отмеченный список открыт в конструкторе. Переименование — в поле ниже или долгим нажатием на имя.")
-                }
-
-                if let active = set.activeList {
-                    Section("Переименовать «\(active.name)»") {
-                        RenameListRow(name: active.name) { newName in
-                            env.tierList.renameList(active.id, name: newName)
-                        }
-                    }
-                }
+                createSection
+                listsSection
+                renameSection
             }
             .scrollContentBackground(.hidden)
             .screenBackground()
@@ -261,6 +205,82 @@ struct TierListManagerSheet: View {
                 Button("Отмена", role: .cancel) { deleteTarget = nil }
             } message: {
                 Text("«\(deleteTarget?.name ?? "")» будет удалён вместе с расстановкой тайтлов. Сами аниме останутся в библиотеке.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var createSection: some View {
+        Section {
+            HStack(spacing: 10) {
+                TextField("Название нового списка", text: $newListName)
+                    .textInputAutocapitalization(.sentences)
+                    .submitLabel(.done)
+                    .onSubmit(createList)
+                Button("Создать", action: createList)
+                    .disabled(atLimit)
+            }
+            .frame(minHeight: 44)
+        } header: {
+            Text("Новый тир-лист · \(set.lists.count)/\(TierListSet.maxLists)")
+        } footer: {
+            Text(atLimit
+                 ? "Достигнут лимит — максимум \(TierListSet.maxLists) тир-листов на аккаунт. Удалите ненужный, чтобы создать новый."
+                 : "Можно создать до \(TierListSet.maxLists) тир-листов, например «Сёнэны» или «Топ 2025».")
+        }
+    }
+
+    @ViewBuilder
+    private var listsSection: some View {
+        Section {
+            ForEach(set.lists) { named in
+                listRow(named)
+                    .frame(minHeight: 44)
+            }
+        } header: {
+            Text("Мои тир-листы")
+        } footer: {
+            Text("Отмеченный список открыт в конструкторе. Переименование — в поле ниже.")
+        }
+    }
+
+    private func listRow(_ named: NamedTierList) -> some View {
+        let isActive = named.id == set.activeList?.id
+        return HStack(spacing: 10) {
+            Button {
+                env.tierList.selectList(named.id)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isActive ? Theme.accent : Theme.textSecondary)
+                    Text(named.name)
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Выбрать список \(named.name)")
+            Button {
+                deleteTarget = named
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(Theme.danger)
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Удалить список \(named.name)")
+        }
+    }
+
+    @ViewBuilder
+    private var renameSection: some View {
+        if let active = set.activeList {
+            Section("Переименовать «\(active.name)»") {
+                RenameListRow(name: active.name) { newName in
+                    env.tierList.renameList(active.id, name: newName)
+                }
             }
         }
     }
