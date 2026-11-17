@@ -41,14 +41,7 @@ struct ContinueWatchingCard: View {
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
             .overlay(alignment: .bottom) {
                 if let safeProgress {
-                    GeometryReader { geo in
-                        let width = geo.size.width.isFinite ? max(0, geo.size.width) : 0
-                        ZStack(alignment: .leading) {
-                            Rectangle().fill(Color.black.opacity(0.35))
-                            Rectangle().fill(Theme.accent).frame(width: width * safeProgress)
-                        }
-                    }
-                    .frame(height: 4)
+                    ProgressBar(value: safeProgress).frame(height: 4)
                 }
             }
     }
@@ -72,6 +65,7 @@ struct ContinueWatchingCard: View {
                 .foregroundStyle(Theme.onAccent)
                 .frame(width: 44, height: 44)
                 .background(Circle().fill(Theme.accent))
+                .clipShape(Circle())
                 .accessibilityHidden(true)
         }
         .padding(Theme.Spacing.l)
