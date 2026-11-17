@@ -211,7 +211,9 @@ struct HomeView: View {
     private func continueSubtitle(_ resume: ResumePoint) -> String {
         if resume.isFinishedSourceEpisode { return "Серия \(resume.episode) просмотрена" }
         if resume.isNextEpisode { return "Далее: серия \(resume.episode)" }
-        return "Серия \(resume.episode) · \(Int(resume.fraction * 100))%"
+        // Источник может отдать NaN или выброс — в подписи показываем безопасное число.
+        let fraction = resume.fraction.isFinite ? min(1, max(0, resume.fraction)) : 0
+        return "Серия \(resume.episode) · \(Int(fraction * 100))%"
     }
 
     @ViewBuilder private var recentEpisodesSection: some View {
