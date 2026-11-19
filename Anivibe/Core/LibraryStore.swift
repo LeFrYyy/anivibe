@@ -10,6 +10,9 @@ final class LibraryStore {
     private(set) var errorMessage: String?
     private(set) var isAccountStorageAvailable = true
     @ObservationIgnored private var refreshGeneration = UUID()
+    /// Последний опубликованный в виджет снимок — чтобы не писать файл без изменений.
+    @ObservationIgnored private var publishedContinueWatching: [ContinueWatchingItem] = []
+    @ObservationIgnored private var publishedLibraryCount = -1
     let repository: LibraryRepository
     /// Вызывается после локальных изменений (для отложенной синхронизации).
     @ObservationIgnored var onLocalChange: (@MainActor () -> Void)?
@@ -37,6 +40,13 @@ final class LibraryStore {
         if snapshot != view.snapshot { snapshot = view.snapshot }
         if continueWatching != view.continueWatching { continueWatching = view.continueWatching }
         if errorMessage != view.errorMessage { errorMessage = view.errorMessage }
+        // Виджет обновляем только при реальном изменении списка: иначе каждая
+        // синхронизация писала бы файл в App Group и перезапускала таймлайн.
+        if publishedContinueWatching != view.continueWatching || publishedLibraryCount != view.snapshot.visibleEntries.count {
+            publishedContinueWatching = view.continueWatching
+            publishedLibraryCount = view.snapshot.visibleEntries.count
+            WidgetBridge.publish(continueWatching: view.continueWatching, libraryCount: publishedLibraryCount)
+        }
     }
 
     // MARK: Queries

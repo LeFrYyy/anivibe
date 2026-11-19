@@ -6,6 +6,10 @@
             <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "B0E579C4A275FF46A095D1DD" BuildableName = "Anivibe.app" BlueprintName = "Anivibe" ReferencedContainer = "container:Anivibe.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry buildForTesting = "YES" buildForRunning = "YES" buildForProfiling = "YES" buildForArchiving = "YES" buildForAnalyzing = "YES">
+            <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "77990DAE3A859DF34C12C86B" BuildableName = "AnivibeWidgetExtension.appex" BlueprintName = "AnivibeWidgetExtension" ReferencedContainer = "container:Anivibe.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction buildConfiguration = "Debug" selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv = "YES">

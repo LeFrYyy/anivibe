@@ -8,19 +8,54 @@
 
 /* Begin PBXBuildFile section */
 		A7C096D6D77D57D180F30326 /* AnivibeCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7AD13D258D6DC49CC4B965AA /* AnivibeCore */; };
+		4D279F3618DF0D91DEA7FAAF /* AnivibeCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0F640D0891660757516915D2 /* AnivibeCore */; };
+		12A79A10C54A2CFED6056266 /* AnivibeWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		35693297713AB994DDD73A27 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D599E250ACD51102704B2413 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 77990DAE3A859DF34C12C86B;
+			remoteInfo = AnivibeWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		42D9DF9C766C4E53CE70374D /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				12A79A10C54A2CFED6056266 /* AnivibeWidgetExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		9C0F8724EBA24241F1E28D89 /* Anivibe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Anivibe.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED3AAB09B44613668082574F /* Anivibe.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Anivibe.xcconfig; sourceTree = "<group>"; };
 		AA3E58A74AB3E7106DDF81D6 /* Secrets.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.example.xcconfig; sourceTree = "<group>"; };
 		BC16413E7410D1CF88DF25C8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		548145E7DB232682E64798F3 /* Anivibe.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Anivibe.entitlements; sourceTree = "<group>"; };
+		1E5A5E785E372FFD4F599756 /* AnivibeWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AnivibeWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4DA33D9BE175FC87BC37DF2F /* AnivibeWidget-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "AnivibeWidget-Info.plist"; sourceTree = "<group>"; };
+		F16B9F0C443BC68087520892 /* AnivibeWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AnivibeWidget.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		30E25CF73A9A8979E5662C9B /* Anivibe */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Anivibe;
+			sourceTree = "<group>";
+		};
+		1F8A6CBD9B3CADF84CB09BC4 /* AnivibeWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = AnivibeWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -34,6 +69,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		8BF59859D175AF17EDBE3E6F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4D279F3618DF0D91DEA7FAAF /* AnivibeCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -41,6 +84,7 @@
 			isa = PBXGroup;
 			children = (
 				30E25CF73A9A8979E5662C9B /* Anivibe */,
+				1F8A6CBD9B3CADF84CB09BC4 /* AnivibeWidget */,
 				ACDE5AB9A8DAE02E8C992838 /* Config */,
 				F9B1EBDD15B663FC7C8E1BFA /* Products */,
 			);
@@ -52,6 +96,9 @@
 				ED3AAB09B44613668082574F /* Anivibe.xcconfig */,
 				AA3E58A74AB3E7106DDF81D6 /* Secrets.example.xcconfig */,
 				BC16413E7410D1CF88DF25C8 /* Info.plist */,
+				548145E7DB232682E64798F3 /* Anivibe.entitlements */,
+				4DA33D9BE175FC87BC37DF2F /* AnivibeWidget-Info.plist */,
+				F16B9F0C443BC68087520892 /* AnivibeWidget.entitlements */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -60,6 +107,7 @@
 			isa = PBXGroup;
 			children = (
 				9C0F8724EBA24241F1E28D89 /* Anivibe.app */,
+				1E5A5E785E372FFD4F599756 /* AnivibeWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -74,10 +122,12 @@
 				AA00C9369522E9EE8BD02A89 /* Sources */,
 				08F872DF85572A568FAE7B8B /* Frameworks */,
 				AA36AAAA5FF0E7F430C81F01 /* Resources */,
+				42D9DF9C766C4E53CE70374D /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				FC48B150621291C39EA188D8 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				30E25CF73A9A8979E5662C9B /* Anivibe */,
@@ -90,6 +140,29 @@
 			productReference = 9C0F8724EBA24241F1E28D89 /* Anivibe.app */;
 			productType = "com.apple.product-type.application";
 		};
+		77990DAE3A859DF34C12C86B /* AnivibeWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5FCB5E6C06AE965AE01FA9B5 /* Build configuration list for PBXNativeTarget "AnivibeWidgetExtension" */;
+			buildPhases = (
+				1FE4C13CC4E2B4FCD862CF09 /* Sources */,
+				8BF59859D175AF17EDBE3E6F /* Frameworks */,
+				B6765B483A988B956F7A246A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				1F8A6CBD9B3CADF84CB09BC4 /* AnivibeWidget */,
+			);
+			name = AnivibeWidgetExtension;
+			packageProductDependencies = (
+				0F640D0891660757516915D2 /* AnivibeCore */,
+			);
+			productName = AnivibeWidgetExtension;
+			productReference = 1E5A5E785E372FFD4F599756 /* AnivibeWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -101,6 +174,9 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					B0E579C4A275FF46A095D1DD = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					77990DAE3A859DF34C12C86B = {
 						CreatedOnToolsVersion = 16.0;
 					};
 				};
@@ -124,12 +200,20 @@
 			projectRoot = "";
 			targets = (
 				B0E579C4A275FF46A095D1DD /* Anivibe */,
+				77990DAE3A859DF34C12C86B /* AnivibeWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		AA36AAAA5FF0E7F430C81F01 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B6765B483A988B956F7A246A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -146,7 +230,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1FE4C13CC4E2B4FCD862CF09 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FC48B150621291C39EA188D8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 77990DAE3A859DF34C12C86B /* AnivibeWidgetExtension */;
+			targetProxy = 35693297713AB994DDD73A27 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		781997F5BD00444925FC179A /* Debug */ = {
@@ -203,6 +302,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/Anivibe.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -234,6 +334,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/Anivibe.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -259,6 +360,71 @@
 			};
 			name = Release;
 		};
+		5EA14053BFCD8A4D104D3E82 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = ED3AAB09B44613668082574F /* Anivibe.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/AnivibeWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/AnivibeWidget-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Anivibe;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(ANIVIBE_WIDGET_BUNDLE_ID)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		AEBB0790D01B6C5F8B35D5CA /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = ED3AAB09B44613668082574F /* Anivibe.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/AnivibeWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/AnivibeWidget-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Anivibe;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(ANIVIBE_WIDGET_BUNDLE_ID)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -280,6 +446,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5FCB5E6C06AE965AE01FA9B5 /* Build configuration list for PBXNativeTarget "AnivibeWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5EA14053BFCD8A4D104D3E82 /* Debug */,
+				AEBB0790D01B6C5F8B35D5CA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -291,6 +466,10 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		7AD13D258D6DC49CC4B965AA /* AnivibeCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AnivibeCore;
+		};
+		0F640D0891660757516915D2 /* AnivibeCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AnivibeCore;
 		};

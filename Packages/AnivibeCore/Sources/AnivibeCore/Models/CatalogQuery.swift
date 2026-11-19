@@ -26,10 +26,31 @@ public enum CatalogSort: String, CaseIterable, Codable, Sendable {
 }
 
 /// Параметры запроса каталога (поиск + фильтры + сортировка + страница).
+///
+/// Год задаётся диапазоном `yearFrom...yearTo` (обе границы включительно и опциональны).
+/// В AniList это `startDate_greater` / `startDate_lesser` в формате FuzzyDateInt (YYYYMMDD),
+/// поэтому одиночный год — это диапазон с совпадающими границами.
 public struct CatalogQuery: Hashable, Codable, Sendable {
+    /// Начальный/конечный год фильтра `startDate_greater`/`startDate_lesser` в формате YYYYMMDD.
+    ///
+    /// Значение сравнивается как целое, поэтому `20130401 >= 20130101` и `20121231 < 20130101`,
+    /// то есть границы корректно отсекают тайтлы по дате начала показа.
+    public enum YearBound: Hashable, Sendable {
+        case from(Int)
+        case to(Int)
+
+        /// Год границы (то, что ввёл пользователь).
+        public var year: Int {
+            switch self {
+            case .from(let year), .to(let year): return year
+            }
+        }
+    }
+
     public var search: String
     public var genres: Set<String>
-    public var year: Int?
+    public var yearFrom: Int?
+    public var yearTo: Int?
     public var season: AnimeSeason?
     public var status: AiringStatus?
     public var formats: Set<AnimeFormat>
@@ -37,18 +58,41 @@ public struct CatalogQuery: Hashable, Codable, Sendable {
     public var page: Int
     public var perPage: Int
 
-    public init(search: String = "", genres: Set<String> = [], year: Int? = nil, season: AnimeSeason? = nil,
+    public init(search: String = "", genres: Set<String> = [], year: Int? = nil, yearFrom: Int? = nil,
+                yearTo: Int? = nil, season: AnimeSeason? = nil,
                 status: AiringStatus? = nil, formats: Set<AnimeFormat> = [], sort: CatalogSort = .popularity,
                 page: Int = 1, perPage: Int = 30) {
         self.search = search
         self.genres = genres
-        self.year = year
+        // `year:` — удобство для точного года (диапазон с равными границами).
+        self.yearFrom = yearFrom ?? year
+        self.yearTo = yearTo ?? year
         self.season = season
         self.status = status
         self.formats = formats
         self.sort = sort
         self.page = page
         self.perPage = perPage
+    }
+
+    /// Точный год как диапазон (`yearFrom == yearTo`). `nil`, если диапазон не вырожден.
+    public var year: Int? {
+        get { yearFrom == yearTo ? yearFrom : nil }
+        set { yearFrom = newValue; yearTo = newValue }
+    }
+
+    /// Диапазон лет в виде `ClosedRange`, если заданы обе границы.
+    public var yearRange: ClosedRange<Int>? {
+        guard let yearFrom, let yearTo, yearFrom <= yearTo else { return nil }
+        return yearFrom...yearTo
+    }
+
+    /// Границы для AniList: `startDate_greater` и `startDate_lesser` в FuzzyDateInt.
+    public var yearBounds: [YearBound] {
+        var bounds: [YearBound] = []
+        if let yearFrom { bounds.append(.from(yearFrom)) }
+        if let yearTo { bounds.append(.to(yearTo)) }
+        return bounds
     }
 
     public var trimmedSearch: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -60,7 +104,7 @@ public struct CatalogQuery: Hashable, Codable, Sendable {
     }
 
     public var hasActiveFilters: Bool {
-        !genres.isEmpty || year != nil || status != nil || !formats.isEmpty || season != nil
+        !genres.isEmpty || yearFrom != nil || yearTo != nil || status != nil || !formats.isEmpty || season != nil
     }
 
     public func withPage(_ page: Int) -> CatalogQuery {
@@ -73,7 +117,15 @@ public struct CatalogQuery: Hashable, Codable, Sendable {
     public func validated(currentYear: Int = Calendar.utcGregorian.component(.year, from: Date())) -> CatalogQuery {
         var copy = self
         copy.search = String(trimmedSearch.prefix(100))
-        if let y = year, !(1917...(currentYear + 2)).contains(y) { copy.year = nil }
+        // Год ограничен разумным окном (первое аниме — 1917) и «текущий год + 2» для анонсов.
+        let lower = 1917, upper = currentYear + 2
+        if let from = copy.yearFrom, !(lower...upper).contains(from) { copy.yearFrom = nil }
+        if let to = copy.yearTo, !(lower...upper).contains(to) { copy.yearTo = nil }
+        // Перевёрнутый диапазон (from > to) не может ничего вернуть — не отправляем его.
+        if let from = copy.yearFrom, let to = copy.yearTo, from > to {
+            copy.yearFrom = nil
+            copy.yearTo = nil
+        }
         copy.page = max(1, min(page, 500))
         copy.perPage = max(1, min(perPage, 50))
         copy.genres = Set(genres.prefix(10).map { String($0.prefix(40)) })

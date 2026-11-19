@@ -37,7 +37,13 @@ public final class AniListCatalogService: CatalogService, @unchecked Sendable {
         ]
         if !q.trimmedSearch.isEmpty { vars["search"] = .string(q.trimmedSearch) }
         if !q.genres.isEmpty { vars["genres"] = .array(q.genres.sorted().map { .string($0) }) }
-        if let y = q.year { vars["year"] = .int(y) }
+        // Год — диапазон FuzzyDateInt (YYYYMMDD): lower/upper границы независимы.
+        for bound in q.yearBounds {
+            switch bound {
+            case .from(let year): vars["startDateGreater"] = .int(Anime.fuzzyDateInt(year: year, month: 1, day: 1))
+            case .to(let year): vars["startDateLesser"] = .int(Anime.fuzzyDateInt(year: year, month: 12, day: 31))
+            }
+        }
         if let s = q.season { vars["season"] = .string(s.rawValue) }
         if let st = q.status { vars["status"] = .string(st.rawValue) }
         if !q.formats.isEmpty { vars["formats"] = .array(q.formats.map(\.rawValue).sorted().map { .string($0) }) }

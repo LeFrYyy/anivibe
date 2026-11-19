@@ -38,12 +38,63 @@ final class CatalogTests: XCTestCase {
         let vars = try XCTUnwrap(req.bodyJSON["variables"] as? [String: Any])
         XCTAssertEqual(vars["search"] as? String, "titan")
         XCTAssertEqual(vars["genres"] as? [String], ["Action", "Drama"])
-        XCTAssertEqual(vars["year"] as? Int, 2013)
+        // Одиночный год — диапазон FuzzyDateInt с равными границами.
+        XCTAssertEqual(vars["startDateGreater"] as? Int, 20130101)
+        XCTAssertEqual(vars["startDateLesser"] as? Int, 20131231)
+        XCTAssertNil(vars["year"])
         XCTAssertEqual(vars["status"] as? String, "FINISHED")
         XCTAssertEqual(vars["formats"] as? [String], ["TV"])
         XCTAssertEqual(vars["sort"] as? [String], ["SCORE_DESC"])
         XCTAssertEqual(vars["page"] as? Int, 2)
         XCTAssertNil(vars["season"])
+    }
+
+    func testYearRangeSendsFuzzyDateBounds() async throws {
+        let body = #"{"data": {"Page": {"pageInfo": {"currentPage": 1, "hasNextPage": false}, "media": []}}}"#
+        let t = StubTransport { _ in (200, Data(body.utf8), [:]) }
+        let q = CatalogQuery(yearFrom: 2010, yearTo: 2015)
+        _ = try await service(t).search(q)
+
+        let vars = try XCTUnwrap(t.requests.first?.bodyJSON["variables"] as? [String: Any])
+        XCTAssertEqual(vars["startDateGreater"] as? Int, 20100101)
+        XCTAssertEqual(vars["startDateLesser"] as? Int, 20151231)
+        XCTAssertNil(vars["year"])
+    }
+
+    func testOpenEndedYearRangeSendsOneBound() async throws {
+        let body = #"{"data": {"Page": {"pageInfo": {"currentPage": 1, "hasNextPage": false}, "media": []}}}"#
+        let t = StubTransport { _ in (200, Data(body.utf8), [:]) }
+        _ = try await service(t).search(CatalogQuery(yearFrom: 2020))
+
+        let vars = try XCTUnwrap(t.requests.first?.bodyJSON["variables"] as? [String: Any])
+        XCTAssertEqual(vars["startDateGreater"] as? Int, 20200101)
+        XCTAssertNil(vars["startDateLesser"])
+    }
+
+    func testReversedYearRangeIsDroppedByValidation() async throws {
+        let body = #"{"data": {"Page": {"pageInfo": {"currentPage": 1, "hasNextPage": false}, "media": []}}}"#
+        let t = StubTransport { _ in (200, Data(body.utf8), [:]) }
+        _ = try await service(t).search(CatalogQuery(yearFrom: 2015, yearTo: 2010))
+
+        let vars = try XCTUnwrap(t.requests.first?.bodyJSON["variables"] as? [String: Any])
+        XCTAssertNil(vars["startDateGreater"])
+        XCTAssertNil(vars["startDateLesser"])
+    }
+
+    func testYearRangeHelpersAndActiveFilterFlag() {
+        let exact = CatalogQuery(year: 2013)
+        XCTAssertEqual(exact.year, 2013)
+        XCTAssertEqual(exact.yearRange, 2013...2013)
+        XCTAssertTrue(exact.hasActiveFilters)
+
+        let range = CatalogQuery(yearFrom: 2010, yearTo: 2015)
+        XCTAssertNil(range.year)
+        XCTAssertEqual(range.yearRange, 2010...2015)
+        XCTAssertEqual(range.yearBounds.map(\.year), [2010, 2015])
+        XCTAssertTrue(range.hasActiveFilters)
+
+        XCTAssertFalse(CatalogQuery().hasActiveFilters)
+        XCTAssertEqual(CatalogQuery().yearRange, nil)
     }
 
     func testResponsesAreCached() async throws {
@@ -154,6 +205,10 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(byStatus.items.map(\.id), [900_004])
         let byYear = try await demo.search(CatalogQuery(year: 2023))
         XCTAssertEqual(byYear.items.map(\.id), [900_003])
+        let byYearRange = try await demo.search(CatalogQuery(yearFrom: 2023, yearTo: 2024))
+        XCTAssertEqual(byYearRange.items.map(\.id), [900_001, 900_003])
+        let byOpenRange = try await demo.search(CatalogQuery(yearFrom: 2026))
+        XCTAssertEqual(byOpenRange.items.map(\.id), [900_002, 900_004])
         let empty = try await demo.search(CatalogQuery(search: "zzzz"))
         XCTAssertTrue(empty.items.isEmpty)
         let paged = try await demo.search(CatalogQuery(page: 1, perPage: 3))

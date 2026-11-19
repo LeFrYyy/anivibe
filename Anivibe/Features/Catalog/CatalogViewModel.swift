@@ -162,7 +162,8 @@ final class CatalogViewModel {
 
     func resetFilters() {
         query.genres = []
-        query.year = nil
+        query.yearFrom = nil
+        query.yearTo = nil
         query.status = nil
         query.formats = []
         query.season = nil

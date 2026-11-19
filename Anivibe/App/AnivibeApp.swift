@@ -15,6 +15,7 @@ struct AnivibeApp: App {
                 .preferredColorScheme(environment.settings.appearance.colorScheme)
                 .tint(Theme.accent)
                 .task { await environment.start() }
+                .onOpenURL { environment.deepLinks.handle($0) }
         }
         .onChange(of: scenePhase) { _, phase in
             environment.handleScenePhase(phase)

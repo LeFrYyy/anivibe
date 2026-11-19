@@ -8,6 +8,8 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab: AppTab = .home
     @State private var showSplash = true
+    /// ID тайтла, открытый из виджета (deep link). Каталог сам сбросит его после перехода.
+    @State private var catalogAnimeID: Int?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -16,7 +18,7 @@ struct RootView: View {
                 HomeView(openCatalog: { tab = .catalog })
                     .tabItem { Label("Главная", systemImage: "house") }
                     .tag(AppTab.home)
-                CatalogView()
+                CatalogView(openAnimeID: $catalogAnimeID)
                     .tabItem { Label("Каталог", systemImage: "square.grid.2x2") }
                     .tag(AppTab.catalog)
                 LibraryView()
@@ -64,6 +66,12 @@ struct RootView: View {
             guard env.community.levelToast != nil else { return }
             do { try await Task.sleep(nanoseconds: 4_000_000_000) } catch { return }
             env.community.levelToast = nil
+        }
+        .task(id: env.deepLinks.pendingAnimeID) {
+            // Deep link из виджета: переключаемся на каталог и открываем тайтл.
+            guard let id = env.deepLinks.take() else { return }
+            tab = .catalog
+            catalogAnimeID = id
         }
         .task {
             guard showSplash else { return }

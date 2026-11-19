@@ -21,6 +21,8 @@ final class AppEnvironment {
     let collections: CollectionsStore
     /// Персональный тир-лист (Beta).
     let tierList: TierListStore
+    /// Отложенный переход по deep link из виджета.
+    let deepLinks = DeepLinkRouter()
     @ObservationIgnored private var started = false
 
     init(configuration: AppConfiguration, catalog: CatalogService, registry: ProviderRegistry, library: LibraryStore,

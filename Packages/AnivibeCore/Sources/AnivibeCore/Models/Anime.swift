@@ -178,6 +178,13 @@ public struct Anime: Identifiable, Hashable, Codable, Sendable {
     public var snapshot: AnimeSnapshot {
         AnimeSnapshot(id: id, title: title.preferred, coverURL: coverURL, episodeCount: episodeCount)
     }
+
+    /// FuzzyDateInt AniList: дата как одно целое `YYYYMMDD` (`0`, если год неизвестен).
+    /// Используется в аргументах `startDate_greater`/`startDate_lesser`.
+    public static func fuzzyDateInt(year: Int?, month: Int? = nil, day: Int? = nil) -> Int {
+        guard let year, year > 0 else { return 0 }
+        return year * 10_000 + (month ?? 1) * 100 + (day ?? 1)
+    }
 }
 
 /// Минимальная копия тайтла для библиотеки (чтобы списки работали офлайн).

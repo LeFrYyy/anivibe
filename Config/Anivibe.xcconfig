@@ -6,6 +6,13 @@
 PRODUCT_BUNDLE_IDENTIFIER = com.example.anivibe
 DEVELOPMENT_TEAM =
 
+// Bundle ID расширения-виджета. Должен начинаться с PRODUCT_BUNDLE_IDENTIFIER.
+ANIVIBE_WIDGET_BUNDLE_ID = com.example.anivibe.widget
+
+// App Group для обмена данными с виджетом. Должен совпадать в обоих таргетах
+// и в подписи (Signing & Capabilities → App Groups).
+ANIVIBE_APP_GROUP = group.com.example.anivibe
+
 // Supabase (необязательно). Пусто — локальный режим без входа.
 // Важно: в .xcconfig «//» начинает комментарий, поэтому URL пишется как https:/$()/host
 ANIVIBE_SUPABASE_URL =

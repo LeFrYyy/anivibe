@@ -2,22 +2,26 @@ import SwiftUI
 import AnivibeCore
 
 struct CatalogView: View {
+    /// ID тайтла для перехода из deep link (виджет). Каталог открывает его и сбрасывает.
+    var openAnimeID: Binding<Int?> = .constant(nil)
     @Environment(AppEnvironment.self) private var env
     @Environment(\.dismissSearch) private var dismissSearch
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model = CatalogViewModel()
     @State private var showFilters = false
+    @State private var path = NavigationPath()
 
     private let columns = [GridItem(.adaptive(minimum: 104, maximum: 180), spacing: Theme.Spacing.m, alignment: .top)]
 
     var body: some View {
         @Bindable var model = model
-        NavigationStack {
+        NavigationStack(path: $path) {
             content
                 .animation(AppMotion.fade(reduceMotion: reduceMotion), value: model.phase)
                 .screenBackground()
                 .navigationTitle("Каталог")
                 .navigationDestination(for: Anime.self) { AnimeDetailsView(anime: $0) }
+                .navigationDestination(for: DeepLinkedAnime.self) { AnimeDetailsView(snapshot: AnimeSnapshot(id: $0.id, title: "Загрузка…")) }
                 .searchable(text: $model.query.search, placement: .navigationBarDrawer(displayMode: .always),
                             prompt: "Название, в т.ч. альтернативное")
                 .onChange(of: model.query.search) { _, _ in
@@ -49,9 +53,22 @@ struct CatalogView: View {
                     if model.phase == .idle || model.needsReload { model.reload(catalog: env.catalog) }
                     await model.loadGenres(catalog: env.catalog)
                     await model.loadCachedAnime(cache: env.cache)
+                    openDeepLinkedAnime()
+                }
+                .onChange(of: openAnimeID.wrappedValue) { _, _ in
+                    openDeepLinkedAnime()
                 }
         }
         .onDisappear { model.cancelRequests() }
+    }
+
+    /// Открывает тайтл из deep link, если он ожидает, и сбрасывает запрос.
+    private func openDeepLinkedAnime() {
+        guard let id = openAnimeID.wrappedValue else { return }
+        // Виджет знает только ID. AnimeDetailsView(snapshot:) сам догрузит детали,
+        // поэтому заголовок-заглушка виден лишь до окончания загрузки.
+        path.append(DeepLinkedAnime(id: id))
+        openAnimeID.wrappedValue = nil
     }
 
     @ViewBuilder private var suggestionsContent: some View {
@@ -226,10 +243,22 @@ private struct ActiveFiltersSummary: View {
     var body: some View {
         FlowLayout {
             ForEach(query.genres.sorted(), id: \.self) { Chip(text: CatalogLocalization.genre($0), tint: Theme.accent) }
-            if let y = query.year { Chip(text: String(y), tint: Theme.accent) }
+            if let years = query.yearRange {
+                Chip(text: years.lowerBound == years.upperBound ? String(years.lowerBound) : "\(years.lowerBound)–\(years.upperBound)", tint: Theme.accent)
+            } else if let from = query.yearFrom {
+                Chip(text: "от \(from)", tint: Theme.accent)
+            } else if let to = query.yearTo {
+                Chip(text: "до \(to)", tint: Theme.accent)
+            }
             if let s = query.status { Chip(text: s.localizedName, tint: Theme.accent) }
             ForEach(query.formats.sorted { $0.rawValue < $1.rawValue }, id: \.self) { Chip(text: $0.localizedName, tint: Theme.accent) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
+
+/// Маршрут deep link из виджета: известен только ID тайтла.
+/// `AnimeDetailsView(snapshot:)` догружает детали по этому ID.
+struct DeepLinkedAnime: Hashable {
+    let id: Int
 }

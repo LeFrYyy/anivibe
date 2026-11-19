@@ -25,10 +25,10 @@ enum AniListQueries {
     """
 
     static let search = """
-    query ($page: Int, $perPage: Int, $search: String, $genres: [String], $year: Int, $season: MediaSeason, $status: MediaStatus, $formats: [MediaFormat], $sort: [MediaSort]) {
+    query ($page: Int, $perPage: Int, $search: String, $genres: [String], $startDateGreater: FuzzyDateInt, $startDateLesser: FuzzyDateInt, $season: MediaSeason, $status: MediaStatus, $formats: [MediaFormat], $sort: [MediaSort]) {
       Page(page: $page, perPage: $perPage) {
         pageInfo { currentPage hasNextPage }
-        media(type: ANIME, isAdult: false, search: $search, genre_in: $genres, seasonYear: $year, season: $season, status: $status, format_in: $formats, sort: $sort) { ...card }
+        media(type: ANIME, isAdult: false, search: $search, genre_in: $genres, startDate_greater: $startDateGreater, startDate_lesser: $startDateLesser, season: $season, status: $status, format_in: $formats, sort: $sort) { ...card }
       }
     }
     """ + "\n" + mediaCard

@@ -28,7 +28,8 @@ public final class DemoCatalogService: CatalogService, @unchecked Sendable {
         var result = Self.items.filter { anime in
             TitleMatcher.matches(query: q.trimmedSearch, titles: anime.allTitles)
                 && (q.genres.isEmpty || q.genres.isSubset(of: Set(anime.genres)))
-                && (q.year == nil || anime.year == q.year)
+                && (q.yearFrom == nil || (anime.year ?? 0) >= q.yearFrom!)
+                && (q.yearTo == nil || (anime.year ?? 0) <= q.yearTo!)
                 && (q.status == nil || anime.status == q.status)
                 && (q.formats.isEmpty || anime.format.map(q.formats.contains) == true)
         }

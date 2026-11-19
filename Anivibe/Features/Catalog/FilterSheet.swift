@@ -26,7 +26,11 @@ struct FilterSheet: View {
                         Text("Любой").tag(AiringStatus?.none)
                         ForEach(AiringStatus.filterable, id: \.self) { Text($0.localizedName).tag(Optional($0)) }
                     }
-                    Picker("Год выпуска", selection: $draft.year) {
+                    Picker("Год от", selection: $draft.yearFrom) {
+                        Text("Любой").tag(Int?.none)
+                        ForEach(years, id: \.self) { Text(String($0)).tag(Optional($0)) }
+                    }
+                    Picker("Год до", selection: $draft.yearTo) {
                         Text("Любой").tag(Int?.none)
                         ForEach(years, id: \.self) { Text(String($0)).tag(Optional($0)) }
                     }
@@ -58,14 +62,20 @@ struct FilterSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Сбросить") {
-                        draft.genres = []; draft.year = nil; draft.status = nil; draft.formats = []; draft.sort = .popularity
+                        draft.genres = []; draft.yearFrom = nil; draft.yearTo = nil; draft.status = nil; draft.formats = []; draft.sort = .popularity
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Готово") {
                         let search = query.search
+                        let from = draft.yearFrom, to = draft.yearTo
                         query = draft
                         query.search = search
+                        // Перевёрнутый диапазон доводим до корректного, иначе он молча ничего не найдёт.
+                        if let from, let to, from > to {
+                            query.yearFrom = to
+                            query.yearTo = from
+                        }
                         apply()
                         dismiss()
                     }

@@ -110,7 +110,9 @@ public actor RussianCatalogService: CatalogService {
         if let data = try? JSONEncoder().encode(Array(recent)) { await cache.store(data, for: "russian-name-index") }
     }
     private static func accepts(_ anime: Anime, query: CatalogQuery) -> Bool {
-        (query.year == nil || query.year == anime.year) && (query.season == nil || query.season == anime.season)
+        (query.yearFrom == nil || (anime.year ?? 0) >= query.yearFrom!)
+        && (query.yearTo == nil || (anime.year ?? 0) <= query.yearTo!)
+        && (query.season == nil || query.season == anime.season)
         && (query.status == nil || query.status == anime.status)
         && (query.formats.isEmpty || anime.format.map { query.formats.contains($0) } == true)
         && query.genres.isSubset(of: Set(anime.genres))

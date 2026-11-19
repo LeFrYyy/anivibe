@@ -17,7 +17,18 @@ I = {k: oid(k) for k in [
     "xcconfig", "infoplist", "secretsExample", "target", "sources", "frameworks", "resources",
     "coreBuildFile", "coreProductDep", "localPkg",
     "projDebug", "projRelease", "projConfigList", "tgtDebug", "tgtRelease", "tgtConfigList",
+    # Widget target
+    "widgetTarget", "widgetSync", "widgetProduct", "widgetInfoPlist", "widgetEntitlements",
+    "widgetSources", "widgetFrameworks", "widgetResources",
+    "widgetCoreBuildFile", "widgetCoreProductDep",
+    "widgetDebug", "widgetRelease", "widgetConfigList",
+    "widgetDependency", "widgetContainerProxy", "embedAppExtensions", "embedBuildFile",
+    "appEntitlements",
 ]}
+
+# Идентификатор App Group. Должен совпадать с WidgetSnapshotStore.appGroupIdentifier
+# и с подстановкой $(ANIVIBE_APP_GROUP) в Config.
+APP_GROUP = "group.com.example.anivibe"
 
 common_project = {
     "ALWAYS_SEARCH_USER_PATHS": "NO",
@@ -52,6 +63,7 @@ release_project = dict(common_project, **{
 target_common = {
     "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+    "CODE_SIGN_ENTITLEMENTS": "Config/Anivibe.entitlements",
     "CODE_SIGN_STYLE": "Automatic",
     "CURRENT_PROJECT_VERSION": "1",
     "ENABLE_PREVIEWS": "YES",
@@ -76,6 +88,40 @@ target_common = {
 def settings(d):
     return "".join(f"\t\t\t\t{k} = {v};\n" for k, v in sorted(d.items()))
 
+# Настройки расширения-виджета. Отличаются от приложения: свой Info.plist,
+# точка входа @main в WidgetKit, обязательный суффикс bundle id и App Group.
+widget_common = {
+    "CODE_SIGN_ENTITLEMENTS": "Config/AnivibeWidget.entitlements",
+    "CODE_SIGN_STYLE": "Automatic",
+    "CURRENT_PROJECT_VERSION": "1",
+    "ENABLE_PREVIEWS": "YES",
+    "GENERATE_INFOPLIST_FILE": "YES",
+    "INFOPLIST_FILE": "Config/AnivibeWidget-Info.plist",
+    "INFOPLIST_KEY_CFBundleDisplayName": "Anivibe",
+    "INFOPLIST_KEY_NSHumanReadableCopyright": "\"\"",
+    "IPHONEOS_DEPLOYMENT_TARGET": "17.0",
+    "LD_RUNPATH_SEARCH_PATHS": "(\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t\t\"@executable_path/Frameworks\",\n\t\t\t\t\t\"@executable_path/../../Frameworks\",\n\t\t\t\t)",
+    "MARKETING_VERSION": "1.0",
+    "PRODUCT_BUNDLE_IDENTIFIER": "\"$(ANIVIBE_WIDGET_BUNDLE_ID)\"",
+    "PRODUCT_NAME": "\"$(TARGET_NAME)\"",
+    "SKIP_INSTALL": "YES",
+    "SUPPORTED_PLATFORMS": "\"iphoneos iphonesimulator\"",
+    "SWIFT_EMIT_LOC_STRINGS": "YES",
+    "SWIFT_VERSION": "5.0",
+    "TARGETED_DEVICE_FAMILY": "1",
+}
+widget_debug = dict(widget_common, **{
+    "DEBUG_INFORMATION_FORMAT": "dwarf",
+    "ONLY_ACTIVE_ARCH": "YES",
+    "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "\"DEBUG $(inherited)\"",
+    "SWIFT_OPTIMIZATION_LEVEL": "\"-Onone\"",
+})
+widget_release = dict(widget_common, **{
+    "DEBUG_INFORMATION_FORMAT": "\"dwarf-with-dsym\"",
+    "SWIFT_COMPILATION_MODE": "wholemodule",
+    "VALIDATE_PRODUCT": "YES",
+})
+
 def config(id_, name, d, base=None):
     b = f"\t\t\tbaseConfigurationReference = {I['xcconfig']} /* Anivibe.xcconfig */;\n" if base else ""
     return (f"\t\t{id_} /* {name} */ = {{\n\t\t\tisa = XCBuildConfiguration;\n{b}"
@@ -91,19 +137,54 @@ pbx = f"""// !$*UTF8*$!
 
 /* Begin PBXBuildFile section */
 		{I['coreBuildFile']} /* AnivibeCore in Frameworks */ = {{isa = PBXBuildFile; productRef = {I['coreProductDep']} /* AnivibeCore */; }};
+		{I['widgetCoreBuildFile']} /* AnivibeCore in Frameworks */ = {{isa = PBXBuildFile; productRef = {I['widgetCoreProductDep']} /* AnivibeCore */; }};
+		{I['embedBuildFile']} /* AnivibeWidgetExtension.appex in Embed App Extensions */ = {{isa = PBXBuildFile; settings = {{ATTRIBUTES = (RemoveHeadersOnCopy, ); }}; }};
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		{I['widgetContainerProxy']} /* PBXContainerItemProxy */ = {{
+			isa = PBXContainerItemProxy;
+			containerPortal = {I['project']} /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = {I['widgetTarget']};
+			remoteInfo = AnivibeWidgetExtension;
+		}};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		{I['embedAppExtensions']} /* Embed App Extensions */ = {{
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				{I['embedBuildFile']} /* AnivibeWidgetExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		}};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		{I['appProduct']} /* Anivibe.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Anivibe.app; sourceTree = BUILT_PRODUCTS_DIR; }};
 		{I['xcconfig']} /* Anivibe.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Anivibe.xcconfig; sourceTree = "<group>"; }};
 		{I['secretsExample']} /* Secrets.example.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.example.xcconfig; sourceTree = "<group>"; }};
 		{I['infoplist']} /* Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; }};
+		{I['appEntitlements']} /* Anivibe.entitlements */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Anivibe.entitlements; sourceTree = "<group>"; }};
+		{I['widgetProduct']} /* AnivibeWidgetExtension.appex */ = {{isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AnivibeWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; }};
+		{I['widgetInfoPlist']} /* AnivibeWidget-Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "AnivibeWidget-Info.plist"; sourceTree = "<group>"; }};
+		{I['widgetEntitlements']} /* AnivibeWidget.entitlements */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AnivibeWidget.entitlements; sourceTree = "<group>"; }};
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		{I['appSync']} /* Anivibe */ = {{
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Anivibe;
+			sourceTree = "<group>";
+		}};
+		{I['widgetSync']} /* AnivibeWidget */ = {{
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = AnivibeWidget;
 			sourceTree = "<group>";
 		}};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -117,6 +198,14 @@ pbx = f"""// !$*UTF8*$!
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		}};
+		{I['widgetFrameworks']} /* Frameworks */ = {{
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				{I['widgetCoreBuildFile']} /* AnivibeCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		}};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -124,6 +213,7 @@ pbx = f"""// !$*UTF8*$!
 			isa = PBXGroup;
 			children = (
 				{I['appSync']} /* Anivibe */,
+				{I['widgetSync']} /* AnivibeWidget */,
 				{I['configGroup']} /* Config */,
 				{I['productsGroup']} /* Products */,
 			);
@@ -135,6 +225,9 @@ pbx = f"""// !$*UTF8*$!
 				{I['xcconfig']} /* Anivibe.xcconfig */,
 				{I['secretsExample']} /* Secrets.example.xcconfig */,
 				{I['infoplist']} /* Info.plist */,
+				{I['appEntitlements']} /* Anivibe.entitlements */,
+				{I['widgetInfoPlist']} /* AnivibeWidget-Info.plist */,
+				{I['widgetEntitlements']} /* AnivibeWidget.entitlements */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -143,6 +236,7 @@ pbx = f"""// !$*UTF8*$!
 			isa = PBXGroup;
 			children = (
 				{I['appProduct']} /* Anivibe.app */,
+				{I['widgetProduct']} /* AnivibeWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -157,10 +251,12 @@ pbx = f"""// !$*UTF8*$!
 				{I['sources']} /* Sources */,
 				{I['frameworks']} /* Frameworks */,
 				{I['resources']} /* Resources */,
+				{I['embedAppExtensions']} /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				{I['widgetDependency']} /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				{I['appSync']} /* Anivibe */,
@@ -173,6 +269,29 @@ pbx = f"""// !$*UTF8*$!
 			productReference = {I['appProduct']} /* Anivibe.app */;
 			productType = "com.apple.product-type.application";
 		}};
+		{I['widgetTarget']} /* AnivibeWidgetExtension */ = {{
+			isa = PBXNativeTarget;
+			buildConfigurationList = {I['widgetConfigList']} /* Build configuration list for PBXNativeTarget "AnivibeWidgetExtension" */;
+			buildPhases = (
+				{I['widgetSources']} /* Sources */,
+				{I['widgetFrameworks']} /* Frameworks */,
+				{I['widgetResources']} /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				{I['widgetSync']} /* AnivibeWidget */,
+			);
+			name = AnivibeWidgetExtension;
+			packageProductDependencies = (
+				{I['widgetCoreProductDep']} /* AnivibeCore */,
+			);
+			productName = AnivibeWidgetExtension;
+			productReference = {I['widgetProduct']} /* AnivibeWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		}};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -184,6 +303,9 @@ pbx = f"""// !$*UTF8*$!
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {{
 					{I['target']} = {{
+						CreatedOnToolsVersion = 16.0;
+					}};
+					{I['widgetTarget']} = {{
 						CreatedOnToolsVersion = 16.0;
 					}};
 				}};
@@ -207,12 +329,20 @@ pbx = f"""// !$*UTF8*$!
 			projectRoot = "";
 			targets = (
 				{I['target']} /* Anivibe */,
+				{I['widgetTarget']} /* AnivibeWidgetExtension */,
 			);
 		}};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		{I['resources']} /* Resources */ = {{
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		}};
+		{I['widgetResources']} /* Resources */ = {{
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -229,10 +359,25 @@ pbx = f"""// !$*UTF8*$!
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		}};
+		{I['widgetSources']} /* Sources */ = {{
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		}};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		{I['widgetDependency']} /* PBXTargetDependency */ = {{
+			isa = PBXTargetDependency;
+			target = {I['widgetTarget']} /* AnivibeWidgetExtension */;
+			targetProxy = {I['widgetContainerProxy']} /* PBXContainerItemProxy */;
+		}};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
-{config(I['projDebug'], 'Debug', debug_project)}{config(I['projRelease'], 'Release', release_project)}{config(I['tgtDebug'], 'Debug', target_common, base=True)}{config(I['tgtRelease'], 'Release', target_common, base=True)}/* End XCBuildConfiguration section */
+{config(I['projDebug'], 'Debug', debug_project)}{config(I['projRelease'], 'Release', release_project)}{config(I['tgtDebug'], 'Debug', target_common, base=True)}{config(I['tgtRelease'], 'Release', target_common, base=True)}{config(I['widgetDebug'], 'Debug', widget_debug, base=True)}{config(I['widgetRelease'], 'Release', widget_release, base=True)}/* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
 		{I['projConfigList']} /* Build configuration list for PBXProject "Anivibe" */ = {{
@@ -253,6 +398,15 @@ pbx = f"""// !$*UTF8*$!
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		}};
+		{I['widgetConfigList']} /* Build configuration list for PBXNativeTarget "AnivibeWidgetExtension" */ = {{
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				{I['widgetDebug']} /* Debug */,
+				{I['widgetRelease']} /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		}};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -264,6 +418,10 @@ pbx = f"""// !$*UTF8*$!
 
 /* Begin XCSwiftPackageProductDependency section */
 		{I['coreProductDep']} /* AnivibeCore */ = {{
+			isa = XCSwiftPackageProductDependency;
+			productName = AnivibeCore;
+		}};
+		{I['widgetCoreProductDep']} /* AnivibeCore */ = {{
 			isa = XCSwiftPackageProductDependency;
 			productName = AnivibeCore;
 		}};
@@ -279,6 +437,10 @@ scheme = f"""<?xml version="1.0" encoding="UTF-8"?>
       <BuildActionEntries>
          <BuildActionEntry buildForTesting = "YES" buildForRunning = "YES" buildForProfiling = "YES" buildForArchiving = "YES" buildForAnalyzing = "YES">
             <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "{I['target']}" BuildableName = "Anivibe.app" BlueprintName = "Anivibe" ReferencedContainer = "container:Anivibe.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry buildForTesting = "YES" buildForRunning = "YES" buildForProfiling = "YES" buildForArchiving = "YES" buildForAnalyzing = "YES">
+            <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "{I['widgetTarget']}" BuildableName = "AnivibeWidgetExtension.appex" BlueprintName = "AnivibeWidgetExtension" ReferencedContainer = "container:Anivibe.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>

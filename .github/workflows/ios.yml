@@ -42,6 +42,8 @@ jobs:
         run: python3 scripts/test_bugfix_update.py
       - name: Hold-to-2x, flat folders and retry contracts
         run: python3 scripts/test_update_20261025.py
+      - name: Continue Watching widget and deep link contracts
+        run: python3 scripts/test_widget.py
       - name: Run AnivibeCore tests
         shell: bash
         run: |
@@ -181,19 +183,36 @@ jobs:
           APP="build/Build/Products/Release-iphoneos/Anivibe.app"
           test -f "$APP/Info.plist"
           test -f "$APP/Anivibe"
+          # Виджет должен быть встроен в бандл приложения.
+          test -d "$APP/PlugIns/AnivibeWidgetExtension.appex"
+          test -f "$APP/PlugIns/AnivibeWidgetExtension.appex/Info.plist"
           rm -rf Payload Anivibe.ipa
           mkdir Payload
           ditto "$APP" "Payload/Anivibe.app"
           ditto -c -k --norsrc --keepParent Payload Anivibe.ipa
           unzip -t Anivibe.ipa
           python3 - <<'PY'
+          import plistlib
           import zipfile
+
           with zipfile.ZipFile('Anivibe.ipa') as archive:
               names = set(archive.namelist())
-              for required in ['Payload/Anivibe.app/Info.plist', 'Payload/Anivibe.app/Anivibe']:
+              for required in [
+                  'Payload/Anivibe.app/Info.plist',
+                  'Payload/Anivibe.app/Anivibe',
+                  'Payload/Anivibe.app/PlugIns/AnivibeWidgetExtension.appex/Info.plist',
+              ]:
                   if required not in names:
                       raise SystemExit('Incomplete IPA: ' + required)
-          print('IPA structure verified')
+
+              # Расширение обязано объявить точку встраивания WidgetKit.
+              with archive.open('Payload/Anivibe.app/PlugIns/AnivibeWidgetExtension.appex/Info.plist') as handle:
+                  widget_plist = plistlib.load(handle)
+              point = widget_plist.get('NSExtension', {}).get('NSExtensionPointIdentifier')
+              if point != 'com.apple.widgetkit-extension':
+                  raise SystemExit('Widget extension point is not widgetkit-extension: ' + repr(point))
+
+          print('IPA structure and widget extension verified')
           PY
       - name: Upload IPA
         uses: actions/upload-artifact@v4
