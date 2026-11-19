@@ -94,6 +94,15 @@ class WidgetSourceTests(unittest.TestCase):
         self.assertIn(f"ANIVIBE_APP_GROUP = {group}", source("Config/Anivibe.xcconfig"))
         self.assertIn(f'"{group}"', source("Packages/AnivibeCore/Sources/AnivibeCore/Models/WidgetSnapshot.swift"))
 
+    def test_snapshot_store_qualifies_the_nested_item_type(self):
+        # `Item` вложен в `WidgetSnapshot`, а фабрика живёт в `WidgetSnapshotStore`.
+        # Без квалификатора компилятор падает с «cannot find 'Item' in scope» —
+        # это уже ломало CI дважды, поэтому фиксируем правило статически.
+        snapshot = source("Packages/AnivibeCore/Sources/AnivibeCore/Models/WidgetSnapshot.swift")
+        self.assertIn("WidgetSnapshot.Item(id:", snapshot)
+        self.assertNotIn("\n            Item(id:", snapshot)
+        self.assertNotIn("\n                 Item(id:", snapshot)
+
     def test_widget_extension_is_embedded_by_the_generated_project(self):
         pbxproj = source("Anivibe.xcodeproj/project.pbxproj")
         self.assertIn("AnivibeWidgetExtension", pbxproj)

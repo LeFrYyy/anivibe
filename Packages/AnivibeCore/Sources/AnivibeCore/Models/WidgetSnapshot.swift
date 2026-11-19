@@ -118,9 +118,11 @@ public enum WidgetSnapshotStore {
 
     /// Строит снимок из текущего состояния библиотеки (вызывается приложением).
     public static func make(from items: [ContinueWatchingItem], libraryCount: Int, now: Date = Date()) -> WidgetSnapshot {
-        let mapped = items.prefix(6).map { item in
+        // `Item` вложен в `WidgetSnapshot`, а мы находимся в `WidgetSnapshotStore` —
+        // здесь нужен полный квалификатор, иначе «cannot find 'Item' in scope».
+        let mapped: [WidgetSnapshot.Item] = items.prefix(6).map { item in
             WidgetSnapshot.Item(id: item.anime.id, title: item.anime.title, coverURL: item.anime.coverURL,
-                 episode: item.resume.episode, progress: item.resume.fraction)
+                                episode: item.resume.episode, progress: item.resume.fraction)
         }
         return WidgetSnapshot(continueWatching: mapped, libraryCount: libraryCount, updatedAt: now)
     }
