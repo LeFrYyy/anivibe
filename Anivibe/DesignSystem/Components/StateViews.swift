@@ -21,29 +21,6 @@ struct SectionHeader: View {
     }
 }
 
-/// Заголовок секции с действием-стрелкой: используется там, где есть полный список.
-struct SectionHeaderLink<Destination: View>: View {
-    let title: String
-    @ViewBuilder var destination: () -> Destination
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(Theme.textPrimary)
-                .accessibilityAddTraits(.isHeader)
-            Spacer()
-            NavigationLink(destination: destination) {
-                Text("Все")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Theme.accent)
-                    .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
-            }
-        }
-        .padding(.horizontal, Theme.Spacing.l)
-    }
-}
-
 struct LoadingStateView: View {
     var message = "Загрузка…"
     var body: some View {
@@ -112,21 +89,67 @@ struct PosterRowSkeleton: View {
     }
 }
 
+/// Скелетон сетки каталога: повторяет адаптивные колонки настоящей выдачи,
+/// поэтому переход «загрузка → результат» не перекомпоновывает экран.
+/// Свой ScrollView не создаёт — встраивается в уже существующий контейнер.
+struct PosterGridSkeleton: View {
+    var columns: [GridItem] = [GridItem(.adaptive(minimum: 104, maximum: 180), spacing: Theme.Spacing.m, alignment: .top)]
+    var count: Int = 12
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: Theme.Spacing.l) {
+            ForEach(0..<count, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                    RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.surfaceElevated)
+                        .aspectRatio(Theme.posterAspect, contentMode: .fit)
+                    RoundedRectangle(cornerRadius: 4).fill(Theme.surfaceElevated).frame(height: 12)
+                    RoundedRectangle(cornerRadius: 4).fill(Theme.surfaceElevated).frame(width: 60, height: 10)
+                }
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.l)
+        .padding(.top, Theme.Spacing.s)
+        .redacted(reason: .placeholder)
+        .accessibilityLabel("Загрузка каталога")
+    }
+}
+
+/// Скелетон текстового блока (синопсис, описание): держит высоту секции,
+/// пока грузятся данные, вместо одинокого спиннера.
+struct TextBlockSkeleton: View {
+    var lines: Int = 3
+    var accessibilityMessage = "Загрузка текста"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            ForEach(0..<lines, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.surfaceElevated)
+                    .frame(height: 12)
+                    // Последняя строка короче — читается как настоящий абзац.
+                    .frame(maxWidth: index == lines - 1 ? 220 : .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.l)
+        .redacted(reason: .placeholder)
+        .accessibilityLabel(accessibilityMessage)
+    }
+}
+
 struct Chip: View {
     let text: String
     var systemImage: String?
     var tint: Color = Theme.textSecondary
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             if let systemImage { Image(systemName: systemImage) }
             Text(text)
         }
         .font(.caption.weight(.medium))
         .foregroundStyle(tint)
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(Theme.surfaceElevated, in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.separator, lineWidth: 1))
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
     }
 }
 

@@ -117,8 +117,12 @@ struct CatalogView: View {
         switch model.phase {
         case .idle, .loading:
             if model.items.isEmpty {
-                LoadingStateView(message: model.query.trimmedSearch.isEmpty ? "Загружаем каталог…" : "Ищем «\(model.query.trimmedSearch)»…")
-                    .frame(maxHeight: .infinity)
+                // Скелетон вместо спиннера: повторяет сетку постеров, поэтому
+                // выдача «проявляется» на месте, без скачка раскладки.
+                ScrollView {
+                    PosterGridSkeleton(columns: columns, count: 12)
+                }
+                .scrollDisabled(true)
             } else {
                 grid
             }
@@ -139,12 +143,7 @@ struct CatalogView: View {
     private var grid: some View {
         ScrollView {
             if model.query.hasActiveFilters {
-                ActiveFiltersSummary(query: model.query, clear: {
-                    model.resetFilters()
-                    model.reload(catalog: env.catalog)
-                })
-                .padding(.horizontal, Theme.Spacing.l)
-                .padding(.bottom, Theme.Spacing.s)
+                ActiveFiltersSummary(query: model.query).padding(.horizontal, Theme.Spacing.l)
             }
             LazyVGrid(columns: columns, spacing: Theme.Spacing.l) {
                 ForEach(model.items) { anime in
@@ -158,8 +157,6 @@ struct CatalogView: View {
             .padding(.top, Theme.Spacing.s)
             if model.isLoadingMore {
                 ProgressView().padding()
-                    .frame(maxWidth: .infinity)
-                    .accessibilityLabel("Загружаем ещё тайтлы")
             }
         }
         .scrollDismissesKeyboard(.immediately)
@@ -172,10 +169,11 @@ private struct SuggestionRow: View {
     var body: some View {
         HStack(spacing: Theme.Spacing.m) {
             PosterImage(url: anime.coverURL, placeholderColorHex: anime.coverColorHex, cornerRadius: 6)
-                .frame(width: 44, height: 44 / Theme.posterAspect)
+                .frame(width: 40, height: 40 / Theme.posterAspect)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(Theme.separator, lineWidth: 1)
+                        // Токен темы, а не белая линия: на светлом фоне она пропадала.
+                        .strokeBorder(Theme.separator.opacity(0.7), lineWidth: 0.5)
                 )
 
             VStack(alignment: .leading, spacing: 3) {
@@ -223,25 +221,15 @@ private struct SuggestionRow: View {
     }
 }
 
-/// Активные фильтры над сеткой: что включено и один тап, чтобы всё снять.
 private struct ActiveFiltersSummary: View {
     let query: CatalogQuery
-    let clear: () -> Void
-
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.s) {
-            FlowLayout {
-                ForEach(query.genres.sorted(), id: \.self) { Chip(text: CatalogLocalization.genre($0), tint: Theme.accent) }
-                if let y = query.year { Chip(text: String(y), tint: Theme.accent) }
-                if let s = query.status { Chip(text: s.localizedName, tint: Theme.accent) }
-                ForEach(query.formats.sorted { $0.rawValue < $1.rawValue }, id: \.self) { Chip(text: $0.localizedName, tint: Theme.accent) }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button("Сбросить", action: clear)
-                .font(.subheadline.weight(.medium))
-                .frame(minWidth: 44, minHeight: 44)
-                .accessibilityLabel("Сбросить все фильтры")
+        FlowLayout {
+            ForEach(query.genres.sorted(), id: \.self) { Chip(text: CatalogLocalization.genre($0), tint: Theme.accent) }
+            if let y = query.year { Chip(text: String(y), tint: Theme.accent) }
+            if let s = query.status { Chip(text: s.localizedName, tint: Theme.accent) }
+            ForEach(query.formats.sorted { $0.rawValue < $1.rawValue }, id: \.self) { Chip(text: $0.localizedName, tint: Theme.accent) }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
