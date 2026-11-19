@@ -50,6 +50,13 @@ jobs:
           set -o pipefail
           cd Packages/AnivibeCore
           swift test 2>&1 | tee ../../swift-test.log
+      - name: Show Swift test failures on the job page
+        if: failure()
+        shell: bash
+        run: |
+          # Без этого текст ошибки компиляции виден только в приватном артефакте.
+          echo '--- compiler/test failures ---'
+          grep -nE 'error:|XCTAssert|failed|FAIL' swift-test.log | tail -n 80 || true
       - name: Save test log
         if: always()
         uses: actions/upload-artifact@v4

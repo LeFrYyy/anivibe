@@ -84,17 +84,18 @@ final class CatalogTests: XCTestCase {
     func testYearRangeHelpersAndActiveFilterFlag() {
         let exact = CatalogQuery(year: 2013)
         XCTAssertEqual(exact.year, 2013)
-        XCTAssertEqual(exact.yearRange, 2013...2013)
+        XCTAssertEqual(exact.yearRange, ClosedRange(uncheckedBounds: (2013, 2013)))
         XCTAssertTrue(exact.hasActiveFilters)
 
         let range = CatalogQuery(yearFrom: 2010, yearTo: 2015)
         XCTAssertNil(range.year)
-        XCTAssertEqual(range.yearRange, 2010...2015)
+        XCTAssertEqual(range.yearRange, ClosedRange(uncheckedBounds: (2010, 2015)))
         XCTAssertEqual(range.yearBounds.map(\.year), [2010, 2015])
         XCTAssertTrue(range.hasActiveFilters)
 
         XCTAssertFalse(CatalogQuery().hasActiveFilters)
-        XCTAssertEqual(CatalogQuery().yearRange, nil)
+        let noRange: ClosedRange<Int>? = CatalogQuery().yearRange
+        XCTAssertNil(noRange)
     }
 
     func testResponsesAreCached() async throws {

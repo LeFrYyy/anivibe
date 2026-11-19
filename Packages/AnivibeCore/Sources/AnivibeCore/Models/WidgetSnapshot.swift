@@ -104,13 +104,13 @@ public enum WidgetSnapshotStore {
         return snapshot
     }
 
-    static var encoder: JSONEncoder {
+    public static var encoder: JSONEncoder {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
         return e
     }
 
-    static var decoder: JSONDecoder {
+    public static var decoder: JSONDecoder {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return d
