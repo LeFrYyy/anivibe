@@ -138,7 +138,7 @@ pbx = f"""// !$*UTF8*$!
 /* Begin PBXBuildFile section */
 		{I['coreBuildFile']} /* AnivibeCore in Frameworks */ = {{isa = PBXBuildFile; productRef = {I['coreProductDep']} /* AnivibeCore */; }};
 		{I['widgetCoreBuildFile']} /* AnivibeCore in Frameworks */ = {{isa = PBXBuildFile; productRef = {I['widgetCoreProductDep']} /* AnivibeCore */; }};
-		{I['embedBuildFile']} /* AnivibeWidgetExtension.appex in Embed App Extensions */ = {{isa = PBXBuildFile; settings = {{ATTRIBUTES = (RemoveHeadersOnCopy, ); }}; }};
+		{I['embedBuildFile']} /* AnivibeWidgetExtension.appex in Embed App Extensions */ = {{isa = PBXBuildFile; fileRef = {I['widgetProduct']} /* AnivibeWidgetExtension.appex */; settings = {{ATTRIBUTES = (RemoveHeadersOnCopy, ); }}; }};
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */

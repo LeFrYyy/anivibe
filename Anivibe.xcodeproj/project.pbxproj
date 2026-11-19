@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		A7C096D6D77D57D180F30326 /* AnivibeCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7AD13D258D6DC49CC4B965AA /* AnivibeCore */; };
 		4D279F3618DF0D91DEA7FAAF /* AnivibeCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0F640D0891660757516915D2 /* AnivibeCore */; };
-		12A79A10C54A2CFED6056266 /* AnivibeWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		12A79A10C54A2CFED6056266 /* AnivibeWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 1E5A5E785E372FFD4F599756 /* AnivibeWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
