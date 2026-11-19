@@ -56,9 +56,6 @@ struct PlayerControlsView: View {
                 }
                 .accessibilityLabel("Повернуть экран")
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             if model.phase == .ready { HStack { videoMenu; Spacer() } }
             if let source = model.source {
                 HStack(spacing: 6) {
@@ -68,7 +65,8 @@ struct PlayerControlsView: View {
                 }
                 .font(.caption.weight(.medium))
                 .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(Color.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(source.isTestContent ? Theme.secondaryAccent.opacity(0.25) : Color.white.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 6))
                 if let attribution = source.attribution {
                     Text(attribution).font(.caption2).foregroundStyle(.white.opacity(0.6))
                 }
@@ -81,37 +79,25 @@ struct PlayerControlsView: View {
     private var centerControls: some View {
         HStack(spacing: 44) {
             Button { model.skip(by: -10); interacted() } label: {
-                Image(systemName: "gobackward.10")
-                    .font(.system(size: 27))
-                    .frame(width: 44, height: 44)
+                Image(systemName: "gobackward.10").font(.system(size: 30))
             }
             .accessibilityLabel("Назад на 10 секунд")
             Button { model.togglePlay(); interacted() } label: {
                 ZStack {
-                    Circle().fill(Color.white)
-                    Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundStyle(Color.black.opacity(0.87))
+                    Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 44))
                         .opacity(model.isBuffering ? 0.35 : 1)
                     if model.isBuffering {
-                        ProgressView().controlSize(.regular).tint(.black)
+                        ProgressView().controlSize(.large).tint(.white)
                     }
                 }
                 .frame(width: 64, height: 64)
-                .contentShape(Circle())
             }
             .accessibilityLabel(model.isPlaying ? "Пауза" : "Воспроизвести")
             Button { model.skip(by: 10); interacted() } label: {
-                Image(systemName: "goforward.10")
-                    .font(.system(size: 27))
-                    .frame(width: 44, height: 44)
+                Image(systemName: "goforward.10").font(.system(size: 30))
             }
             .accessibilityLabel("Вперёд на 10 секунд")
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.76), in: Capsule())
-        .frame(minWidth: 44, minHeight: 44)
     }
 
     // MARK: Bottom
@@ -123,35 +109,18 @@ struct PlayerControlsView: View {
                 VideoTimelineSlider(model: model, interacted: interacted)
                 Text(model.duration > 0 ? TimeFormat.string(model.duration) : "--:--").font(.caption.monospacedDigit())
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            // На узком экране подписи кнопок мешали: остаются иконки с tap-зоной 44 pt.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Theme.Spacing.l) {
-                    tracksMenu
-                    Button(action: showSources) { Label("Источник", systemImage: "server.rack") }
-                    Spacer()
-                    Button(action: showEpisodes) { Label("Серии", systemImage: "list.bullet") }
-                    if model.hasNextEpisode {
-                        Button(action: model.playNextEpisode) { Label("Далее", systemImage: "forward.end.fill") }
-                            .accessibilityLabel("Следующая серия")
-                    }
+            HStack(spacing: Theme.Spacing.l) {
+                tracksMenu
+                Button(action: showSources) { Label("Источник", systemImage: "server.rack") }
+                Spacer()
+                Button(action: showEpisodes) { Label("Серии", systemImage: "list.bullet") }
+                if model.hasNextEpisode {
+                    Button(action: model.playNextEpisode) { Label("Далее", systemImage: "forward.end.fill") }
+                        .accessibilityLabel("Следующая серия")
                 }
-                HStack(spacing: Theme.Spacing.s) {
-                    tracksMenu
-                    Button(action: showSources) { Label("Источник", systemImage: "server.rack") }
-                    Spacer()
-                    Button(action: showEpisodes) { Label("Серии", systemImage: "list.bullet") }
-                    if model.hasNextEpisode {
-                        Button(action: model.playNextEpisode) { Label("Далее", systemImage: "forward.end.fill") }
-                            .accessibilityLabel("Следующая серия")
-                    }
-                }
-                .labelStyle(.iconOnly)
             }
             .font(.footnote.weight(.medium))
-            .frame(minWidth: 44, minHeight: 44)
+            .labelStyle(.titleAndIcon)
         }
     }
 
@@ -168,8 +137,12 @@ struct PlayerControlsView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 12)
             .frame(height: 36)
-            .background(Color.black.opacity(0.76), in: Capsule())
-            .overlay(Capsule().strokeBorder(Theme.accent, lineWidth: 2))
+            .background {
+                Capsule().fill(.ultraThinMaterial)
+                    .overlay(Capsule().fill(Theme.accent.opacity(0.5)))
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 1))
+            }
+            .shadow(color: Theme.accent.opacity(0.4), radius: 8, y: 2)
         }
         .accessibilityLabel("Настройки видео: озвучка, качество и скорость")
     }
@@ -318,6 +291,7 @@ private struct VideoTimelineSlider: View {
                 Circle()
                     .fill(Theme.accent)
                     .frame(width: thumbRadius * 2, height: thumbRadius * 2)
+                    .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
                     .offset(x: max(0, min(width - thumbRadius * 2, (width * playedFraction) - thumbRadius)))
             }
             .frame(height: max(geo.size.height, 32))

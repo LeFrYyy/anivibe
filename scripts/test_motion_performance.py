@@ -42,23 +42,22 @@ class MotionPerformanceSourceTests(unittest.TestCase):
 
     def test_folder_backdrop_is_separate_from_moving_panel(self):
         home = source("Anivibe/Features/Home/HomeView.swift")
-        folders = source("Anivibe/Features/Home/FolderViews.swift")
         overlay = home.split("        .overlay {", 1)[1].split(".confirmationDialog(", 1)[0]
         self.assertIn("FolderBackdrop(close: closeFolder)", overlay)
         self.assertIn("AppMotion.panelTransition(reduceMotion: reduceMotion)", overlay)
         self.assertNotIn(".scale(scale: 0.86)", overlay)
         self.assertIn(".accessibilityHidden(openedFolder != nil)", home)
-        self.assertIn("env.collections.activeAccountID == presentedAccountID", folders)
+        self.assertIn("env.collections.activeAccountID == presentedAccountID", home)
 
     def test_scrolling_folder_tiles_do_not_each_blur_and_double_shadow(self):
-        folders = source("Anivibe/Features/Home/FolderViews.swift")
-        background = folders.split("struct FolderBackground:", 1)[1].split("struct NewFolderTile:", 1)[0]
-        self.assertIn(".fill(Theme.surface)", background)
-        self.assertIn(".strokeBorder(Theme.separator", background)
+        home = source("Anivibe/Features/Home/HomeView.swift")
+        background = home.split("struct FolderBackground:", 1)[1].split("struct NewFolderTile:", 1)[0]
+        self.assertIn(".fill(Theme.Folder.background)", background)
+        self.assertIn(".strokeBorder(Theme.Folder.border", background)
         self.assertNotIn("Material", background)
         self.assertNotIn("Gradient", background)
         self.assertNotIn(".shadow(", background)
-        self.assertIn("Theme.Folder.panelMaxHeight", folders)
+        self.assertIn("Theme.Folder.panelMaxHeight", home)
 
     def test_posters_request_bucketed_actual_display_size(self):
         poster = source("Anivibe/DesignSystem/Components/PosterImage.swift")
@@ -128,7 +127,7 @@ class MotionPerformanceSourceTests(unittest.TestCase):
     def test_home_details_and_folder_search_reject_stale_results(self):
         home = source("Anivibe/Features/Home/HomeViewModel.swift")
         details = source("Anivibe/Features/AnimeDetails/AnimeDetailsViewModel.swift")
-        folder = source("Anivibe/Features/Home/FolderViews.swift").split("struct AddToFolderSheet:", 1)[1]
+        folder = source("Anivibe/Features/Home/HomeView.swift").split("struct AddToFolderSheet:", 1)[1]
         self.assertIn("!Task.isCancelled, feedRequestID == requestID", home)
         self.assertIn("!Task.isCancelled, recentRequestID == requestID", home)
         self.assertIn("!Task.isCancelled, loadRequestID == requestID", details)

@@ -21,13 +21,10 @@ struct SpeedBoostIndicator: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        // Непрозрачная подложка вместо материала: читается поверх любого кадра,
-        // а при «Уменьшить прозрачность» становится ещё плотнее.
         .background {
-            if reduceTransparency { Capsule().fill(Color(white: 0.10)) }
-            else { Capsule().fill(Color.black.opacity(0.76)) }
+            if reduceTransparency { Capsule().fill(Color(white: 0.12)) }
+            else { Capsule().fill(.ultraThinMaterial).overlay(Capsule().fill(.black.opacity(0.55))) }
         }
-        .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
         .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Временная скорость 2×")

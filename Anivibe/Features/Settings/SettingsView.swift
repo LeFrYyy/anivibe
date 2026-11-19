@@ -31,7 +31,7 @@ struct SettingsView: View {
                 }), supportsOpacity: false)
                 Text("Предварительный просмотр").padding().frame(maxWidth: .infinity)
                     .background(Theme.accent, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(Theme.onAccent)
-                Button("Вернуть стандартный цвет") { settings.accentHex = nil }
+                Button("Вернуть стандартный фиолетовый") { settings.accentHex = nil }
                 NavigationLink("Пользовательский фон") { BackgroundSettingsView() }
                 Toggle("Библиотека на главной", isOn: $settings.libraryPinned)
                 Toggle("Система папок", isOn: $settings.foldersEnabled)

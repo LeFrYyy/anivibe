@@ -3,9 +3,6 @@ import AnivibeCore
 
 /// Карточка тайтла: постер 2:3, название, краткая мета-строка, опциональный прогресс.
 struct PosterCard: View {
-    /// Единая ширина карточки в горизонтальных рядах.
-    static let standardWidth: CGFloat = 124
-
     let title: String
     let coverURL: URL?
     var colorHex: String?
@@ -21,9 +18,8 @@ struct PosterCard: View {
                     if let badge {
                         Text(badge)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
                             .padding(.horizontal, 8).padding(.vertical, 5)
-                            .background(Color.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
                             .padding(6)
                     }
                 }
@@ -84,15 +80,13 @@ extension Anime {
 
 struct ProgressBar: View {
     let value: Double
-    /// NaN и бесконечность из источника не должны ломать ширину заливки.
     private var safeValue: Double { value.isFinite ? min(1, max(0, value)) : 0 }
     var body: some View {
         GeometryReader { geo in
-            let width = geo.size.width.isFinite ? max(0, geo.size.width) : 0
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.black.opacity(0.45))
-                Capsule().fill(Theme.accent)
-                    .frame(width: max(4, width * safeValue))
+                Capsule().fill(Theme.secondaryAccent)
+                    .frame(width: max(4, geo.size.width * safeValue))
             }
         }
         .accessibilityLabel("Просмотрено \(Int(safeValue * 100))%")
