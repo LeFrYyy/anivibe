@@ -2,6 +2,33 @@
 
 ---
 
+## 2026-11-19 · Откат визуального редизайна к r70 (41b562c) + скелетоны загрузки
+
+**Направление:** вернуть внешний вид релиза r70. Откатан только визуал; невизуальные
+фиксы из диапазона редизайна перенесены заново.
+
+**Файлы:**
+- `Anivibe/**` — всё дерево восстановлено из `41b562c` (`git checkout 41b562c -- Anivibe/`).
+- `Anivibe/DesignSystem/Components/ContinueWatchingCard.swift` — **удалён** (файл редизайна, в r70 не существовал).
+- `Anivibe/Features/Home/FolderViews.swift` — **удалён**; папки снова живут внутри `HomeView.swift` (FolderTile/NewFolderTile/FolderOverlay/FolderBackground), как в r70.
+- `.github/workflows/ios.yml` — восстановлен из `41b562c`: прогон `test_flat_design.py` из CI убран (на старом визуале контракты снова красные — это исходное состояние).
+- `scripts/test_motion_performance.py`, `scripts/test_update_20261025.py` — восстановлены из `41b562c` (указатели на `HomeView.swift` после удаления `FolderViews.swift`).
+- `Anivibe/Features/Home/HomeView.swift` — заново применён фикс `0cd1df9`: процент в подписи «Продолжить просмотр» считается от безопасного числа (`continueSubtitle(_:)`, `isFinite` + clamp `0...1`), иначе `Int(fraction * 100)` падал на NaN.
+- `Anivibe/Features/Catalog/CatalogView.swift` — заново применён невизуальный фикс из `bce4207`: рамка строки-подсказки больше не хардкод `Color.white` (на светлой теме пропадала), а `Theme.separator.opacity(0.7)`; геометрия строки оставлена как в r70 (40 pt).
+- `Anivibe/DesignSystem/Components/StateViews.swift` — **нов.** `PosterGridSkeleton` (сетка каталога, повторяет адаптивные колонки) и `TextBlockSkeleton` (текстовый блок деталей).
+- `Anivibe/Features/Catalog/CatalogView.swift` — вместо голого `LoadingStateView` на пустой выдаче показан `PosterGridSkeleton`; у CatalogView уже был `.animation(AppMotion.fade, value: phase)`, поэтому выдача проявляется без скачка раскладки.
+- `Anivibe/Features/AnimeDetails/AnimeDetailsView.swift` — вместо спиннера `TextBlockSkeleton(lines: 4)`; заголовок и действия и так видны во время загрузки.
+
+**БД/API/стейт:** без изменений. `Packages/AnivibeCore` не тронут, тир-листы — только UI, манга не добавлялась.
+
+**Нюансы:**
+- Градиент-затемнение постера в `AnimeDetailsView` оставлен как в r70.
+- `test_motion_performance.py` жёстко держит ровно один `.sensoryFeedback(` на всё приложение (boost 2× в `PlayerScreen.swift`), а `AppMotion.swift` — ровно 4 вхождения `reduceMotion ? nil`. Поэтому **дополнительные haptics не добавлялись**: контракт r70 прямо запрещает рутинные вибрации (`AppMotion.swift:4`, `PosterCard.swift:96`), и любая новая вибрация красит тест. Пустой/скелетонный слой и контекстные меню в r70 уже были покрыты (`PosterRowSkeleton`, `EmptyStateView` во всех разделах, `folderMenu`/`contextMenu` на карточках) — переделывать было нечего.
+- Скелетоны не создают собственный `ScrollView` — встраиваются в существующий контейнер (без вложенного скролла).
+- Проверки локально: `python3 scripts/check_project.py` + все `scripts/test_*.py` — 0 ошибок (на Windows нужен `PYTHONUTF8=1`: скрипты читают файлы без явной кодировки, а локальная cp1251 не декодирует UTF-8; в CI на Linux проблемы нет). Swift локально не компилируется — сборка через `ios.yml`.
+
+---
+
 ## 2026-11-18 · Редизайн визуального слоя: плоская система, восстановление папок, контракты в CI
 
 **Направление:** спокойный нативный стиль на непрозрачных поверхностях — один цвет действия
