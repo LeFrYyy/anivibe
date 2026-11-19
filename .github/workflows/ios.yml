@@ -54,9 +54,16 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          # Без этого текст ошибки компиляции виден только в приватном артефакте.
-          echo '--- compiler/test failures ---'
-          grep -nE 'error:|XCTAssert|failed|FAIL' swift-test.log | tail -n 80 || true
+          # Аннотации check-run публичны, логи — нет. Публикуем строки ошибок
+          # через workflow-команды ::error::, чтобы причина была видна снаружи.
+          grep -aE 'error:|XCTAssert|failed|FAIL' swift-test.log \
+            | head -n 40 \
+            | cut -c1-800 \
+            | sed 's/%/%25/g' \
+            | sed 's/^/::error::/' \
+            || echo '::warning::pattern not found in swift-test.log'
+          echo '--- tail of swift-test.log ---'
+          tail -n 25 swift-test.log | cut -c1-800 | sed 's/%/%25/g; s/^/::error::/' || true
       - name: Save test log
         if: always()
         uses: actions/upload-artifact@v4
