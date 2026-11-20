@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-11-20 · UX-пакет: хаптика, жесты, пустые состояния, отмена удаления
+
+**Направление:** закрыть список UX-замечаний (пп.1–9 из `tasks3.txt`), не трогая
+мангу, тир-листы по существу и публичный API `AnivibeCore`.
+
+**Файлы:**
+- `Anivibe/Core/LibraryStore.swift` — `changeFeedback` + `ChangeKind`, `signalChange(_:)`; `toggleFavorite` теперь возвращает `Bool` и сообщает вид отклика; счётчик растёт в `setStatus`/`setFavorite`/`remove`/`markCompleted`/`setEpisodeWatched`. Плюс `removeWithUndo(_:)` — удаляет запись и возвращает замыкание, восстанавливающее статус и избранное.
+- `Anivibe/Core/TierListStore.swift` — `changeFeedback`, инкремент в `apply(_:)` (единственная точка мутаций).
+- `Anivibe/Features/Library/LibraryView.swift` — `.sensoryFeedback(trigger:)` на счётчике (п.1); `.refreshable` (п.2); кнопка «Перейти в каталог» в пустых состояниях обоих списков (п.7); плашка «Удалено — Отменить» на 4 с через `UndoBanner` (п.9); `onOpenCatalog` в `init`.
+- `Anivibe/Features/Profile/TierListView.swift` — лёгкий отклик на правки тир-листа.
+- `Anivibe/DesignSystem/Components/StateViews.swift` — `UndoBanner` (действие + закрытие, зоны 44 pt).
+- `Anivibe/Features/Catalog/CatalogView.swift` — `.refreshable` в сетке (п.2); кнопка «наверх» (п.5) через `ScrollViewReader` + якорь + `GeometryReader` в `.background` с named coordinate space (порог −240 pt); кнопка рандомайзера в тулбаре (п.8); `folderMenu(_:preview:true)` в сетке.
+- `Anivibe/Features/Catalog/CatalogViewModel.swift` — `awaitReload` (ожидание загрузки ≤8 с с учётом отмены) и `randomTitle` (случайный тайтл из известного пула, исключая видимые).
+- `Anivibe/Features/Catalog/CatalogExtras.swift` (**нов.**, 81 строка) — `BackToTopButton`, `RandomPickSheet`, вынесены из `CatalogView` (было 436 строк → 320).
+- `Anivibe/Features/Home/HomeView.swift` — бейдж «Новая серия» на карточках «Продолжить просмотр» (п.6, сигнал `ResumePoint.isNextEpisode`); `FolderMenuModifier` получил `showsPreview`/`previewWidth` и действия «В планы»/«В избранное», а также `preview:`-замыкание.
+- `Anivibe/App/RootView.swift` — `LibraryView(onOpenCatalog: { tab = .catalog })`.
+- `scripts/test_motion_performance.py` — тест про хаптику переписан: проверяет суть (отклики только на изменении данных, легаси-генераторы запрещены, прочие `.sensoryFeedback(` допустимы только со `changeFeedback`), а не «ровно один отклик на приложение», как в r70.
+- `AnivibeCore/Models/WidgetSnapshot.swift` — квалификация `WidgetSnapshot.Item` в `WidgetSnapshotStore.make(from:)` (падало `swift test`: `cannot find 'Item' in scope`); регресс-тест `test_snapshot_store_qualifies_the_nested_item_type` в `scripts/test_widget.py`.
+
+**БД/API/стейт:** без изменений схемы. `LibraSource` не тронут; `removeWithUndo` работает поверх существующего `setStatus`/`setFavorite`.
+
+**Нюансы:**
+- Превью постера по удержанию (п.3) **нельзя** было сделать вторым `.contextMenu`: SwiftUI применяет только одно меню на view, а на карточках уже висит `folderMenu`. Поэтому превью и действия добавлены внутрь `FolderMenuModifier`.
+- Отслеживание скролла — на `GeometryReader` + `coordinateSpace(name:)`, а не на `onScrollGeometryChange`: deployment target — iOS 17.
+- Пункт 4 (плавное появление постеров) уже был реализован в `PosterImage` (`.transition(.opacity)` + `AppMotion.fade` с учётом Reduce Motion) — правок не потребовал.
+- Локально: 9/10 скриптов зелёные (единственный красный — предсуществующий `test_flat_design.py`, он не подключён в CI). Swift-компилятора на Windows нет, поэтому сборка проверяется только раном `ios.yml`.
+
+---
+
 ## 2026-11-19 · Откат визуального редизайна к r70 (41b562c) + скелетоны загрузки
 
 **Направление:** вернуть внешний вид релиза r70. Откатан только визуал; невизуальные
@@ -121,3 +150,5 @@
 
 **БД/API/стейт:** новая таблица `tier_lists`; соц-RPC отдаёт `tier_list`.
 **Нюансы:** `LibraryEntry` init — `isDeleted:` ПОСЛЕ `updatedAt:`; миграцию tier_lists нужно накатить на прод-Supabase для публичного режима.
+
+---
