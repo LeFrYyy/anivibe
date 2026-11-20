@@ -14,15 +14,25 @@ def source(relative):
 class MotionPerformanceSourceTests(unittest.TestCase):
     def test_no_routine_navigation_haptics(self):
         swift = "\n".join(path.read_text() for path in (ROOT / "Anivibe").rglob("*.swift"))
-        # The only deliberate haptic is activation of hold-to-2x, not navigation.
+        # Хаптику разрешено использовать только на осмысленных действиях, а не на
+        # навигации. Раньше это выражалось жёстким «ровно один .sensoryFeedback»,
+        # но с появлением отклика на правки библиотеки и тир-листа счётчик устарел.
+        # Проверяем суть: boost-хаптика на месте, легаси-генераторов нет, а все
+        # остальные отклики — не на навигации (NavigationLink/tap на переход).
         player = source("Anivibe/Features/Player/PlayerScreen.swift")
         boost_haptic = ".sensoryFeedback(.impact(weight: .light), trigger: model.isSpeedBoosted) { _, active in active }"
-        self.assertEqual(swift.count(".sensoryFeedback("), 1)
         self.assertIn(boost_haptic, player)
-        swift = swift.replace(boost_haptic, "")
         for call in ("UIImpactFeedbackGenerator(", "UISelectionFeedbackGenerator(",
-                     "UINotificationFeedbackGenerator(", ".sensoryFeedback("):
+                     "UINotificationFeedbackGenerator("):
             self.assertNotIn(call, swift)
+        # Каждый отклик должен быть привязан к счётчику изменений стора или к
+        # скорости воспроизведения — не к навигационному состоянию.
+        for line in swift.splitlines():
+            if ".sensoryFeedback(" in line and boost_haptic not in line:
+                self.assertTrue(
+                    "changeFeedback" in line,
+                    "Хаптика допустима только на изменении данных: " + line.strip(),
+                )
 
     def test_no_endless_edit_mode_animation(self):
         swift = "\n".join(path.read_text() for path in (ROOT / "Anivibe").rglob("*.swift"))

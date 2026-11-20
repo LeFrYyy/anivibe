@@ -140,6 +140,8 @@ struct TierListEditorView: View {
         .screenBackground()
         .navigationTitle(set.activeList?.name ?? "Тир-лист")
         .navigationBarTitleDisplayMode(.inline)
+        // Лёгкая хаптика на назначение/снятие тайтла в тир-листе.
+        .sensoryFeedback(.impact(weight: .light), trigger: env.tierList.changeFeedback)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 6) {

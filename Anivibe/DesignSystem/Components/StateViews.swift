@@ -136,6 +136,34 @@ struct TextBlockSkeleton: View {
     }
 }
 
+/// Плашка «Удалено — Отменить» после деструктивного действия.
+struct UndoBanner: View {
+    let message: String
+    let undo: () -> Void
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.m) {
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+            Spacer(minLength: Theme.Spacing.s)
+            Button("Отменить", action: undo)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+        }
+        .padding(.horizontal, Theme.Spacing.l)
+        .frame(minHeight: 52)
+        .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .strokeBorder(Theme.separator.opacity(0.6), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 struct Chip: View {
     let text: String
     var systemImage: String?

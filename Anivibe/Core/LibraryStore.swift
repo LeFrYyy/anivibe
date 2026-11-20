@@ -9,6 +9,12 @@ final class LibraryStore {
     private(set) var continueWatching: [ContinueWatchingItem] = []
     private(set) var errorMessage: String?
     private(set) var isAccountStorageAvailable = true
+    /// Счётчик успешных правок библиотеки: вьюхи вешают на него `.sensoryFeedback`.
+    /// Нужен потому, что мутации асинхронные и вызываются из разных мест —
+    /// вести тактильный отклик из каждой кнопки значило бы дублировать код.
+    private(set) var changeFeedback = 0
+    enum ChangeKind: Equatable { case light, success }
+    private(set) var lastChangeKind: ChangeKind = .light
     @ObservationIgnored private var refreshGeneration = UUID()
     /// Последний опубликованный в виджет снимок — чтобы не писать файл без изменений.
     @ObservationIgnored private var publishedContinueWatching: [ContinueWatchingItem] = []
@@ -67,36 +73,42 @@ final class LibraryStore {
         guard isAccountStorageAvailable else { return }
         await repository.setStatus(status, for: anime)
         await changed()
+        signalChange(status == nil ? .light : (status == .completed ? .success : .light))
     }
 
     func toggleFavorite(_ anime: AnimeSnapshot) async {
         guard isAccountStorageAvailable else { return }
-        _ = await repository.toggleFavorite(anime)
+        let nowFavorite = await repository.toggleFavorite(anime)
         await changed()
+        signalChange(nowFavorite ? .success : .light)
     }
 
     func setFavorite(_ favorite: Bool, for anime: AnimeSnapshot) async {
         guard isAccountStorageAvailable else { return }
         await repository.setFavorite(favorite, for: anime)
         await changed()
+        signalChange(favorite ? .success : .light)
     }
 
     func remove(_ id: Int) async {
         guard isAccountStorageAvailable else { return }
         await repository.remove(animeId: id)
         await changed()
+        signalChange(.light)
     }
 
     func markCompleted(_ anime: AnimeSnapshot) async {
         guard isAccountStorageAvailable else { return }
         await repository.markCompleted(anime)
         await changed()
+        signalChange(.success)
     }
 
     func setEpisodeWatched(_ anime: AnimeSnapshot, episode: Int, watched: Bool) async {
         guard isAccountStorageAvailable else { return }
         await repository.markEpisodeWatched(anime: anime, episode: episode, watched: watched)
         await changed()
+        signalChange(watched ? .success : .light)
     }
 
     func recordProgress(anime: AnimeSnapshot, episode: Int, position: Double, duration: Double,
@@ -122,5 +134,28 @@ final class LibraryStore {
     private func changed() async {
         await refresh()
         onLocalChange?()
+    }
+
+    private func signalChange(_ kind: ChangeKind) {
+        lastChangeKind = kind
+        changeFeedback &+= 1
+    }
+
+    // MARK: Undo
+
+    /// Удаляет запись, сохраняя её для отката. Возвращает восстановитель,
+    /// который `LibraryView` показывает в плашке «Удалено — Отменить».
+    @discardableResult
+    func removeWithUndo(_ id: Int) async -> (() async -> Void)? {
+        guard isAccountStorageAvailable, let entry = snapshot.entry(for: id) else { return nil }
+        await remove(id)
+        let anime = entry.anime
+        let status = entry.status
+        let favorite = entry.isFavorite
+        return { [weak self] in
+            guard let self else { return }
+            if let status { await self.setStatus(status, for: anime) }
+            if favorite { await self.setFavorite(true, for: anime) }
+        }
     }
 }

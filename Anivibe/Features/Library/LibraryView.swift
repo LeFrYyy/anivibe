@@ -33,12 +33,19 @@ struct LibraryView: View {
     @Namespace private var selectionNamespace
     @State private var section: LibrarySection = .list(.watching)
     @State private var confirmClear = false
+    @State private var undoMessage: String?
+    @State private var undoRestore: (() async -> Void)?
+    @State private var undoTicket = 0
 
     private let embedded: Bool
+    /// Переход в каталог из пустого состояния. `nil` — кнопка не показывается.
+    private let onOpenCatalog: (() -> Void)?
 
-    init(initialSection: LibrarySection = .list(.watching), embedded: Bool = false) {
+    init(initialSection: LibrarySection = .list(.watching), embedded: Bool = false,
+         onOpenCatalog: (() -> Void)? = nil) {
         _section = State(initialValue: initialSection)
         self.embedded = embedded
+        self.onOpenCatalog = onOpenCatalog
     }
 
     var body: some View {
@@ -86,8 +93,28 @@ struct LibraryView: View {
                 content
                     .animation(AppMotion.fade(reduceMotion: reduceMotion), value: section)
             }
+            .refreshable { await library.refresh() }
             .screenBackground()
             .navigationTitle("Библиотека")
+            // Лёгкий отклик на любую правку библиотеки: добавление, оценку,
+            // избранное. Триггер — счётчик в сторе, поэтому вызывается один раз
+            // на мутацию, а не из каждой кнопки.
+            .sensoryFeedback(trigger: library.changeFeedback) { _, _ in
+                library.lastChangeKind == .success ? .success : .impact(weight: .light)
+            }
+            .overlay(alignment: .bottom) {
+                if let undoMessage {
+                    UndoBanner(message: undoMessage) {
+                        let restore = undoRestore
+                        dismissUndo()
+                        Task { await restore?() }
+                    }
+                    .padding(.horizontal, Theme.Spacing.l)
+                    .padding(.bottom, Theme.Spacing.l)
+                    .transition(AppMotion.panelTransition(reduceMotion: reduceMotion))
+                }
+            }
+            .animation(AppMotion.panel(reduceMotion: reduceMotion), value: undoMessage)
             .toolbar {
                 if section == .history && !library.snapshot.history.isEmpty {
                     Button("Очистить") { confirmClear = true }
@@ -146,8 +173,11 @@ struct LibraryView: View {
     @ViewBuilder private func entriesList(_ entries: [LibraryEntry], for currentSection: LibrarySection) -> some View {
         if entries.isEmpty {
             let empty = emptyMeta(for: currentSection)
-            EmptyStateView(systemImage: empty.icon, title: empty.title, message: empty.message)
-                .frame(maxHeight: .infinity)
+            EmptyStateView(systemImage: empty.icon, title: empty.title, message: empty.message,
+                           actionTitle: "Перейти в каталог") {
+                onOpenCatalog?()
+            }
+            .frame(maxHeight: .infinity)
         } else {
             List {
                 ForEach(entries) { entry in
@@ -168,7 +198,9 @@ struct LibraryView: View {
                             Button(entry.isFavorite ? "Убрать из избранного" : "В избранное") {
                                 Task { await library.toggleFavorite(entry.anime) }
                             }
-                            Button("Удалить из библиотеки", role: .destructive) { Task { await library.remove(entry.id) } }
+                            Button("Удалить из библиотеки", role: .destructive) {
+                                Task { await deleteWithUndo(entry) }
+                            }
                         }
                         .listRowBackground(Theme.surface)
                 }
@@ -177,11 +209,31 @@ struct LibraryView: View {
         }
     }
 
+    /// Удаляет запись и показывает плашку отката на ~4 секунды.
+    private func deleteWithUndo(_ entry: LibraryEntry) async {
+        guard let restore = await library.removeWithUndo(entry.id) else { return }
+        undoRestore = restore
+        undoMessage = "«\(entry.anime.title)» удалено"
+        undoTicket &+= 1
+        let ticket = undoTicket
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+        // Плашку убираем только если её не сменило другое удаление.
+        if undoTicket == ticket { dismissUndo() }
+    }
+
+    private func dismissUndo() {
+        undoMessage = nil
+        undoRestore = nil
+    }
+
     @ViewBuilder private var historyList: some View {
         let history = library.snapshot.history
         if history.isEmpty {
-            EmptyStateView(systemImage: "clock", title: "История пуста", message: "Здесь появятся просмотренные серии.")
-                .frame(maxHeight: .infinity)
+            EmptyStateView(systemImage: "clock", title: "История пуста", message: "Здесь появятся просмотренные серии.",
+                           actionTitle: "Перейти в каталог") {
+                onOpenCatalog?()
+            }
+            .frame(maxHeight: .infinity)
         } else {
             List {
                 ForEach(history) { item in

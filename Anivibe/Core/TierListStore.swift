@@ -8,6 +8,8 @@ final class TierListStore {
     private(set) var set: TierListSet = .empty
     private(set) var activeAccountID: String?
     private(set) var errorMessage: String?
+    /// Счётчик изменений тир-листа — на него вьюха вешает `.sensoryFeedback`.
+    private(set) var changeFeedback = 0
     @ObservationIgnored var onLocalChange: (@MainActor () -> Void)?
     @ObservationIgnored private var document = TierListSyncDocument()
     @ObservationIgnored private var fileURL: URL?
@@ -137,6 +139,9 @@ final class TierListStore {
         guard next != set || errorMessage != nil else { return }
         set = next
         document.set = next
+        // Лёгкая хаптика на каждое изменение тир-листа (назначение, снятие,
+        // переименование) — один триггер на все пути, т.к. всё идёт через apply.
+        changeFeedback &+= 1
         do {
             try persist()
             onLocalChange?()
