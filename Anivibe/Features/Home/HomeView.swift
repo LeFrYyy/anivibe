@@ -912,7 +912,7 @@ struct FolderMenuModifier: ViewModifier {
 
     @ViewBuilder private var posterPreview: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-            PosterImage(url: anime.coverURL, placeholderColorHex: anime.coverColorHex)
+            PosterImage(url: anime.coverURL, placeholderColorHex: nil)
                 .aspectRatio(Theme.posterAspect, contentMode: .fit)
                 .frame(width: previewWidth)
             Text(anime.title)
