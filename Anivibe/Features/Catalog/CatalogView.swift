@@ -10,8 +10,13 @@ struct CatalogView: View {
     @State private var model = CatalogViewModel()
     @State private var showFilters = false
     @State private var path = NavigationPath()
+    @State private var randomPick: Anime?
+    @State private var scrollAnchor = UUID()
+    @State private var showBackToTop = false
 
     private let columns = [GridItem(.adaptive(minimum: 104, maximum: 180), spacing: Theme.Spacing.m, alignment: .top)]
+    /// Имя координатного пространства списка — для отслеживания прокрутки (iOS 17).
+    private let scrollSpace = "catalog.scroll"
 
     var body: some View {
         @Bindable var model = model
@@ -42,6 +47,24 @@ struct CatalogView: View {
                         }
                         .accessibilityLabel("Фильтры и сортировка")
                     }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            randomPick = model.randomTitle()
+                        } label: {
+                            Image(systemName: "shuffle")
+                        }
+                        .disabled(model.items.isEmpty && model.genres.isEmpty)
+                        .accessibilityLabel("Случайный тайтл")
+                    }
+                }
+                .sheet(item: $randomPick) { anime in
+                    RandomPickSheet(anime: anime,
+                                    reroll: { randomPick = model.randomTitle() },
+                                    open: {
+                                        randomPick = nil
+                                        path.append(anime)
+                                    })
+                    .presentationDetents([.height(360)])
                 }
                 .sheet(isPresented: $showFilters) {
                     FilterSheet(query: $model.query, genres: model.genres) {
@@ -158,25 +181,58 @@ struct CatalogView: View {
     }
 
     private var grid: some View {
-        ScrollView {
-            if model.query.hasActiveFilters {
-                ActiveFiltersSummary(query: model.query).padding(.horizontal, Theme.Spacing.l)
-            }
-            LazyVGrid(columns: columns, spacing: Theme.Spacing.l) {
-                ForEach(model.items) { anime in
-                    NavigationLink(value: anime) { PosterCard(anime: anime) }
-                        .buttonStyle(PosterPressStyle())
-                        .folderMenu(anime.snapshot)
-                        .onAppear { model.loadMoreIfNeeded(current: anime, catalog: env.catalog) }
+        ScrollViewReader { proxy in
+            ScrollView {
+                // Якорь начала списка: к нему возвращает кнопка «наверх», и по его
+                // видимости решается, показывать ли кнопку (iOS 17, без scroll APIs 18).
+                Color.clear
+                    .frame(height: 0)
+                    .id(scrollAnchor)
+                    .background {
+                        GeometryReader { geo in
+                            Color.clear
+                                .onChange(of: geo.frame(in: .named(scrollSpace)).minY, initial: true) { _, minY in
+                                    withAnimation(AppMotion.fade(reduceMotion: reduceMotion)) {
+                                        showBackToTop = minY < -240
+                                    }
+                                }
+                        }
+                    }
+                if model.query.hasActiveFilters {
+                    ActiveFiltersSummary(query: model.query).padding(.horizontal, Theme.Spacing.l)
+                }
+                LazyVGrid(columns: columns, spacing: Theme.Spacing.l) {
+                    ForEach(model.items) { anime in
+                        NavigationLink(value: anime) { PosterCard(anime: anime) }
+                            .buttonStyle(PosterPressStyle())
+                            .folderMenu(anime.snapshot, preview: true)
+                            .onAppear { model.loadMoreIfNeeded(current: anime, catalog: env.catalog) }
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.l)
+                .padding(.top, Theme.Spacing.s)
+                if model.isLoadingMore {
+                    ProgressView().padding()
                 }
             }
-            .padding(.horizontal, Theme.Spacing.l)
-            .padding(.top, Theme.Spacing.s)
-            if model.isLoadingMore {
-                ProgressView().padding()
+            .coordinateSpace(name: scrollSpace)
+            .scrollDismissesKeyboard(.immediately)
+            .refreshable {
+                model.reload(catalog: env.catalog)
+                await model.awaitReload()
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if showBackToTop {
+                    BackToTopButton {
+                        withAnimation(AppMotion.panel(reduceMotion: reduceMotion)) {
+                            proxy.scrollTo(scrollAnchor, anchor: .top)
+                        }
+                    }
+                    .padding(Theme.Spacing.l)
+                    .transition(AppMotion.panelTransition(reduceMotion: reduceMotion))
+                }
             }
         }
-        .scrollDismissesKeyboard(.immediately)
     }
 }
 

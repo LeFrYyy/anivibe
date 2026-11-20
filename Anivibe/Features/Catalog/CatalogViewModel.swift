@@ -130,6 +130,17 @@ final class CatalogViewModel {
         }
     }
 
+    /// Ждёт завершения текущей перезагрузки (для pull-to-refresh, чтобы спиннер
+    /// не исчезал раньше данных). Ограничено сверху, чтобы не зависнуть.
+    func awaitReload() async {
+        var waited: UInt64 = 0
+        while isReloading, waited < 8_000_000_000 {
+            try? await Task.sleep(nanoseconds: 60_000_000)
+            if Task.isCancelled { return }
+            waited += 60_000_000
+        }
+    }
+
     func cancelRequests() {
         runner.cancel()
         reloadRequestID = nil
@@ -167,6 +178,14 @@ final class CatalogViewModel {
         query.status = nil
         query.formats = []
         query.season = nil
+    }
+
+    /// Случайный тайтл «мне нечего смотреть». Берём из уже загруженного пула
+    /// (мгновенно и без сети), исключая то, что и так видно на экране.
+    func randomTitle() -> Anime? {
+        let visible = Set(items.map(\.id))
+        let pool = knownAnimePool.filter { !visible.contains($0.id) }
+        return (pool.isEmpty ? knownAnimePool : pool).randomElement() ?? items.randomElement()
     }
 
     private func remember(_ newItems: [Anime]) {

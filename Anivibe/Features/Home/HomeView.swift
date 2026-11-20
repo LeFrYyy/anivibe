@@ -184,7 +184,10 @@ struct HomeView: View {
                             NavigationLink(value: item.anime) {
                                 PosterCard(title: item.anime.title, coverURL: item.anime.coverURL,
                                            subtitle: Self.continueSubtitle(item.resume),
-                                           progress: item.resume.isNextEpisode ? nil : item.resume.fraction)
+                                           progress: item.resume.isNextEpisode ? nil : item.resume.fraction,
+                                           // Новая серия уже доступна: последняя просмотренная
+                                           // закрыта, и следующая вышла (см. ResumePoint.isNextEpisode).
+                                           badge: item.resume.isNextEpisode ? "Новая серия" : nil)
                                 .frame(width: 130)
                             }
                             .buttonStyle(PosterPressStyle())
@@ -843,7 +846,12 @@ struct AddToFolderSheet: View {
 /// Долгое нажатие на любую обложку → «В папку» (добавить/убрать, создать новую).
 struct FolderMenuModifier: ViewModifier {
     @Environment(AppEnvironment.self) private var env
+    @Environment(LibraryStore.self) private var library
     let anime: AnimeSnapshot
+    /// Показывать увеличенный постер в превью удержания (сетки каталога).
+    var showsPreview = false
+    /// Ширина постера в превью.
+    var previewWidth: CGFloat = 240
 
     @State private var askName = false
     @State private var newName = ""
@@ -851,6 +859,7 @@ struct FolderMenuModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .contextMenu {
+                if showsPreview { libraryActions }
                 Menu {
                     ForEach(env.collections.collections) { folder in
                         Button {
@@ -873,6 +882,8 @@ struct FolderMenuModifier: ViewModifier {
                 } label: {
                     Label("В папку", systemImage: "folder")
                 }
+            } preview: {
+                if showsPreview { posterPreview }
             }
             .alert("Новая папка", isPresented: $askName) {
                 TextField("Название", text: $newName)
@@ -882,11 +893,41 @@ struct FolderMenuModifier: ViewModifier {
                 Text("«\(anime.title)» сразу окажется в ней.")
             }
     }
+
+    /// Быстрые действия в превью: то, что нельзя повесить вторым contextMenu.
+    @ViewBuilder private var libraryActions: some View {
+        Button {
+            Task { await library.setStatus(.planned, for: anime) }
+        } label: {
+            Label("В планы", systemImage: "bookmark")
+        }
+        Button {
+            Task { await library.toggleFavorite(anime) }
+        } label: {
+            Label(library.isFavorite(anime.id) ? "Убрать из избранного" : "В избранное",
+                  systemImage: library.isFavorite(anime.id) ? "heart.slash" : "heart")
+        }
+        Divider()
+    }
+
+    @ViewBuilder private var posterPreview: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            PosterImage(url: anime.coverURL, placeholderColorHex: anime.coverColorHex)
+                .aspectRatio(Theme.posterAspect, contentMode: .fit)
+                .frame(width: previewWidth)
+            Text(anime.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(2)
+                .frame(width: previewWidth, alignment: .leading)
+        }
+        .padding(Theme.Spacing.s)
+    }
 }
 
 extension View {
-    /// Добавляет в контекстное меню обложки пункт «В папку».
-    func folderMenu(_ anime: AnimeSnapshot) -> some View {
-        modifier(FolderMenuModifier(anime: anime))
+    /// Контекстное меню обложки: «В папку» и, опционально, превью с действиями.
+    func folderMenu(_ anime: AnimeSnapshot, preview: Bool = false, previewWidth: CGFloat = 240) -> some View {
+        modifier(FolderMenuModifier(anime: anime, showsPreview: preview, previewWidth: previewWidth))
     }
 }
