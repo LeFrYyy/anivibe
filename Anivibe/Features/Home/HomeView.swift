@@ -912,6 +912,8 @@ struct FolderMenuModifier: ViewModifier {
 
     @ViewBuilder private var posterPreview: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            // У снимка нет цвета-заглушки (он есть только у полной `Anime`),
+            // поэтому отдаём nil — PosterImage сам нарисует нейтральную заливку.
             PosterImage(url: anime.coverURL, placeholderColorHex: nil)
                 .aspectRatio(Theme.posterAspect, contentMode: .fit)
                 .frame(width: previewWidth)
