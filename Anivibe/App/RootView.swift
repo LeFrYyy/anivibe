@@ -21,7 +21,7 @@ struct RootView: View {
                 CatalogView(openAnimeID: $catalogAnimeID)
                     .tabItem { Label("Каталог", systemImage: "square.grid.2x2") }
                     .tag(AppTab.catalog)
-                LibraryView()
+                LibraryView(onOpenCatalog: { tab = .catalog })
                     .tabItem { Label("Библиотека", systemImage: "books.vertical") }
                     .tag(AppTab.library)
                 ProfileView(openCollections: { tab = .home })
